@@ -1,0 +1,162 @@
+import 'package:flutter/material.dart';
+
+enum ManagerLoadState { idle, loading, ready, error }
+
+enum PackageAction { update, remove }
+
+class PackageManagerDefinition {
+  const PackageManagerDefinition({
+    required this.id,
+    required this.displayName,
+    required this.executable,
+    required this.description,
+    required this.color,
+    required this.icon,
+    this.supportsBatchUpdate = false,
+  });
+
+  final String id;
+  final String displayName;
+  final String executable;
+  final String description;
+  final Color color;
+  final IconData icon;
+  final bool supportsBatchUpdate;
+}
+
+class ManagedPackage {
+  const ManagedPackage({
+    required this.name,
+    required this.managerId,
+    required this.managerName,
+    required this.version,
+    this.latestVersion,
+    this.latestVersionCheckedAt,
+    this.identifier,
+    this.source,
+    this.notes,
+    this.executables = const <String>[],
+    this.metadata = const <String, String>{},
+  });
+
+  final String name;
+  final String managerId;
+  final String managerName;
+  final String version;
+  final String? latestVersion;
+  final DateTime? latestVersionCheckedAt;
+  final String? identifier;
+  final String? source;
+  final String? notes;
+  final List<String> executables;
+  final Map<String, String> metadata;
+
+  String get key => '$managerId::$name::${identifier ?? ''}';
+
+  bool get hasUpdate {
+    final nextVersion = latestVersion?.trim();
+    if (nextVersion == null || nextVersion.isEmpty) {
+      return false;
+    }
+    return nextVersion != version.trim();
+  }
+
+  ManagedPackage copyWith({
+    String? name,
+    String? managerId,
+    String? managerName,
+    String? version,
+    String? latestVersion,
+    bool clearLatestVersion = false,
+    DateTime? latestVersionCheckedAt,
+    bool clearLatestVersionCheckedAt = false,
+    String? identifier,
+    String? source,
+    String? notes,
+    bool clearNotes = false,
+    List<String>? executables,
+    Map<String, String>? metadata,
+  }) {
+    return ManagedPackage(
+      name: name ?? this.name,
+      managerId: managerId ?? this.managerId,
+      managerName: managerName ?? this.managerName,
+      version: version ?? this.version,
+      latestVersion: clearLatestVersion
+          ? null
+          : latestVersion ?? this.latestVersion,
+      latestVersionCheckedAt: clearLatestVersionCheckedAt
+          ? null
+          : latestVersionCheckedAt ?? this.latestVersionCheckedAt,
+      identifier: identifier ?? this.identifier,
+      source: source ?? this.source,
+      notes: clearNotes ? null : notes ?? this.notes,
+      executables: executables ?? this.executables,
+      metadata: metadata ?? this.metadata,
+    );
+  }
+}
+
+class ManagerSnapshot {
+  const ManagerSnapshot({
+    required this.manager,
+    this.packages = const <ManagedPackage>[],
+    this.loadState = ManagerLoadState.idle,
+    this.errorMessage,
+    this.lastRefreshedAt,
+  });
+
+  final PackageManagerDefinition manager;
+  final List<ManagedPackage> packages;
+  final ManagerLoadState loadState;
+  final String? errorMessage;
+  final DateTime? lastRefreshedAt;
+
+  bool get isReady => loadState == ManagerLoadState.ready;
+
+  ManagerSnapshot copyWith({
+    List<ManagedPackage>? packages,
+    ManagerLoadState? loadState,
+    String? errorMessage,
+    bool clearError = false,
+    DateTime? lastRefreshedAt,
+  }) {
+    return ManagerSnapshot(
+      manager: manager,
+      packages: packages ?? this.packages,
+      loadState: loadState ?? this.loadState,
+      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+      lastRefreshedAt: lastRefreshedAt ?? this.lastRefreshedAt,
+    );
+  }
+}
+
+class PackageCommand {
+  const PackageCommand({
+    required this.managerId,
+    required this.busyKey,
+    required this.label,
+    required this.command,
+    this.timeout = const Duration(minutes: 5),
+  });
+
+  final String managerId;
+  final String busyKey;
+  final String label;
+  final String command;
+  final Duration timeout;
+}
+
+class ActivityEntry {
+  const ActivityEntry({
+    required this.timestamp,
+    required this.title,
+    required this.message,
+    this.isError = false,
+  });
+
+  final DateTime timestamp;
+  final String title;
+  final String message;
+  final bool isError;
+}
