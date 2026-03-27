@@ -17,6 +17,15 @@ abstract class PackageManagerAdapter {
 
   PackageCommand? buildBatchUpdateCommand() => null;
 
+  bool supportsPackageDetails(ManagedPackage package) => false;
+
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    throw UnsupportedError('${definition.displayName} 不支持查看详情。');
+  }
+
   bool supportsLatestVersionLookup(ManagedPackage package) => false;
 
   Future<String> lookupLatestVersion(
@@ -108,6 +117,21 @@ class NpmAdapter extends PackageManagerAdapter {
 
   @override
   bool supportsLatestVersionLookup(ManagedPackage package) => true;
+
+  @override
+  bool supportsPackageDetails(ManagedPackage package) => true;
+
+  @override
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final result = await shell.run(
+      'npm view ${_psQuote(package.name)}',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseDetailOutput(result, managerName: definition.displayName);
+  }
 
   @override
   Future<String> lookupLatestVersion(
@@ -210,6 +234,21 @@ class PnpmAdapter extends PackageManagerAdapter {
   bool supportsLatestVersionLookup(ManagedPackage package) => true;
 
   @override
+  bool supportsPackageDetails(ManagedPackage package) => true;
+
+  @override
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final result = await shell.run(
+      'pnpm info ${_psQuote(package.name)}',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseDetailOutput(result, managerName: definition.displayName);
+  }
+
+  @override
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,
@@ -288,6 +327,21 @@ class PipAdapter extends PackageManagerAdapter {
 
   @override
   bool supportsLatestVersionLookup(ManagedPackage package) => true;
+
+  @override
+  bool supportsPackageDetails(ManagedPackage package) => true;
+
+  @override
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final result = await shell.run(
+      'pip show ${_psQuote(package.name)}',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseDetailOutput(result, managerName: definition.displayName);
+  }
 
   @override
   Future<String> lookupLatestVersion(
@@ -404,6 +458,25 @@ class UvToolAdapter extends PackageManagerAdapter {
   bool supportsLatestVersionLookup(ManagedPackage package) => true;
 
   @override
+  bool supportsPackageDetails(ManagedPackage package) => true;
+
+  @override
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final result = await shell.run(
+      'uv tool list',
+      timeout: const Duration(seconds: 45),
+    );
+    return _extractUvToolDetails(
+      result,
+      managerName: definition.displayName,
+      packageName: package.name,
+    );
+  }
+
+  @override
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,
@@ -506,6 +579,25 @@ class CargoAdapter extends PackageManagerAdapter {
 
   @override
   bool supportsLatestVersionLookup(ManagedPackage package) => true;
+
+  @override
+  bool supportsPackageDetails(ManagedPackage package) => true;
+
+  @override
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final result = await shell.run(
+      'cargo install --list',
+      timeout: const Duration(seconds: 45),
+    );
+    return _extractCargoInstalledDetails(
+      result,
+      managerName: definition.displayName,
+      packageName: package.name,
+    );
+  }
 
   @override
   Future<String> lookupLatestVersion(
@@ -855,6 +947,28 @@ class WingetAdapter extends PackageManagerAdapter {
       ),
     };
   }
+
+  @override
+  bool supportsPackageDetails(ManagedPackage package) => true;
+
+  @override
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final target = package.identifier ?? package.name;
+    final result = await shell.run(
+      [
+        'winget show',
+        '--id ${_psQuote(target)}',
+        '--exact',
+        '--accept-source-agreements',
+        '--disable-interactivity',
+      ].join(' '),
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseDetailOutput(result, managerName: definition.displayName);
+  }
 }
 
 class BunAdapter extends PackageManagerAdapter {
@@ -951,6 +1065,28 @@ class BunAdapter extends PackageManagerAdapter {
 
   @override
   bool supportsLatestVersionLookup(ManagedPackage package) => true;
+
+  @override
+  bool supportsPackageDetails(ManagedPackage package) => true;
+
+  @override
+  Future<String> loadPackageDetails(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final result = await shell.run(
+      'bun pm view ${_psQuote(package.name)}',
+      timeout: const Duration(seconds: 45),
+    );
+    if (result.isSuccess) {
+      return _parseDetailOutput(result, managerName: definition.displayName);
+    }
+    final fallback = await shell.run(
+      'npm view ${_psQuote(package.name)}',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseDetailOutput(fallback, managerName: definition.displayName);
+  }
 
   @override
   Future<String> lookupLatestVersion(
@@ -1262,6 +1398,98 @@ String _parseSingleVersionValue(
     throw PackageAdapterException(managerName, '没有返回版本信息。');
   }
   return firstLine.replaceAll('"', '').trim();
+}
+
+String _parseDetailOutput(ShellResult result, {required String managerName}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final output = result.combinedOutput.trim();
+  if (output.isEmpty) {
+    throw PackageAdapterException(managerName, '没有返回详情信息。');
+  }
+  return output;
+}
+
+String _extractUvToolDetails(
+  ShellResult result, {
+  required String managerName,
+  required String packageName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final lines = LineSplitter.split(result.stdout)
+      .map((line) => line.trimRight())
+      .where((line) => line.isNotEmpty)
+      .toList(growable: false);
+  final headerPattern = RegExp(r'^(.+?)\s+v([^\s]+)$');
+  final normalizedTarget = packageName.trim().toLowerCase();
+
+  for (var i = 0; i < lines.length; i++) {
+    final match = headerPattern.firstMatch(lines[i].trim());
+    if (match == null) {
+      continue;
+    }
+    final currentName = (match.group(1) ?? '').trim();
+    if (currentName.toLowerCase() != normalizedTarget) {
+      continue;
+    }
+
+    final buffer = <String>[lines[i]];
+    for (var j = i + 1; j < lines.length; j++) {
+      final nextLine = lines[j];
+      if (headerPattern.hasMatch(nextLine.trim())) {
+        break;
+      }
+      buffer.add(nextLine);
+    }
+    return buffer.join('\n').trim();
+  }
+
+  throw PackageAdapterException(managerName, '无法读取 $packageName 的详情信息。');
+}
+
+String _extractCargoInstalledDetails(
+  ShellResult result, {
+  required String managerName,
+  required String packageName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final lines = LineSplitter.split(result.stdout)
+      .map((line) => line.trimRight())
+      .where((line) => line.isNotEmpty)
+      .toList(growable: false);
+  final headerPattern = RegExp(r'^([\w\-.]+)\s+v([^\s:]+):$');
+  final normalizedTarget = packageName.trim().toLowerCase();
+
+  for (var i = 0; i < lines.length; i++) {
+    final match = headerPattern.firstMatch(lines[i]);
+    if (match == null) {
+      continue;
+    }
+    final currentName = (match.group(1) ?? '').trim();
+    if (currentName.toLowerCase() != normalizedTarget) {
+      continue;
+    }
+
+    final buffer = <String>[lines[i]];
+    for (var j = i + 1; j < lines.length; j++) {
+      final nextLine = lines[j];
+      if (headerPattern.hasMatch(nextLine)) {
+        break;
+      }
+      buffer.add(nextLine);
+    }
+    return buffer.join('\n').trim();
+  }
+
+  throw PackageAdapterException(managerName, '无法读取 $packageName 的详情信息。');
 }
 
 String _parsePipLatestVersion(

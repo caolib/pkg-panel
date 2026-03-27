@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "pkg.panel" "\0"
+            VALUE "CompanyName", "io.github.caolib" "\0"
             VALUE "FileDescription", "Pkg Panel" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "pkg_panel" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 pkg.panel. All rights reserved." "\0"
+            VALUE "InternalName", "io.github.caolib.pkg-panel" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 io.github.caolib. All rights reserved." "\0"
             VALUE "OriginalFilename", "pkg_panel.exe" "\0"
             VALUE "ProductName", "Pkg Panel" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

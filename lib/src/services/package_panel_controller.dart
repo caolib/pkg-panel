@@ -227,8 +227,17 @@ class PackagePanelController extends ChangeNotifier {
     return adapter?.supportsLatestVersionLookup(package) ?? false;
   }
 
+  bool canViewPackageDetails(ManagedPackage package) {
+    final adapter = _adapterFor(package.managerId);
+    return adapter?.supportsPackageDetails(package) ?? false;
+  }
+
   bool isCheckingLatestVersion(ManagedPackage package) {
     return _runningCommands.contains(_latestVersionBusyKey(package));
+  }
+
+  bool isLoadingPackageDetails(ManagedPackage package) {
+    return _runningCommands.contains(_packageDetailsBusyKey(package));
   }
 
   bool isPackageSelected(ManagedPackage package) {
@@ -820,6 +829,53 @@ class PackagePanelController extends ChangeNotifier {
     }
   }
 
+  Future<String?> loadPackageDetails(ManagedPackage package) async {
+    final adapter = _adapterFor(package.managerId);
+    if (adapter == null || !adapter.supportsPackageDetails(package)) {
+      return null;
+    }
+
+    final busyKey = _packageDetailsBusyKey(package);
+    if (_runningCommands.contains(busyKey)) {
+      return null;
+    }
+
+    _runningCommands.add(busyKey);
+    _pushActivity(
+      ActivityEntry(
+        timestamp: DateTime.now(),
+        title: '正在查看 ${package.name}',
+        message: '正在读取 ${displayNameForPackage(package)} 的详情信息。',
+      ),
+    );
+    notifyListeners();
+
+    try {
+      final details = await adapter.loadPackageDetails(_shell, package);
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '已读取 ${package.name} 详情',
+          message: '详情信息已就绪。',
+        ),
+      );
+      return details;
+    } catch (error) {
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '读取 ${package.name} 详情失败',
+          message: '$error',
+          isError: true,
+        ),
+      );
+      return null;
+    } finally {
+      _runningCommands.remove(busyKey);
+      notifyListeners();
+    }
+  }
+
   void _setSnapshot(String managerId, ManagerSnapshot next) {
     for (var i = 0; i < _snapshots.length; i++) {
       if (_snapshots[i].manager.id == managerId) {
@@ -1013,6 +1069,10 @@ class PackagePanelController extends ChangeNotifier {
 
   String _latestVersionBusyKey(ManagedPackage package) {
     return 'latest-version::${package.key}';
+  }
+
+  String _packageDetailsBusyKey(ManagedPackage package) {
+    return 'package-details::${package.key}';
   }
 
   String _batchLatestBusyKey(String managerId) {

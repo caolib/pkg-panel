@@ -372,6 +372,69 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
       <String>['pip', 'npm'],
     );
   });
+
+  test('pnpm package details use info command output', () async {
+    final details = await const PnpmAdapter().loadPackageDetails(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        "pnpm info 'uipro-cli'": const ShellResult(
+          exitCode: 0,
+          stdout: 'uipro-cli@2.2.3 | MIT | deps: 4 | versions: 23',
+          stderr: '',
+        ),
+      }),
+      const ManagedPackage(
+        name: 'uipro-cli',
+        managerId: 'pnpm',
+        managerName: 'pnpm',
+        version: '2.2.3',
+      ),
+    );
+
+    expect(details, contains('uipro-cli@2.2.3'));
+  });
+
+  test('uv package details use filtered tool list output', () async {
+    final details = await const UvToolAdapter().loadPackageDetails(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        'uv tool list': const ShellResult(
+          exitCode: 0,
+          stdout: 'ruff v0.6.0\n- ruff\nuipro-cli v2.2.3\n- uipro\n',
+          stderr: '',
+        ),
+      }),
+      const ManagedPackage(
+        name: 'uipro-cli',
+        managerId: 'uv',
+        managerName: 'uv',
+        version: '2.2.3',
+      ),
+    );
+
+    expect(details, contains('uipro-cli v2.2.3'));
+    expect(details, isNot(contains('ruff v0.6.0')));
+  });
+
+  test('cargo package details use filtered install list output', () async {
+    final details = await const CargoAdapter().loadPackageDetails(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        'cargo install --list': const ShellResult(
+          exitCode: 0,
+          stdout:
+              'cargo-edit v0.13.0:\n    cargo-add\n    cargo-rm\njust v1.39.0:\n    just\n',
+          stderr: '',
+        ),
+      }),
+      const ManagedPackage(
+        name: 'cargo-edit',
+        managerId: 'cargo',
+        managerName: 'cargo',
+        version: '0.13.0',
+      ),
+    );
+
+    expect(details, contains('cargo-edit v0.13.0:'));
+    expect(details, isNot(contains('just v1.39.0:')));
+  });
 }
 
 class _FakeShellExecutor extends ShellExecutor {

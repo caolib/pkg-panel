@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -392,10 +394,6 @@ class _ActionBar extends StatelessWidget {
                 ],
               ),
             ),
-            Chip(
-              avatar: const Icon(Icons.inventory_2_outlined, size: 18),
-              label: Text('当前 $visibleCount 个包'),
-            ),
             FilledButton.icon(
               onPressed: controller.isRefreshingAll ? null : onRefreshAll,
               icon: controller.isRefreshingAll
@@ -430,6 +428,10 @@ class _ActionBar extends StatelessWidget {
                 icon: const Icon(Icons.system_update_alt),
                 label: const Text('批量更新'),
               ),
+            Chip(
+              avatar: const Icon(Icons.inventory_2_outlined, size: 18),
+              label: Text('当前 $visibleCount 个包'),
+            ),
           ],
         ),
       ),
@@ -598,7 +600,7 @@ class _PackageHeaderRow extends StatelessWidget {
   }
 }
 
-enum _PackageContextAction { checkLatest, update, remove }
+enum _PackageContextAction { details, checkLatest, update, remove }
 
 class _PackageListTile extends StatelessWidget {
   const _PackageListTile({
@@ -617,7 +619,9 @@ class _PackageListTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final updateCommand = controller.commandFor(PackageAction.update, package);
     final removeCommand = controller.commandFor(PackageAction.remove, package);
+    final canViewDetails = controller.canViewPackageDetails(package);
     final canCheckLatest = controller.canCheckLatestVersion(package);
+    final isLoadingDetails = controller.isLoadingPackageDetails(package);
     final isCheckingLatest = controller.isCheckingLatestVersion(package);
     final isUpdating =
         updateCommand != null && controller.isBusy(updateCommand.busyKey);
@@ -760,10 +764,15 @@ class _PackageListTile extends StatelessWidget {
             additive: _isAdditiveSelectionPressed(),
             range: _isRangeSelectionPressed(),
           ),
+          onDoubleTap: canViewDetails && !isLoadingDetails
+              ? () => _openPackageDetails(context)
+              : null,
           onSecondaryTapUp: (details) => _showContextMenu(
             context,
             details.globalPosition,
+            canViewDetails: canViewDetails,
             canCheckLatest: canCheckLatest,
+            isLoadingDetails: isLoadingDetails,
             isCheckingLatest: isCheckingLatest,
             isUpdating: isUpdating,
             isRemoving: isRemoving,
@@ -780,7 +789,9 @@ class _PackageListTile extends StatelessWidget {
     BuildContext context,
     Offset globalPosition, {
     required bool canCheckLatest,
+    required bool canViewDetails,
     required bool isCheckingLatest,
+    required bool isLoadingDetails,
     required bool isUpdating,
     required bool isRemoving,
     required PackageCommand? updateCommand,
@@ -802,6 +813,15 @@ class _PackageListTile extends StatelessWidget {
       ),
       color: theme.colorScheme.surface,
       items: <PopupMenuEntry<_PackageContextAction>>[
+        if (canViewDetails)
+          PopupMenuItem<_PackageContextAction>(
+            value: _PackageContextAction.details,
+            enabled: !isLoadingDetails,
+            child: const _ContextMenuItemLabel(
+              icon: Icons.info_outline,
+              label: '查看详情',
+            ),
+          ),
         if (canCheckLatest)
           PopupMenuItem<_PackageContextAction>(
             value: _PackageContextAction.checkLatest,
@@ -835,6 +855,9 @@ class _PackageListTile extends StatelessWidget {
     }
 
     switch (selectedAction) {
+      case _PackageContextAction.details:
+        await _openPackageDetails(context);
+        return;
       case _PackageContextAction.checkLatest:
         final latestVersion = await controller.checkLatestVersion(package);
         if (latestVersion != null && context.mounted) {
@@ -867,6 +890,17 @@ class _PackageListTile extends StatelessWidget {
         return;
     }
   }
+
+  Future<void> _openPackageDetails(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => _PackageDetailsDialog(
+        packageName: package.name,
+        managerName: controller.displayNameForPackage(package),
+        detailsLoader: () => controller.loadPackageDetails(package),
+      ),
+    );
+  }
 }
 
 class _ContextMenuItemLabel extends StatelessWidget {
@@ -884,6 +918,138 @@ class _ContextMenuItemLabel extends StatelessWidget {
         const SizedBox(width: 10),
         Text(label),
       ],
+    );
+  }
+}
+
+class _PackageDetailsDialog extends StatefulWidget {
+  const _PackageDetailsDialog({
+    required this.packageName,
+    required this.managerName,
+    required this.detailsLoader,
+  });
+
+  final String packageName;
+  final String managerName;
+  final Future<String?> Function() detailsLoader;
+
+  @override
+  State<_PackageDetailsDialog> createState() => _PackageDetailsDialogState();
+}
+
+class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
+  late final Future<String?> _detailsFuture;
+  final Completer<String?> _detailsCompleter = Completer<String?>();
+
+  @override
+  void initState() {
+    super.initState();
+    _detailsFuture = _detailsCompleter.future;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final details = await widget.detailsLoader();
+        if (!_detailsCompleter.isCompleted) {
+          _detailsCompleter.complete(details);
+        }
+      } catch (error, stackTrace) {
+        if (!_detailsCompleter.isCompleted) {
+          _detailsCompleter.completeError(error, stackTrace);
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Dialog(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                widget.packageName,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.managerName,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: FutureBuilder<String?>(
+                  future: _detailsFuture,
+                  builder: (context, snapshot) {
+                    final details = snapshot.data;
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: switch (snapshot.connectionState) {
+                        ConnectionState.waiting ||
+                        ConnectionState.active => const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              CircularProgressIndicator(),
+                              SizedBox(height: 16),
+                              Text('正在加载详情...'),
+                            ],
+                          ),
+                        ),
+                        _ when details != null && details.trim().isNotEmpty =>
+                          SingleChildScrollView(
+                            child: SelectableText(
+                              details,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                height: 1.5,
+                                fontFamily: 'Cascadia Code',
+                                fontFamilyFallback: theme
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.fontFamilyFallback,
+                              ),
+                            ),
+                          ),
+                        _ => Center(
+                          child: Text(
+                            '详情加载失败或没有返回内容。',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1445,20 +1611,6 @@ class PackageSettingsPage extends StatelessWidget {
                   ListView(
                     padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                     children: <Widget>[
-                      Text(
-                        '包管理器',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '首次启动会自动勾选当前机器已检测到的包管理器，你也可以在这里手动调整首页展示项。',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       Container(
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surface,
@@ -1467,7 +1619,6 @@ class PackageSettingsPage extends StatelessWidget {
                             color: theme.colorScheme.outlineVariant,
                           ),
                         ),
-                        clipBehavior: Clip.antiAlias,
                         child: Column(
                           children: <Widget>[
                             Container(
@@ -1475,7 +1626,12 @@ class PackageSettingsPage extends StatelessWidget {
                                 horizontal: 20,
                                 vertical: 14,
                               ),
-                              color: theme.colorScheme.surfaceContainerLowest,
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLowest,
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(20),
+                                ),
+                              ),
                               child: Row(
                                 children: <Widget>[
                                   Expanded(
@@ -1740,20 +1896,6 @@ class PackageSettingsPage extends StatelessWidget {
                   ListView(
                     padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                     children: <Widget>[
-                      Text(
-                        '外观',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '你可以在这里切换浅色、深色或跟随系统，并设置应用字体。',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(20),
