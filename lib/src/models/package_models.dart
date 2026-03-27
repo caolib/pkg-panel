@@ -147,6 +147,18 @@ class PackageCommand {
   final Duration timeout;
 }
 
+class PackageManagerVisibilityState {
+  const PackageManagerVisibilityState({
+    required this.manager,
+    required this.isVisible,
+    required this.isAvailable,
+  });
+
+  final PackageManagerDefinition manager;
+  final bool isVisible;
+  final bool isAvailable;
+}
+
 class ActivityEntry {
   const ActivityEntry({
     required this.timestamp,

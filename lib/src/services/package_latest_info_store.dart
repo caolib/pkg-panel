@@ -102,9 +102,7 @@ class PackageLatestInfoStore {
         Platform.environment['LOCALAPPDATA'] ??
         Platform.environment['APPDATA'] ??
         Directory.systemTemp.path;
-    final directory = Directory(
-      '$basePath${Platform.pathSeparator}pkg_panel',
-    );
+    final directory = Directory('$basePath${Platform.pathSeparator}pkg_panel');
     return File(
       '${directory.path}${Platform.pathSeparator}latest_versions.json',
     );

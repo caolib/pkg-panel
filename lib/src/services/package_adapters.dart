@@ -31,6 +31,7 @@ class PackageManagerRegistry {
   static final List<PackageManagerAdapter> defaultAdapters =
       <PackageManagerAdapter>[
         const WingetAdapter(),
+        const ChocolateyAdapter(),
         const ScoopAdapter(),
         const NpmAdapter(),
         const PnpmAdapter(),
@@ -632,6 +633,117 @@ class ScoopAdapter extends PackageManagerAdapter {
   }
 }
 
+class ChocolateyAdapter extends PackageManagerAdapter {
+  const ChocolateyAdapter()
+    : super(
+        const PackageManagerDefinition(
+          id: 'choco',
+          displayName: 'choco',
+          executable: 'choco',
+          description: 'Chocolatey packages',
+          color: Color(0xFF7A3E1D),
+          icon: Icons.local_cafe_outlined,
+          supportsBatchUpdate: true,
+        ),
+      );
+
+  @override
+  Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
+    final result = await shell.run('choco list --local-only --limit-output');
+    if (!result.isSuccess) {
+      throw PackageAdapterException(
+        definition.displayName,
+        result.combinedOutput,
+      );
+    }
+
+    final packages = <ManagedPackage>[];
+    for (final line in LineSplitter.split(result.stdout)) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        continue;
+      }
+      if (trimmed.startsWith('Chocolatey v')) {
+        continue;
+      }
+      if (trimmed.startsWith('packages installed.')) {
+        continue;
+      }
+
+      final separatorIndex = trimmed.indexOf('|');
+      if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+        continue;
+      }
+
+      final name = trimmed.substring(0, separatorIndex).trim();
+      final version = trimmed.substring(separatorIndex + 1).trim();
+      if (name.isEmpty || version.isEmpty) {
+        continue;
+      }
+
+      packages.add(
+        ManagedPackage(
+          name: name,
+          managerId: definition.id,
+          managerName: definition.displayName,
+          version: version,
+          source: _globalSourceLabel,
+        ),
+      );
+    }
+
+    packages.sort(_packageSort);
+    return packages;
+  }
+
+  @override
+  PackageCommand buildCommand(PackageAction action, ManagedPackage package) {
+    return switch (action) {
+      PackageAction.update => _command(
+        managerId: definition.id,
+        label: '升级 ${package.name}',
+        command: 'choco upgrade ${_psQuote(package.name)} -y',
+        timeout: const Duration(minutes: 10),
+      ),
+      PackageAction.remove => _command(
+        managerId: definition.id,
+        label: '卸载 ${package.name}',
+        command: 'choco uninstall ${_psQuote(package.name)} -y',
+        timeout: const Duration(minutes: 10),
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildBatchUpdateCommand() {
+    return _command(
+      managerId: definition.id,
+      label: '批量升级 choco 包',
+      command: 'choco upgrade all -y',
+      timeout: const Duration(minutes: 12),
+    );
+  }
+
+  @override
+  bool supportsLatestVersionLookup(ManagedPackage package) => true;
+
+  @override
+  Future<String> lookupLatestVersion(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final result = await shell.run(
+      'choco search ${_psQuote(package.name)} --exact --limit-output',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseChocolateyLatestVersion(
+      result,
+      managerName: definition.displayName,
+      packageName: package.name,
+    );
+  }
+}
+
 class WingetAdapter extends PackageManagerAdapter {
   const WingetAdapter()
     : super(
@@ -1205,6 +1317,38 @@ String _parseCargoLatestVersion(
   }
 
   throw PackageAdapterException(managerName, '无法从 cargo 搜索结果中解析最新版本。');
+}
+
+String _parseChocolateyLatestVersion(
+  ShellResult result, {
+  required String managerName,
+  required String packageName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  for (final line in LineSplitter.split(result.stdout)) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty ||
+        trimmed.startsWith('Chocolatey v') ||
+        trimmed.startsWith('packages found.')) {
+      continue;
+    }
+
+    final separatorIndex = trimmed.indexOf('|');
+    if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+      continue;
+    }
+
+    final name = trimmed.substring(0, separatorIndex).trim();
+    final version = trimmed.substring(separatorIndex + 1).trim();
+    if (name.toLowerCase() == packageName.toLowerCase() && version.isNotEmpty) {
+      return version;
+    }
+  }
+
+  throw PackageAdapterException(managerName, '无法从 choco 输出中解析最新版本。');
 }
 
 bool _looksLikeWingetHeaderRow(List<String> columns) {

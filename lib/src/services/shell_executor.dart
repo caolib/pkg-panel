@@ -49,14 +49,19 @@ class ShellExecutor {
     ].join('; ');
 
     try {
-      final result = await Process.run(executable, <String>[
-        '-NoLogo',
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        wrappedCommand,
-      ], stdoutEncoding: _utf8, stderrEncoding: _utf8).timeout(timeout);
+      final result = await Process.run(
+        executable,
+        <String>[
+          '-NoLogo',
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          wrappedCommand,
+        ],
+        stdoutEncoding: _utf8,
+        stderrEncoding: _utf8,
+      ).timeout(timeout);
 
       return ShellResult(
         exitCode: result.exitCode,

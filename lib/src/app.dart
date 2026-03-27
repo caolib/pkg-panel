@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'models/package_models.dart';
 import 'services/package_panel_controller.dart';
+import 'widgets/local_icon_image.dart';
 
 void runPkgPanel(PackagePanelController controller) {
   runApp(PkgPanelApp(controller: controller));
@@ -32,41 +33,105 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: '包管理面板',
-      theme: _buildTheme(),
-      home: PackagePanelHome(
-        controller: widget.controller,
-        autoLoad: widget.autoLoad,
-      ),
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: '包管理面板',
+          themeMode: widget.controller.themeMode,
+          theme: _buildTheme(
+            brightness: Brightness.light,
+            customFontFamily: widget.controller.customFontFamily,
+            customFallbackFontFamilies:
+                widget.controller.customFallbackFontFamilies,
+          ),
+          darkTheme: _buildTheme(
+            brightness: Brightness.dark,
+            customFontFamily: widget.controller.customFontFamily,
+            customFallbackFontFamilies:
+                widget.controller.customFallbackFontFamilies,
+          ),
+          home: PackagePanelHome(
+            controller: widget.controller,
+            autoLoad: widget.autoLoad,
+          ),
+        );
+      },
     );
   }
 }
 
-ThemeData _buildTheme() {
+ThemeData _buildTheme({
+  required Brightness brightness,
+  required String? customFontFamily,
+  required List<String> customFallbackFontFamilies,
+}) {
   const seed = Color(0xFF0F766E);
-  const primaryFont = 'Cascadia Code';
-  const fallbackFonts = <String>[
-    'JetBrains Mono',
-    '喵字果汁体',
-    '汉仪有圆',
-    '霞鹜文楷',
-    'Segoe UI Variable Text',
-    'Microsoft YaHei UI',
-    'Microsoft YaHei',
-    'Segoe UI',
-  ];
-  final colorScheme = ColorScheme.fromSeed(
-    seedColor: seed,
-    brightness: Brightness.light,
-  );
-  final baseTextTheme = ThemeData(useMaterial3: true).textTheme;
+  const darkBase = Color(0xFF202020);
+  final primaryFont = customFontFamily?.trim().isNotEmpty == true
+      ? customFontFamily!.trim()
+      : 'Cascadia Code';
+  final fallbackFonts = customFallbackFontFamilies.isEmpty
+      ? const <String>[
+          'JetBrains Mono',
+          '喵字果汁体',
+          '汉仪有圆',
+          '霞鹜文楷',
+          'Segoe UI Variable Text',
+          'Microsoft YaHei UI',
+          'Microsoft YaHei',
+          'Segoe UI',
+        ]
+      : customFallbackFontFamilies;
+  final colorScheme = brightness == Brightness.dark
+      ? const ColorScheme(
+          brightness: Brightness.dark,
+          primary: Color(0xFFE6E6E6),
+          onPrimary: Color(0xFF202020),
+          primaryContainer: Color(0xFF2C2C2C),
+          onPrimaryContainer: Color(0xFFF2F2F2),
+          secondary: Color(0xFFD0D0D0),
+          onSecondary: Color(0xFF202020),
+          secondaryContainer: Color(0xFF303030),
+          onSecondaryContainer: Color(0xFFEAEAEA),
+          tertiary: Color(0xFFC8C8C8),
+          onTertiary: Color(0xFF202020),
+          tertiaryContainer: Color(0xFF343434),
+          onTertiaryContainer: Color(0xFFEAEAEA),
+          error: Color(0xFFFFB4AB),
+          onError: Color(0xFF690005),
+          errorContainer: Color(0xFF93000A),
+          onErrorContainer: Color(0xFFFFDAD6),
+          surface: Color(0xFF262626),
+          onSurface: Color(0xFFEAEAEA),
+          surfaceContainerLowest: Color(0xFF202020),
+          surfaceContainerLow: Color(0xFF242424),
+          surfaceContainer: Color(0xFF2A2A2A),
+          surfaceContainerHigh: Color(0xFF303030),
+          surfaceContainerHighest: Color(0xFF363636),
+          onSurfaceVariant: Color(0xFFB8B8B8),
+          outline: Color(0xFF7A7A7A),
+          outlineVariant: Color(0xFF3A3A3A),
+          shadow: Colors.black,
+          scrim: Colors.black,
+          inverseSurface: Color(0xFFEAEAEA),
+          onInverseSurface: Color(0xFF202020),
+          inversePrimary: Color(0xFF3A3A3A),
+          surfaceTint: Color(0xFFE0E0E0),
+        )
+      : ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
+  final baseTheme = ThemeData(useMaterial3: true, brightness: brightness);
+  final baseTextTheme = baseTheme.textTheme;
+  final scaffoldBackgroundColor = brightness == Brightness.dark
+      ? darkBase
+      : colorScheme.surfaceContainerLowest;
 
   return ThemeData(
     useMaterial3: true,
+    brightness: brightness,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: colorScheme.surfaceContainerLowest,
+    scaffoldBackgroundColor: scaffoldBackgroundColor,
     fontFamily: primaryFont,
     textTheme: _withFontStack(
       baseTextTheme,
@@ -182,42 +247,39 @@ class _PackagePanelHomeState extends State<PackagePanelHome> {
       builder: (context, _) {
         return Scaffold(
           body: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1480),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      _ActionBar(
-                        controller: widget.controller,
-                        searchController: _searchController,
-                        onRefreshAll: widget.controller.loadAll,
-                        onBatchCheckLatest: widget
-                            .controller
-                            .batchCheckLatestVersionsForSelectedManager,
-                        onBatchUpdate: () async {
-                          final command = widget.controller
-                              .batchUpdateCommandForSelectedManager();
-                          if (command == null) {
-                            return;
-                          }
-                          await _confirmAndRunCommand(command);
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      _ManagerFilterBar(controller: widget.controller),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: _PackageListView(
-                          controller: widget.controller,
-                          onRunAction: _confirmAndRunCommand,
-                        ),
-                      ),
-                    ],
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _ActionBar(
+                    controller: widget.controller,
+                    searchController: _searchController,
+                    onRefreshAll: widget.controller.loadAll,
+                    onOpenSettings: _openSettings,
+                    onBatchCheckLatest: widget
+                        .controller
+                        .batchCheckLatestVersionsForSelectedManager,
+                    onBatchUpdate: () async {
+                      final command = widget.controller
+                          .batchUpdateCommandForSelectedManager();
+                      if (command == null) {
+                        return;
+                      }
+                      await _confirmAndRunCommand(command);
+                    },
                   ),
-                ),
+                  const SizedBox(height: 14),
+                  _ManagerFilterBar(controller: widget.controller),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: _PackageListView(
+                      controller: widget.controller,
+                      onOpenSettings: _openSettings,
+                      onRunAction: _confirmAndRunCommand,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -263,6 +325,15 @@ class _PackagePanelHomeState extends State<PackagePanelHome> {
       );
     }
   }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) =>
+            PackageSettingsPage(controller: widget.controller),
+      ),
+    );
+  }
 }
 
 class _ActionBar extends StatelessWidget {
@@ -270,6 +341,7 @@ class _ActionBar extends StatelessWidget {
     required this.controller,
     required this.searchController,
     required this.onRefreshAll,
+    required this.onOpenSettings,
     required this.onBatchCheckLatest,
     required this.onBatchUpdate,
   });
@@ -277,6 +349,7 @@ class _ActionBar extends StatelessWidget {
   final PackagePanelController controller;
   final TextEditingController searchController;
   final Future<void> Function() onRefreshAll;
+  final Future<void> Function() onOpenSettings;
   final Future<void> Function() onBatchCheckLatest;
   final Future<void> Function() onBatchUpdate;
 
@@ -287,6 +360,9 @@ class _ActionBar extends StatelessWidget {
         controller.canBatchCheckLatestForSelectedManager;
     final isBatchCheckingLatest =
         controller.isBatchCheckingLatestForSelectedManager;
+    final visibleCount = controller.visiblePackages.length;
+    final showBatchUpdate =
+        controller.selectedPackageCount > 1 && batchCommand != null;
 
     return Card(
       child: Padding(
@@ -316,6 +392,10 @@ class _ActionBar extends StatelessWidget {
                 ],
               ),
             ),
+            Chip(
+              avatar: const Icon(Icons.inventory_2_outlined, size: 18),
+              label: Text('当前 $visibleCount 个包'),
+            ),
             FilledButton.icon(
               onPressed: controller.isRefreshingAll ? null : onRefreshAll,
               icon: controller.isRefreshingAll
@@ -326,6 +406,11 @@ class _ActionBar extends StatelessWidget {
                     )
                   : const Icon(Icons.sync),
               label: const Text('刷新'),
+            ),
+            OutlinedButton.icon(
+              onPressed: onOpenSettings,
+              icon: const Icon(Icons.tune),
+              label: const Text('设置'),
             ),
             if (canBatchCheckLatest)
               FilledButton.tonalIcon(
@@ -339,11 +424,12 @@ class _ActionBar extends StatelessWidget {
                     : const Icon(Icons.find_replace_outlined),
                 label: const Text('检查更新'),
               ),
-            FilledButton.tonalIcon(
-              onPressed: batchCommand == null ? null : onBatchUpdate,
-              icon: const Icon(Icons.system_update_alt),
-              label: const Text('批量更新'),
-            ),
+            if (showBatchUpdate)
+              FilledButton.tonalIcon(
+                onPressed: onBatchUpdate,
+                icon: const Icon(Icons.system_update_alt),
+                label: const Text('批量更新'),
+              ),
           ],
         ),
       ),
@@ -358,50 +444,55 @@ class _ManagerFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: <Widget>[
-          FilterChip(
-            selected: controller.selectedManagerId == null,
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: <Widget>[
+        FilterChip(
+          selected: controller.selectedManagerId == null,
+          showCheckmark: false,
+          label: const Text('全部'),
+          onSelected: (_) => controller.selectManager(null),
+        ),
+        ...controller.visibleSnapshots.map((snapshot) {
+          final label = switch (snapshot.loadState) {
+            ManagerLoadState.error =>
+              '${controller.displayNameForManagerId(snapshot.manager.id)} (加载失败)',
+            ManagerLoadState.loading => controller.displayNameForManagerId(
+              snapshot.manager.id,
+            ),
+            _ => controller.displayNameForManagerId(snapshot.manager.id),
+          };
+          return FilterChip(
+            selected: controller.selectedManagerId == snapshot.manager.id,
             showCheckmark: false,
-            label: Text('全部 (${controller.totalPackages})'),
-            onSelected: (_) => controller.selectManager(null),
-          ),
-          const SizedBox(width: 10),
-          ...controller.snapshots.expand((snapshot) sync* {
-            final label = switch (snapshot.loadState) {
-              ManagerLoadState.error =>
-                '${snapshot.manager.displayName} (加载失败)',
-              ManagerLoadState.loading =>
-                '${snapshot.manager.displayName} (刷新中)',
-              _ =>
-                '${snapshot.manager.displayName} (${snapshot.packages.length})',
-            };
-            yield FilterChip(
-              selected: controller.selectedManagerId == snapshot.manager.id,
-              showCheckmark: false,
-              label: Text(label),
-              avatar: _ManagerIcon(
-                managerId: snapshot.manager.id,
-                fallbackIcon: snapshot.manager.icon,
-                fallbackColor: snapshot.manager.color,
+            label: Text(label),
+            avatar: _ManagerIcon(
+              managerId: snapshot.manager.id,
+              customIconPath: controller.customManagerIconPath(
+                snapshot.manager.id,
               ),
-              onSelected: (_) => controller.selectManager(snapshot.manager.id),
-            );
-            yield const SizedBox(width: 10);
-          }),
-        ],
-      ),
+              fallbackIcon: snapshot.manager.icon,
+              fallbackColor: snapshot.manager.color,
+            ),
+            onSelected: (_) => controller.selectManager(snapshot.manager.id),
+          );
+        }),
+      ],
     );
   }
 }
 
 class _PackageListView extends StatelessWidget {
-  const _PackageListView({required this.controller, required this.onRunAction});
+  const _PackageListView({
+    required this.controller,
+    required this.onRunAction,
+    required this.onOpenSettings,
+  });
 
   final PackagePanelController controller;
   final Future<void> Function(PackageCommand command) onRunAction;
+  final Future<void> Function() onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -422,6 +513,10 @@ class _PackageListView extends StatelessWidget {
           child: packages.isEmpty
               ? _EmptyPackages(
                   hasManagersLoading: controller.isRefreshingAll,
+                  hasVisibleManagers: controller.managerVisibilityStates.any(
+                    (state) => state.isVisible,
+                  ),
+                  onOpenSettings: onOpenSettings,
                   searchQuery: controller.searchQuery,
                 )
               : Column(
@@ -495,6 +590,7 @@ class _PackageHeaderRow extends StatelessWidget {
                 Expanded(flex: 5, child: Text('包名', style: style)),
                 Expanded(flex: 2, child: Text('当前版本', style: style)),
                 Expanded(flex: 2, child: Text('最新版本', style: style)),
+                Expanded(flex: 3, child: Text('来源', style: style)),
                 Expanded(flex: 5, child: Text('附加信息', style: style)),
               ],
             ),
@@ -536,6 +632,9 @@ class _PackageListTile extends StatelessWidget {
             children: <Widget>[
               _ManagerIcon(
                 managerId: package.managerId,
+                customIconPath:
+                    controller.packageIconPath(package) ??
+                    controller.customManagerIconPath(package.managerId),
                 fallbackIcon: _managerIcon(package.managerId),
                 fallbackColor: accent,
               ),
@@ -581,6 +680,9 @@ class _PackageListTile extends StatelessWidget {
                   children: <Widget>[
                     _ManagerIcon(
                       managerId: package.managerId,
+                      customIconPath:
+                          controller.packageIconPath(package) ??
+                          controller.customManagerIconPath(package.managerId),
                       fallbackIcon: _managerIcon(package.managerId),
                       fallbackColor: accent,
                     ),
@@ -619,6 +721,17 @@ class _PackageListTile extends StatelessWidget {
                 ),
               ),
               Expanded(
+                flex: 3,
+                child: Text(
+                  package.source ?? '-',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              Expanded(
                 flex: 5,
                 child: Text(
                   extra.isEmpty ? '-' : extra,
@@ -639,7 +752,7 @@ class _PackageListTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Material(
         color: isSelected
-            ? theme.colorScheme.primary.withAlpha(18)
+            ? theme.colorScheme.primary.withAlpha(36)
             : Colors.transparent,
         child: InkWell(
           onTap: () => controller.selectPackage(
@@ -676,12 +789,18 @@ class _PackageListTile extends StatelessWidget {
     controller.selectPackageForContextMenu(package);
 
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final theme = Theme.of(context);
     final selectedAction = await showMenu<_PackageContextAction>(
       context: context,
       position: RelativeRect.fromRect(
         Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 0, 0),
         Offset.zero & overlay.size,
       ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      color: theme.colorScheme.surface,
       items: <PopupMenuEntry<_PackageContextAction>>[
         if (canCheckLatest)
           PopupMenuItem<_PackageContextAction>(
@@ -717,7 +836,22 @@ class _PackageListTile extends StatelessWidget {
 
     switch (selectedAction) {
       case _PackageContextAction.checkLatest:
-        await controller.checkLatestVersion(package);
+        final latestVersion = await controller.checkLatestVersion(package);
+        if (latestVersion != null && context.mounted) {
+          final isLatest = latestVersion.trim() == package.version.trim();
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(
+                behavior: SnackBarBehavior.floating,
+                content: Text(
+                  isLatest
+                      ? '${package.name} 已经是最新版本。'
+                      : '${package.name} 有新版本：$latestVersion',
+                ),
+              ),
+            );
+        }
         return;
       case _PackageContextAction.update:
         if (updateCommand == null || isUpdating) {
@@ -759,29 +893,72 @@ class _ManagerIcon extends StatelessWidget {
     required this.managerId,
     required this.fallbackIcon,
     required this.fallbackColor,
+    this.customIconPath,
     this.size = 18,
   });
 
   final String managerId;
   final IconData fallbackIcon;
   final Color fallbackColor;
+  final String? customIconPath;
   final double size;
 
   @override
   Widget build(BuildContext context) {
+    final customPath = customIconPath?.trim();
+    final fallback = _buildDefaultManagerIcon();
+    if (customPath != null && customPath.isNotEmpty) {
+      return LocalIconImage(
+        filePath: customPath,
+        size: size,
+        fallback: fallback,
+      );
+    }
+
     final assetPath = _managerSvgAsset(managerId);
     if (assetPath == null) {
-      return Icon(fallbackIcon, size: size, color: fallbackColor);
+      return fallback;
     }
+
+    final lowerAssetPath = assetPath.toLowerCase();
 
     return SizedBox.square(
       dimension: size,
-      child: SvgPicture.asset(
-        assetPath,
-        fit: BoxFit.contain,
-        placeholderBuilder: (_) =>
-            Icon(fallbackIcon, size: size, color: fallbackColor),
-      ),
+      child: lowerAssetPath.endsWith('.svg')
+          ? SvgPicture.asset(
+              assetPath,
+              fit: BoxFit.contain,
+              placeholderBuilder: (_) => fallback,
+            )
+          : Image.asset(
+              assetPath,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => fallback,
+            ),
+    );
+  }
+
+  Widget _buildDefaultManagerIcon() {
+    final assetPath = _managerSvgAsset(managerId);
+    final iconFallback = Icon(fallbackIcon, size: size, color: fallbackColor);
+    if (assetPath == null) {
+      return iconFallback;
+    }
+
+    final lowerAssetPath = assetPath.toLowerCase();
+    return SizedBox.square(
+      dimension: size,
+      child: lowerAssetPath.endsWith('.svg')
+          ? SvgPicture.asset(
+              assetPath,
+              fit: BoxFit.contain,
+              placeholderBuilder: (_) => iconFallback,
+            )
+          : Image.asset(
+              assetPath,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => iconFallback,
+            ),
     );
   }
 }
@@ -868,10 +1045,14 @@ class _CommandPreview extends StatelessWidget {
 class _EmptyPackages extends StatelessWidget {
   const _EmptyPackages({
     required this.hasManagersLoading,
+    required this.hasVisibleManagers,
+    required this.onOpenSettings,
     required this.searchQuery,
   });
 
   final bool hasManagersLoading;
+  final bool hasVisibleManagers;
+  final Future<void> Function() onOpenSettings;
   final String searchQuery;
 
   @override
@@ -894,19 +1075,844 @@ class _EmptyPackages extends StatelessWidget {
             ),
           const SizedBox(height: 14),
           Text(
-            hasManagersLoading ? '正在刷新包管理器...' : '没有匹配的包',
+            hasManagersLoading
+                ? '正在刷新包管理器...'
+                : hasVisibleManagers
+                ? '没有匹配的包'
+                : '暂未启用包管理器',
             style: Theme.of(
               context,
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
-            searchQuery.isEmpty ? '可以先点击“刷新”。' : '没有找到“$searchQuery”的结果。',
+            _description,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
+          if (!hasManagersLoading && !hasVisibleManagers)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: FilledButton.tonalIcon(
+                onPressed: onOpenSettings,
+                icon: const Icon(Icons.tune),
+                label: const Text('打开设置'),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  String get _description {
+    if (!hasVisibleManagers) {
+      return '当前没有启用任何包管理器，请先到设置中选择要展示的项。';
+    }
+    return searchQuery.isEmpty ? '可以先点击“刷新”。' : '没有找到“$searchQuery”的结果。';
+  }
+}
+
+class PackageSettingsPage extends StatelessWidget {
+  const PackageSettingsPage({super.key, required this.controller});
+
+  final PackagePanelController controller;
+
+  static const List<String> _fontSuggestions = <String>[
+    'Cascadia Code',
+    'Segoe UI',
+    'Microsoft YaHei UI',
+    '霞鹜文楷',
+    'JetBrains Mono',
+  ];
+  static const List<String> _fallbackFontSuggestions = <String>[
+    'Segoe UI',
+    'Microsoft YaHei UI',
+    'Microsoft YaHei',
+    '霞鹜文楷',
+    'JetBrains Mono',
+  ];
+
+  Future<void> _editManagerIconPath(
+    BuildContext context,
+    PackageManagerVisibilityState state,
+  ) async {
+    final managerName = controller.displayNameForManagerId(state.manager.id);
+    final textController = TextEditingController(
+      text: controller.customManagerIconPath(state.manager.id) ?? '',
+    );
+
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('自定义 $managerName 图标'),
+          content: SizedBox(
+            width: 560,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text('输入本地图标文件路径，支持 svg、png、jpg、webp、ico。'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: textController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: r'C:\icons\my-manager.svg',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(textController.text),
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (value == null || !context.mounted) {
+      return;
+    }
+
+    await controller.setCustomManagerIconPath(state.manager.id, value);
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(
+            value.trim().isEmpty
+                ? '$managerName 已恢复默认图标。'
+                : '$managerName 图标已更新。',
+          ),
+        ),
+      );
+  }
+
+  Future<void> _editManagerDisplayName(
+    BuildContext context,
+    PackageManagerVisibilityState state,
+  ) async {
+    final textController = TextEditingController(
+      text:
+          controller.customManagerDisplayName(state.manager.id) ??
+          state.manager.displayName,
+    );
+
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('修改 ${state.manager.displayName} 显示名称'),
+          content: SizedBox(
+            width: 420,
+            child: TextField(
+              controller: textController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '输入新的显示名称',
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(textController.text),
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (value == null) {
+      return;
+    }
+
+    if (value.trim() == state.manager.displayName.trim()) {
+      await controller.clearCustomManagerDisplayName(state.manager.id);
+      return;
+    }
+
+    await controller.setCustomManagerDisplayName(state.manager.id, value);
+  }
+
+  Future<void> _editFontFamily(BuildContext context) async {
+    final textController = TextEditingController(
+      text: controller.customFontFamily ?? 'Cascadia Code',
+    );
+
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('设置字体'),
+              content: SizedBox(
+                width: 520,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text('输入系统已安装的字体名称。留空或恢复默认会使用内置默认字体。'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: textController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: '例如 Segoe UI / Microsoft YaHei UI',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _fontSuggestions
+                          .map(
+                            (font) => ActionChip(
+                              label: Text(font),
+                              onPressed: () {
+                                textController.text = font;
+                                setState(() {});
+                              },
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(''),
+                  child: const Text('恢复默认'),
+                ),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.of(context).pop(textController.text),
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (value == null) {
+      return;
+    }
+    await controller.setCustomFontFamily(value);
+  }
+
+  Future<void> _editFallbackFontFamilies(BuildContext context) async {
+    final textController = TextEditingController(
+      text: controller.customFallbackFontFamilies.join(', '),
+    );
+
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('设置 fallback 字体'),
+              content: SizedBox(
+                width: 560,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text('用英文逗号分隔多个字体，前面的优先级更高。'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: textController,
+                      autofocus: true,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: '例如 Segoe UI, Microsoft YaHei UI, 霞鹜文楷',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _fallbackFontSuggestions
+                          .map(
+                            (font) => ActionChip(
+                              label: Text(font),
+                              onPressed: () {
+                                final current = textController.text
+                                    .split(',')
+                                    .map((e) => e.trim())
+                                    .where((e) => e.isNotEmpty)
+                                    .toList();
+                                if (!current.contains(font)) {
+                                  current.add(font);
+                                  textController.text = current.join(', ');
+                                  setState(() {});
+                                }
+                              },
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(''),
+                  child: const Text('恢复默认'),
+                ),
+                FilledButton(
+                  onPressed: () =>
+                      Navigator.of(context).pop(textController.text),
+                  child: const Text('保存'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (value == null) {
+      return;
+    }
+
+    final fonts = value
+        .split(',')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    await controller.setCustomFallbackFontFamilies(fonts);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('设置'),
+          bottom: const TabBar(
+            tabs: <Widget>[
+              Tab(text: '包管理器'),
+              Tab(text: '外观'),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) {
+              final states = controller.managerVisibilityStates;
+              return TabBarView(
+                children: <Widget>[
+                  ListView(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                    children: <Widget>[
+                      Text(
+                        '包管理器',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '首次启动会自动勾选当前机器已检测到的包管理器，你也可以在这里手动调整首页展示项。',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: theme.colorScheme.outlineVariant,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: <Widget>[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 14,
+                              ),
+                              color: theme.colorScheme.surfaceContainerLowest,
+                              child: Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    flex: 4,
+                                    child: Text(
+                                      '包管理器',
+                                      style: theme.textTheme.labelLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 5,
+                                    child: Text(
+                                      '状态',
+                                      style: theme.textTheme.labelLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      '显示',
+                                      textAlign: TextAlign.right,
+                                      style: theme.textTheme.labelLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            ReorderableListView.builder(
+                              shrinkWrap: true,
+                              buildDefaultDragHandles: false,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: states.length,
+                              onReorder: (oldIndex, newIndex) {
+                                if (newIndex > oldIndex) {
+                                  newIndex -= 1;
+                                }
+                                controller.reorderManager(oldIndex, newIndex);
+                              },
+                              itemBuilder: (context, index) {
+                                final state = states[index];
+                                return DecoratedBox(
+                                  key: ValueKey(state.manager.id),
+                                  decoration: BoxDecoration(
+                                    border: index == states.length - 1
+                                        ? null
+                                        : Border(
+                                            bottom: BorderSide(
+                                              color: theme
+                                                  .colorScheme
+                                                  .outlineVariant,
+                                            ),
+                                          ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 10,
+                                    ),
+                                    child: Row(
+                                      children: <Widget>[
+                                        MouseRegion(
+                                          cursor: SystemMouseCursors.grab,
+                                          child: ReorderableDragStartListener(
+                                            index: index,
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(
+                                                right: 12,
+                                              ),
+                                              child: Icon(
+                                                Icons.drag_indicator,
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 4,
+                                          child: Row(
+                                            children: <Widget>[
+                                              _ManagerIcon(
+                                                managerId: state.manager.id,
+                                                customIconPath: controller
+                                                    .customManagerIconPath(
+                                                      state.manager.id,
+                                                    ),
+                                                fallbackIcon:
+                                                    state.manager.icon,
+                                                fallbackColor:
+                                                    state.manager.color,
+                                                size: 20,
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: <Widget>[
+                                                    Text(
+                                                      controller
+                                                          .displayNameForManagerId(
+                                                            state.manager.id,
+                                                          ),
+                                                      style: theme
+                                                          .textTheme
+                                                          .titleMedium
+                                                          ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                    ),
+                                                    const SizedBox(height: 2),
+                                                    if (controller
+                                                            .customManagerIconPath(
+                                                              state.manager.id,
+                                                            ) !=
+                                                        null) ...<Widget>[
+                                                      Text(
+                                                        controller
+                                                            .customManagerIconPath(
+                                                              state.manager.id,
+                                                            )!,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: theme
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              color: theme
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                            ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                    ],
+                                                    Wrap(
+                                                      spacing: 8,
+                                                      children: <Widget>[
+                                                        TextButton(
+                                                          onPressed: () =>
+                                                              _editManagerDisplayName(
+                                                                context,
+                                                                state,
+                                                              ),
+                                                          child: const Text(
+                                                            '重命名',
+                                                          ),
+                                                        ),
+                                                        TextButton(
+                                                          onPressed: () =>
+                                                              _editManagerIconPath(
+                                                                context,
+                                                                state,
+                                                              ),
+                                                          child: const Text(
+                                                            '自定义图标',
+                                                          ),
+                                                        ),
+                                                        if (controller
+                                                                .customManagerIconPath(
+                                                                  state
+                                                                      .manager
+                                                                      .id,
+                                                                ) !=
+                                                            null)
+                                                          TextButton(
+                                                            onPressed: () =>
+                                                                controller
+                                                                    .clearCustomManagerIconPath(
+                                                                      state
+                                                                          .manager
+                                                                          .id,
+                                                                    ),
+                                                            child: const Text(
+                                                              '恢复默认',
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 5,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              Text(
+                                                state.isAvailable
+                                                    ? '已检测到'
+                                                    : '未检测到',
+                                                style: theme
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: state.isAvailable
+                                                          ? theme
+                                                                .colorScheme
+                                                                .primary
+                                                          : theme
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
+                                                    ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                state.isAvailable
+                                                    ? state.manager.description
+                                                    : '可手动开启，但刷新时可能失败',
+                                                style: theme.textTheme.bodySmall
+                                                    ?.copyWith(
+                                                      color: theme
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Align(
+                                            alignment: Alignment.centerRight,
+                                            child: Switch(
+                                              value: state.isVisible,
+                                              onChanged: (value) => controller
+                                                  .setManagerVisibility(
+                                                    state.manager.id,
+                                                    value,
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  ListView(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                    children: <Widget>[
+                      Text(
+                        '外观',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '你可以在这里切换浅色、深色或跟随系统，并设置应用字体。',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                '主题模式',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SegmentedButton<ThemeMode>(
+                                segments: const <ButtonSegment<ThemeMode>>[
+                                  ButtonSegment<ThemeMode>(
+                                    value: ThemeMode.system,
+                                    label: Text('系统'),
+                                    icon: Icon(Icons.brightness_auto_outlined),
+                                  ),
+                                  ButtonSegment<ThemeMode>(
+                                    value: ThemeMode.light,
+                                    label: Text('浅色'),
+                                    icon: Icon(Icons.light_mode_outlined),
+                                  ),
+                                  ButtonSegment<ThemeMode>(
+                                    value: ThemeMode.dark,
+                                    label: Text('深色'),
+                                    icon: Icon(Icons.dark_mode_outlined),
+                                  ),
+                                ],
+                                selected: <ThemeMode>{controller.themeMode},
+                                onSelectionChanged: (values) {
+                                  controller.setThemeMode(values.first);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Text(
+                                          '字体',
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          controller.customFontFamily ??
+                                              'Cascadia Code',
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.tonal(
+                                    onPressed: () => _editFontFamily(context),
+                                    child: const Text('设置字体'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerLowest,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: theme.colorScheme.outlineVariant,
+                                  ),
+                                ),
+                                child: const Text(
+                                  '字体预览：The quick brown fox jumps over the lazy dog. 敏捷的棕狐跳过了懒狗。',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Text(
+                                          'Fallback 字体',
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          controller
+                                                  .customFallbackFontFamilies
+                                                  .isEmpty
+                                              ? '使用默认 fallback 字体栈'
+                                              : controller
+                                                    .customFallbackFontFamilies
+                                                    .join(', '),
+                                          style: theme.textTheme.bodyMedium
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  FilledButton.tonal(
+                                    onPressed: () =>
+                                        _editFallbackFontFamilies(context),
+                                    child: const Text('设置 fallback'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -957,6 +1963,7 @@ bool _isAdditiveSelectionPressed() {
 Color _managerAccent(String managerId) {
   return switch (managerId) {
     'winget' => const Color(0xFF2563EB),
+    'choco' => const Color(0xFF7A3E1D),
     'scoop' => const Color(0xFF16A34A),
     'npm' => const Color(0xFFE4572E),
     'pnpm' => const Color(0xFFF59E0B),
@@ -971,6 +1978,7 @@ Color _managerAccent(String managerId) {
 IconData _managerIcon(String managerId) {
   return switch (managerId) {
     'winget' => Icons.window_outlined,
+    'choco' => Icons.local_cafe_outlined,
     'scoop' => Icons.inventory_2_outlined,
     'npm' => Icons.hub_outlined,
     'pnpm' => Icons.account_tree_outlined,
@@ -988,7 +1996,11 @@ String? _managerSvgAsset(String managerId) {
 
 const Map<String, String> _managerIconAssets = <String, String>{
   'bun': 'assets/package_icons/bun.svg',
+  'cargo': 'assets/package_icons/cargo.png',
+  'choco': 'assets/package_icons/chocolatey.svg',
   'npm': 'assets/package_icons/npm.svg',
   'pip': 'assets/package_icons/python.svg',
   'pnpm': 'assets/package_icons/pnpm.svg',
+  'uv': 'assets/package_icons/uv.svg',
+  'winget': 'assets/package_icons/winget.ico',
 };

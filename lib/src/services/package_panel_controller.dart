@@ -1,9 +1,14 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import '../models/package_models.dart';
 import 'package_adapters.dart';
+import 'package_manager_settings_store.dart';
 import 'package_latest_info_store.dart';
+import 'package_snapshot_store.dart';
 import 'shell_executor.dart';
+import 'winget_package_icon_resolver.dart';
 
 class PackagePanelController extends ChangeNotifier {
   PackagePanelController({
@@ -11,9 +16,24 @@ class PackagePanelController extends ChangeNotifier {
     required List<PackageManagerAdapter> adapters,
     List<ManagerSnapshot>? initialSnapshots,
     PackageLatestInfoStore? latestInfoStore,
+    PackageManagerSettingsStore? settingsStore,
+    PackageSnapshotStore? snapshotStore,
     Map<String, PersistedPackageLatestInfo>? initialLatestInfo,
+    Set<String>? initialVisibleManagerIds,
+    List<String>? initialManagerOrderIds,
+    Map<String, bool>? initialManagerAvailability,
+    Map<String, String>? initialCustomManagerIconPaths,
+    Map<String, String>? initialCustomManagerDisplayNames,
+    ThemeMode? initialThemeMode,
+    String? initialCustomFontFamily,
+    List<String>? initialCustomFallbackFontFamilies,
+    WingetPackageIconResolver? wingetIconResolver,
   }) : _shell = shell,
        _latestInfoStore = latestInfoStore ?? const PackageLatestInfoStore(),
+       _settingsStore = settingsStore ?? const PackageManagerSettingsStore(),
+       _snapshotStore = snapshotStore ?? const PackageSnapshotStore(),
+       _wingetIconResolver =
+           wingetIconResolver ?? const WingetPackageIconResolver(),
        _latestInfo = Map<String, PersistedPackageLatestInfo>.from(
          initialLatestInfo ?? const <String, PersistedPackageLatestInfo>{},
        ),
@@ -24,26 +44,64 @@ class PackagePanelController extends ChangeNotifier {
                  .map((adapter) => ManagerSnapshot(manager: adapter.definition))
                  .toList(growable: false),
        ),
-       _hasLoadedOnce = initialSnapshots != null;
+       _visibleManagerIds = Set<String>.from(
+         initialVisibleManagerIds ??
+             adapters.map((adapter) => adapter.definition.id).toSet(),
+       ),
+       _managerAvailability = Map<String, bool>.from(
+         initialManagerAvailability ?? const <String, bool>{},
+       ),
+       _customManagerIconPaths = Map<String, String>.from(
+         initialCustomManagerIconPaths ?? const <String, String>{},
+       ),
+       _customManagerDisplayNames = Map<String, String>.from(
+         initialCustomManagerDisplayNames ?? const <String, String>{},
+       ),
+       _themeMode = initialThemeMode ?? ThemeMode.system,
+       _customFontFamily = initialCustomFontFamily?.trim(),
+       _customFallbackFontFamilies = List<String>.from(
+         initialCustomFallbackFontFamilies ?? const <String>[],
+       ),
+       _hasCachedSnapshots = initialSnapshots != null,
+       _hasInitializedManagerVisibility = initialVisibleManagerIds != null {
+    _applyManagerOrder(initialManagerOrderIds ?? const <String>[]);
+  }
 
   final ShellExecutor _shell;
   final PackageLatestInfoStore _latestInfoStore;
+  final PackageManagerSettingsStore _settingsStore;
+  final PackageSnapshotStore _snapshotStore;
+  final WingetPackageIconResolver _wingetIconResolver;
   final Map<String, PersistedPackageLatestInfo> _latestInfo;
   final List<PackageManagerAdapter> _adapters;
   final List<ManagerSnapshot> _snapshots;
   final List<ActivityEntry> _activity = <ActivityEntry>[];
   final Set<String> _runningCommands = <String>{};
   final Set<String> _selectedPackageKeys = <String>{};
+  final Set<String> _visibleManagerIds;
+  final Map<String, bool> _managerAvailability;
+  final Map<String, String> _customManagerIconPaths;
+  final Map<String, String> _customManagerDisplayNames;
+  final Map<String, String> _packageIconPaths = <String, String>{};
 
   String _searchQuery = '';
+  String? _customFontFamily;
+  final List<String> _customFallbackFontFamilies;
   String? _selectedManagerId;
   ManagedPackage? _selectedPackage;
   String? _selectionAnchorKey;
   bool _isRefreshingAll = false;
-  bool _hasLoadedOnce;
+  bool _hasCachedSnapshots;
+  bool _hasTriggeredInitialRefresh = false;
+  bool _hasInitializedManagerVisibility;
+  ThemeMode _themeMode;
 
   List<ManagerSnapshot> get snapshots =>
       List<ManagerSnapshot>.unmodifiable(_snapshots);
+
+  List<ManagerSnapshot> get visibleSnapshots => _snapshots
+      .where((snapshot) => isManagerVisible(snapshot.manager.id))
+      .toList(growable: false);
 
   List<ActivityEntry> get activity =>
       List<ActivityEntry>.unmodifiable(_activity);
@@ -58,14 +116,26 @@ class PackagePanelController extends ChangeNotifier {
 
   bool get isRefreshingAll => _isRefreshingAll;
 
+  ThemeMode get themeMode => _themeMode;
+
+  String? get customFontFamily =>
+      _customFontFamily == null || _customFontFamily!.trim().isEmpty
+      ? null
+      : _customFontFamily!.trim();
+
+  List<String> get customFallbackFontFamilies =>
+      List<String>.unmodifiable(_customFallbackFontFamilies);
+
   int get totalPackages =>
-      _snapshots.fold<int>(0, (sum, item) => sum + item.packages.length);
+      visibleSnapshots.fold<int>(0, (sum, item) => sum + item.packages.length);
 
   int get readyManagers => _snapshots
+      .where((snapshot) => isManagerVisible(snapshot.manager.id))
       .where((snapshot) => snapshot.loadState == ManagerLoadState.ready)
       .length;
 
   int get errorManagers => _snapshots
+      .where((snapshot) => isManagerVisible(snapshot.manager.id))
       .where((snapshot) => snapshot.loadState == ManagerLoadState.error)
       .length;
 
@@ -74,7 +144,7 @@ class PackagePanelController extends ChangeNotifier {
 
   List<ManagedPackage> get visiblePackages {
     final selectedSnapshots = _selectedManagerId == null
-        ? _snapshots
+        ? visibleSnapshots
         : _snapshots.where(
             (snapshot) => snapshot.manager.id == _selectedManagerId,
           );
@@ -89,7 +159,7 @@ class PackagePanelController extends ChangeNotifier {
 
           return [
             package.name,
-            package.managerName,
+            displayNameForPackage(package),
             package.source ?? '',
             package.notes ?? '',
           ].join(' ').toLowerCase().contains(query);
@@ -97,9 +167,9 @@ class PackagePanelController extends ChangeNotifier {
         .toList();
 
     packages.sort((a, b) {
-      final managerCompare = a.managerName.toLowerCase().compareTo(
-        b.managerName.toLowerCase(),
-      );
+      final managerCompare = displayNameForPackage(
+        a,
+      ).toLowerCase().compareTo(displayNameForPackage(b).toLowerCase());
       if (managerCompare != 0) {
         return managerCompare;
       }
@@ -115,6 +185,9 @@ class PackagePanelController extends ChangeNotifier {
 
     for (final snapshot in _snapshots) {
       if (snapshot.manager.id == _selectedManagerId) {
+        if (!isManagerVisible(snapshot.manager.id)) {
+          return null;
+        }
         return snapshot;
       }
     }
@@ -162,19 +235,154 @@ class PackagePanelController extends ChangeNotifier {
     return _selectedPackageKeys.contains(package.key);
   }
 
-  Future<void> ensureLoaded() async {
-    if (_hasLoadedOnce) {
-      _realignSelection();
+  bool isManagerVisible(String managerId) =>
+      _visibleManagerIds.contains(managerId);
+
+  bool isManagerAvailable(String managerId) =>
+      _managerAvailability[managerId] ?? false;
+
+  List<PackageManagerVisibilityState> get managerVisibilityStates => _adapters
+      .map(
+        (adapter) => PackageManagerVisibilityState(
+          manager: adapter.definition,
+          isVisible: isManagerVisible(adapter.definition.id),
+          isAvailable: isManagerAvailable(adapter.definition.id),
+        ),
+      )
+      .toList(growable: false);
+
+  List<String> get managerOrderIds => List<String>.unmodifiable(
+    _adapters.map((adapter) => adapter.definition.id).toList(growable: false),
+  );
+
+  String? customManagerIconPath(String managerId) {
+    final value = _customManagerIconPaths[managerId]?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  String? packageIconPath(ManagedPackage package) {
+    final value = _packageIconPaths[package.key]?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  String? customManagerDisplayName(String managerId) {
+    final value = _customManagerDisplayNames[managerId]?.trim();
+    if (value == null || value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  String displayNameForManagerId(String managerId) {
+    return customManagerDisplayName(managerId) ??
+        _adapters
+            .firstWhere((adapter) => adapter.definition.id == managerId)
+            .definition
+            .displayName;
+  }
+
+  String displayNameForPackage(ManagedPackage package) {
+    return displayNameForManagerId(package.managerId);
+  }
+
+  Future<void> setThemeMode(ThemeMode value) async {
+    _themeMode = value;
+    await _settingsStore.saveThemeModeName(value.name);
+    notifyListeners();
+  }
+
+  Future<void> setCustomFontFamily(String? value) async {
+    final trimmed = value?.trim();
+    _customFontFamily = trimmed == null || trimmed.isEmpty ? null : trimmed;
+    await _settingsStore.saveCustomFontFamily(_customFontFamily);
+    notifyListeners();
+  }
+
+  Future<void> setCustomFallbackFontFamilies(List<String> values) async {
+    _customFallbackFontFamilies
+      ..clear()
+      ..addAll(values.map((value) => value.trim()).where((v) => v.isNotEmpty));
+    await _settingsStore.saveCustomFallbackFontFamilies(
+      _customFallbackFontFamilies,
+    );
+    notifyListeners();
+  }
+
+  Future<void> reorderManager(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= _adapters.length) {
+      return;
+    }
+    if (newIndex < 0 || newIndex >= _adapters.length) {
       return;
     }
 
-    _hasLoadedOnce = true;
+    final adapter = _adapters.removeAt(oldIndex);
+    _adapters.insert(newIndex, adapter);
+
+    final snapshotIndex = _snapshots.indexWhere(
+      (snapshot) => snapshot.manager.id == adapter.definition.id,
+    );
+    if (snapshotIndex >= 0) {
+      final snapshot = _snapshots.removeAt(snapshotIndex);
+      final targetSnapshotIndex = _adapters.indexWhere(
+        (item) => item.definition.id == snapshot.manager.id,
+      );
+      _snapshots.insert(targetSnapshotIndex, snapshot);
+    }
+
+    notifyListeners();
+
+    unawaited(
+      _settingsStore.saveManagerOrderIds(
+        _adapters.map((item) => item.definition.id).toList(growable: false),
+      ),
+    );
+  }
+
+  Future<void> ensureLoaded() async {
+    await _ensureManagerVisibilityInitialized();
+    if (_hasTriggeredInitialRefresh) {
+      _realignSelection();
+      notifyListeners();
+      return;
+    }
+
+    _hasTriggeredInitialRefresh = true;
+    _realignSelection();
+    notifyListeners();
+    if (_hasCachedSnapshots) {
+      unawaited(loadAll());
+      return;
+    }
+
     await loadAll();
   }
 
   Future<void> loadAll() async {
+    await _ensureManagerVisibilityInitialized();
+
+    final visibleAdapters = _adapters
+        .where((adapter) => isManagerVisible(adapter.definition.id))
+        .toList(growable: false);
+
+    if (visibleAdapters.isEmpty) {
+      _isRefreshingAll = false;
+      _realignSelection();
+      notifyListeners();
+      return;
+    }
+
     _isRefreshingAll = true;
     for (var i = 0; i < _snapshots.length; i++) {
+      if (!isManagerVisible(_snapshots[i].manager.id)) {
+        continue;
+      }
       _snapshots[i] = _snapshots[i].copyWith(
         loadState: ManagerLoadState.loading,
         clearError: true,
@@ -182,7 +390,7 @@ class PackagePanelController extends ChangeNotifier {
     }
     notifyListeners();
 
-    await Future.wait(_adapters.map(_loadAdapter));
+    await Future.wait(visibleAdapters.map(_loadAdapter));
 
     _isRefreshingAll = false;
     _realignSelection();
@@ -190,6 +398,10 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   Future<void> refreshManager(String managerId) async {
+    if (!isManagerVisible(managerId)) {
+      return;
+    }
+
     final adapter = _adapterFor(managerId);
     if (adapter == null) {
       return;
@@ -212,6 +424,7 @@ class PackagePanelController extends ChangeNotifier {
       final packages = _mergeLatestInfoIntoPackages(
         await adapter.listPackages(_shell),
       );
+      await _resolvePackageIcons(adapter.definition.id, packages);
       _setSnapshot(
         adapter.definition.id,
         _snapshotFor(adapter.definition.id).copyWith(
@@ -224,10 +437,12 @@ class PackagePanelController extends ChangeNotifier {
       _pushActivity(
         ActivityEntry(
           timestamp: DateTime.now(),
-          title: '${adapter.definition.displayName} 已同步',
+          title: '${displayNameForManagerId(adapter.definition.id)} 已同步',
           message: '已加载 ${packages.length} 个已安装包。',
         ),
       );
+      _hasCachedSnapshots = true;
+      await _snapshotStore.save(_snapshots);
     } catch (error) {
       _setSnapshot(
         adapter.definition.id,
@@ -241,18 +456,123 @@ class PackagePanelController extends ChangeNotifier {
       _pushActivity(
         ActivityEntry(
           timestamp: DateTime.now(),
-          title: '${adapter.definition.displayName} 加载失败',
+          title: '${displayNameForManagerId(adapter.definition.id)} 加载失败',
           message: '$error',
           isError: true,
         ),
       );
+      await _snapshotStore.save(_snapshots);
     }
   }
 
   void selectManager(String? managerId) {
+    if (managerId != null && !isManagerVisible(managerId)) {
+      return;
+    }
     _selectedManagerId = managerId;
     _realignSelection();
     notifyListeners();
+  }
+
+  Future<void> setManagerVisibility(String managerId, bool isVisible) async {
+    if (isVisible) {
+      _visibleManagerIds.add(managerId);
+    } else {
+      _visibleManagerIds.remove(managerId);
+      final snapshot = _snapshotFor(managerId);
+      _setSnapshot(
+        managerId,
+        snapshot.copyWith(
+          packages: const <ManagedPackage>[],
+          loadState: ManagerLoadState.idle,
+          clearError: true,
+        ),
+      );
+      _clearPackageIconsForManager(managerId);
+    }
+
+    await _settingsStore.saveVisibleManagerIds(_visibleManagerIds);
+
+    if (_selectedManagerId != null && !isManagerVisible(_selectedManagerId!)) {
+      _selectedManagerId = null;
+    }
+
+    _realignSelection();
+    notifyListeners();
+
+    if (isVisible && _hasTriggeredInitialRefresh) {
+      await refreshManager(managerId);
+    }
+  }
+
+  Future<void> setCustomManagerIconPath(String managerId, String path) async {
+    final trimmed = path.trim();
+    if (trimmed.isEmpty) {
+      _customManagerIconPaths.remove(managerId);
+    } else {
+      _customManagerIconPaths[managerId] = trimmed;
+    }
+
+    await _settingsStore.saveCustomManagerIconPaths(_customManagerIconPaths);
+    notifyListeners();
+  }
+
+  Future<void> clearCustomManagerIconPath(String managerId) async {
+    if (_customManagerIconPaths.remove(managerId) == null) {
+      return;
+    }
+
+    await _settingsStore.saveCustomManagerIconPaths(_customManagerIconPaths);
+    notifyListeners();
+  }
+
+  Future<void> setCustomManagerDisplayName(
+    String managerId,
+    String name,
+  ) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      _customManagerDisplayNames.remove(managerId);
+    } else {
+      _customManagerDisplayNames[managerId] = trimmed;
+    }
+
+    await _settingsStore.saveCustomManagerDisplayNames(
+      _customManagerDisplayNames,
+    );
+    notifyListeners();
+  }
+
+  Future<void> clearCustomManagerDisplayName(String managerId) async {
+    if (_customManagerDisplayNames.remove(managerId) == null) {
+      return;
+    }
+
+    await _settingsStore.saveCustomManagerDisplayNames(
+      _customManagerDisplayNames,
+    );
+    notifyListeners();
+  }
+
+  Future<void> _resolvePackageIcons(
+    String managerId,
+    List<ManagedPackage> packages,
+  ) async {
+    _clearPackageIconsForManager(managerId);
+
+    if (managerId != 'winget' || packages.isEmpty) {
+      return;
+    }
+
+    final resolved = await _wingetIconResolver.resolveIconPaths(
+      _shell,
+      packages,
+    );
+    _packageIconPaths.addAll(resolved);
+  }
+
+  void _clearPackageIconsForManager(String managerId) {
+    _packageIconPaths.removeWhere((key, _) => key.startsWith('$managerId::'));
   }
 
   void selectPackage(
@@ -267,7 +587,8 @@ class PackagePanelController extends ChangeNotifier {
 
     final targetKey = package.key;
     if (range) {
-      final anchorKey = _selectionAnchorKey ?? _selectedPackage?.key ?? targetKey;
+      final anchorKey =
+          _selectionAnchorKey ?? _selectedPackage?.key ?? targetKey;
       final anchorIndex = _indexOfPackage(packages, anchorKey);
       final targetIndex = _indexOfPackage(packages, targetKey);
       if (anchorIndex >= 0 && targetIndex >= 0) {
@@ -377,7 +698,7 @@ class PackagePanelController extends ChangeNotifier {
     _pushActivity(
       ActivityEntry(
         timestamp: DateTime.now(),
-        title: '正在批量检查 ${snapshot.manager.displayName}',
+        title: '正在批量检查 ${displayNameForManagerId(snapshot.manager.id)}',
         message: '准备检查 ${packages.length} 个包的最新版本。',
       ),
     );
@@ -390,7 +711,7 @@ class PackagePanelController extends ChangeNotifier {
       _pushActivity(
         ActivityEntry(
           timestamp: DateTime.now(),
-          title: '${snapshot.manager.displayName} 批量检查更新完成',
+          title: '${displayNameForManagerId(snapshot.manager.id)} 批量检查更新完成',
           message: '已完成 ${packages.length} 个包的最新版本检查。',
         ),
       );
@@ -436,15 +757,15 @@ class PackagePanelController extends ChangeNotifier {
     return result;
   }
 
-  Future<void> checkLatestVersion(ManagedPackage package) async {
+  Future<String?> checkLatestVersion(ManagedPackage package) async {
     final adapter = _adapterFor(package.managerId);
     if (adapter == null || !adapter.supportsLatestVersionLookup(package)) {
-      return;
+      return null;
     }
 
     final busyKey = _latestVersionBusyKey(package);
     if (_runningCommands.contains(busyKey)) {
-      return;
+      return null;
     }
 
     _runningCommands.add(busyKey);
@@ -452,7 +773,7 @@ class PackagePanelController extends ChangeNotifier {
       ActivityEntry(
         timestamp: DateTime.now(),
         title: '正在检查 ${package.name}',
-        message: '正在检查 ${package.managerName} 的最新版本。',
+        message: '正在检查 ${displayNameForPackage(package)} 的最新版本。',
       ),
     );
     notifyListeners();
@@ -472,6 +793,7 @@ class PackagePanelController extends ChangeNotifier {
         checkedAt: checkedAt,
       );
       await _latestInfoStore.save(_latestInfo);
+      await _snapshotStore.save(_snapshots);
       _pushActivity(
         ActivityEntry(
           timestamp: DateTime.now(),
@@ -481,6 +803,7 @@ class PackagePanelController extends ChangeNotifier {
               : '最新版本：$latestVersion。',
         ),
       );
+      return latestVersion;
     } catch (error) {
       _pushActivity(
         ActivityEntry(
@@ -490,6 +813,7 @@ class PackagePanelController extends ChangeNotifier {
           isError: true,
         ),
       );
+      return null;
     } finally {
       _runningCommands.remove(busyKey);
       notifyListeners();
@@ -503,6 +827,102 @@ class PackagePanelController extends ChangeNotifier {
         return;
       }
     }
+  }
+
+  Future<void> _ensureManagerVisibilityInitialized() async {
+    if (_hasInitializedManagerVisibility) {
+      if (_managerAvailability.isEmpty) {
+        _managerAvailability.addAll(await _detectManagerAvailability());
+      }
+      if (_customManagerIconPaths.isEmpty) {
+        _customManagerIconPaths.addAll(
+          await _settingsStore.loadCustomManagerIconPaths(),
+        );
+      }
+      if (_customManagerDisplayNames.isEmpty) {
+        _customManagerDisplayNames.addAll(
+          await _settingsStore.loadCustomManagerDisplayNames(),
+        );
+      }
+      if (managerOrderIds.isEmpty) {
+        _applyManagerOrder(await _settingsStore.loadManagerOrderIds());
+      }
+      final savedCustomFontFamily = await _settingsStore.loadCustomFontFamily();
+      final savedFallbackFonts = await _settingsStore
+          .loadCustomFallbackFontFamilies();
+      _themeMode = _parseThemeModeName(
+        await _settingsStore.loadThemeModeName(),
+        fallback: _themeMode,
+      );
+      _customFontFamily = savedCustomFontFamily?.trim().isEmpty ?? true
+          ? null
+          : savedCustomFontFamily?.trim();
+      _customFallbackFontFamilies
+        ..clear()
+        ..addAll(savedFallbackFonts);
+      return;
+    }
+
+    final savedVisibleManagerIds = await _settingsStore.loadVisibleManagerIds();
+    final savedCustomManagerIconPaths = await _settingsStore
+        .loadCustomManagerIconPaths();
+    final savedCustomManagerDisplayNames = await _settingsStore
+        .loadCustomManagerDisplayNames();
+    final savedManagerOrderIds = await _settingsStore.loadManagerOrderIds();
+    final savedThemeModeName = await _settingsStore.loadThemeModeName();
+    final savedCustomFontFamily = await _settingsStore.loadCustomFontFamily();
+    final savedFallbackFonts = await _settingsStore
+        .loadCustomFallbackFontFamilies();
+    final availability = await _detectManagerAvailability();
+    _managerAvailability
+      ..clear()
+      ..addAll(availability);
+
+    _visibleManagerIds
+      ..clear()
+      ..addAll(
+        savedVisibleManagerIds ??
+            availability.entries
+                .where((entry) => entry.value)
+                .map((entry) => entry.key),
+      );
+
+    _customManagerIconPaths
+      ..clear()
+      ..addAll(savedCustomManagerIconPaths);
+
+    _customManagerDisplayNames
+      ..clear()
+      ..addAll(savedCustomManagerDisplayNames);
+    _applyManagerOrder(savedManagerOrderIds);
+
+    _themeMode = _parseThemeModeName(savedThemeModeName);
+    _customFontFamily = savedCustomFontFamily?.trim().isEmpty ?? true
+        ? null
+        : savedCustomFontFamily?.trim();
+    _customFallbackFontFamilies
+      ..clear()
+      ..addAll(savedFallbackFonts);
+
+    _hasInitializedManagerVisibility = true;
+
+    if (savedVisibleManagerIds == null) {
+      await _settingsStore.saveVisibleManagerIds(_visibleManagerIds);
+    }
+  }
+
+  Future<Map<String, bool>> _detectManagerAvailability() async {
+    final entries = await Future.wait(
+      _adapters.map((adapter) async {
+        final executable = adapter.definition.executable;
+        final result = await _shell.run(
+          "if (Get-Command ${_psQuote(executable)} -ErrorAction SilentlyContinue) { '1' } else { '0' }",
+          timeout: const Duration(seconds: 10),
+        );
+        return MapEntry(adapter.definition.id, result.stdout.trim() == '1');
+      }),
+    );
+    return Map<String, bool>.fromEntries(entries);
   }
 
   void _replacePackage(ManagedPackage nextPackage) {
@@ -545,6 +965,9 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   void _realignSelection() {
+    if (_selectedManagerId != null && !isManagerVisible(_selectedManagerId!)) {
+      _selectedManagerId = null;
+    }
     final packages = visiblePackages;
     if (packages.isEmpty) {
       _selectedPackage = null;
@@ -596,22 +1019,26 @@ class PackagePanelController extends ChangeNotifier {
     return 'batch-latest::$managerId';
   }
 
-  List<ManagedPackage> _mergeLatestInfoIntoPackages(List<ManagedPackage> packages) {
-    return packages.map((package) {
-      final cached = _latestInfo[package.key];
-      if (cached == null) {
-        return package;
-      }
+  List<ManagedPackage> _mergeLatestInfoIntoPackages(
+    List<ManagedPackage> packages,
+  ) {
+    return packages
+        .map((package) {
+          final cached = _latestInfo[package.key];
+          if (cached == null) {
+            return package;
+          }
 
-      if (cached.installedVersion.trim() != package.version.trim()) {
-        return package;
-      }
+          if (cached.installedVersion.trim() != package.version.trim()) {
+            return package;
+          }
 
-      return package.copyWith(
-        latestVersion: cached.latestVersion,
-        latestVersionCheckedAt: cached.checkedAt,
-      );
-    }).toList(growable: false);
+          return package.copyWith(
+            latestVersion: cached.latestVersion,
+            latestVersionCheckedAt: cached.checkedAt,
+          );
+        })
+        .toList(growable: false);
   }
 
   int _indexOfPackage(List<ManagedPackage> packages, String key) {
@@ -630,5 +1057,49 @@ class PackagePanelController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  String _psQuote(String value) {
+    return "'${value.replaceAll("'", "''")}'";
+  }
+
+  ThemeMode _parseThemeModeName(String? value, {ThemeMode? fallback}) {
+    return switch (value?.trim()) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      'system' => ThemeMode.system,
+      _ => fallback ?? ThemeMode.system,
+    };
+  }
+
+  void _applyManagerOrder(List<String> orderIds) {
+    final normalized = orderIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (normalized.isEmpty) {
+      return;
+    }
+
+    final ranking = <String, int>{
+      for (var i = 0; i < normalized.length; i++) normalized[i]: i,
+    };
+
+    _adapters.sort((a, b) {
+      final aRank = ranking[a.definition.id] ?? 1 << 20;
+      final bRank = ranking[b.definition.id] ?? 1 << 20;
+      if (aRank != bRank) {
+        return aRank.compareTo(bRank);
+      }
+      return 0;
+    });
+    _snapshots.sort((a, b) {
+      final aRank = ranking[a.manager.id] ?? 1 << 20;
+      final bRank = ranking[b.manager.id] ?? 1 << 20;
+      if (aRank != bRank) {
+        return aRank.compareTo(bRank);
+      }
+      return 0;
+    });
   }
 }
