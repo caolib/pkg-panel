@@ -221,6 +221,7 @@ class PackagePanelHome extends StatefulWidget {
 
 class _PackagePanelHomeState extends State<PackagePanelHome> {
   late final TextEditingController _searchController;
+  final Map<String, String> _runningCommandLabels = <String, String>{};
 
   @override
   void initState() {
@@ -249,40 +250,54 @@ class _PackagePanelHomeState extends State<PackagePanelHome> {
       builder: (context, _) {
         return Scaffold(
           body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  _ActionBar(
-                    controller: widget.controller,
-                    searchController: _searchController,
-                    onRefreshAll: widget.controller.loadAll,
-                    onOpenSettings: _openSettings,
-                    onBatchCheckLatest: widget
-                        .controller
-                        .batchCheckLatestVersionsForSelectedManager,
-                    onBatchUpdate: () async {
-                      final command = widget.controller
-                          .batchUpdateCommandForSelectedManager();
-                      if (command == null) {
-                        return;
-                      }
-                      await _confirmAndRunCommand(command);
-                    },
+            child: Stack(
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _ActionBar(
+                        controller: widget.controller,
+                        searchController: _searchController,
+                        onRefreshAll: widget.controller.loadAll,
+                        onOpenSettings: _openSettings,
+                        onBatchCheckLatest: widget
+                            .controller
+                            .batchCheckLatestVersionsForSelectedManager,
+                        onBatchUpdate: () async {
+                          final command = widget.controller
+                              .batchUpdateCommandForSelectedManager();
+                          if (command == null) {
+                            return;
+                          }
+                          await _confirmAndRunCommand(command);
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      _ManagerFilterBar(controller: widget.controller),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: _PackageListView(
+                          controller: widget.controller,
+                          onOpenSettings: _openSettings,
+                          onRunAction: _confirmAndRunCommand,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 14),
-                  _ManagerFilterBar(controller: widget.controller),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: _PackageListView(
-                      controller: widget.controller,
-                      onOpenSettings: _openSettings,
-                      onRunAction: _confirmAndRunCommand,
+                ),
+                if (_runningCommandLabels.isNotEmpty)
+                  Positioned(
+                    right: 24,
+                    bottom: 24,
+                    child: _RunningCommandToast(
+                      labels: _runningCommandLabels.values.toList(
+                        growable: false,
+                      ),
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
           ),
         );
@@ -301,7 +316,16 @@ class _PackagePanelHomeState extends State<PackagePanelHome> {
       return;
     }
 
+    setState(() {
+      _runningCommandLabels[command.busyKey] = command.label;
+    });
+
     final result = await widget.controller.runCommand(command);
+    if (mounted) {
+      setState(() {
+        _runningCommandLabels.remove(command.busyKey);
+      });
+    }
     if (!mounted) {
       return;
     }
@@ -333,6 +357,61 @@ class _PackagePanelHomeState extends State<PackagePanelHome> {
       MaterialPageRoute<void>(
         builder: (context) =>
             PackageSettingsPage(controller: widget.controller),
+      ),
+    );
+  }
+}
+
+class _RunningCommandToast extends StatelessWidget {
+  const _RunningCommandToast({required this.labels});
+
+  final List<String> labels;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primaryLabel = labels.first;
+    final extraCount = labels.length - 1;
+    return IgnorePointer(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 360),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withAlpha(38),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.6),
+              ),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  extraCount > 0
+                      ? '正在执行 $primaryLabel 等 $extraCount 个任务...'
+                      : '正在执行 $primaryLabel...',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
