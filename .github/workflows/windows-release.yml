@@ -1,0 +1,55 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package Windows release
+        id: package
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $archiveDir = "build\release"
+          $archivePath = Join-Path $archiveDir "pkg_panel-windows-$tag.zip"
+
+          if (Test-Path $archivePath) {
+            Remove-Item -LiteralPath $archivePath -Force
+          }
+
+          New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
+          Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath $archivePath -Force
+
+          "archive_path=$archivePath" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Pkg Panel ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: docs/CHANGELOG.md
+          files: ${{ steps.package.outputs.archive_path }}
+          fail_on_unmatched_files: true
