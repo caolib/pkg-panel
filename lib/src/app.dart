@@ -1578,7 +1578,7 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: contentMaxHeight),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Flexible(
@@ -1603,12 +1603,6 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                      if (command != null) ...<Widget>[
-                        const SizedBox(height: 12),
-                        Text('将要执行的命令', style: theme.textTheme.labelLarge),
-                        const SizedBox(height: 8),
-                        _CommandPreview(command: command.command),
-                      ],
                       if (canInstallLatest) ...<Widget>[
                         const SizedBox(height: 12),
                         CheckboxListTile(
@@ -1650,6 +1644,12 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                           ),
                           onChanged: (_) => setState(() {}),
                         ),
+                      ],
+                      if (command != null) ...<Widget>[
+                        const SizedBox(height: 12),
+                        Text('将要执行的命令', style: theme.textTheme.labelLarge),
+                        const SizedBox(height: 8),
+                        _CommandPreview(command: command.command),
                       ],
                     ],
                   ),
