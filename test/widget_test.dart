@@ -435,6 +435,25 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(details, contains('cargo-edit v0.13.0:'));
     expect(details, isNot(contains('just v1.39.0:')));
   });
+
+  test('scoop search parses tabular output', () async {
+    final results = await const ScoopAdapter().searchPackages(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        "scoop search 'chafa'": const ShellResult(
+          exitCode: 0,
+          stdout:
+              'Results from local buckets...\n\nName  Version Source Binaries\n----  ------- ------ --------\nchafa 1.16.1  main\n',
+          stderr: '',
+        ),
+      }),
+      'chafa',
+    );
+
+    expect(results, hasLength(1));
+    expect(results.single.name, 'chafa');
+    expect(results.single.version, '1.16.1');
+    expect(results.single.source, 'main');
+  });
 }
 
 class _FakeShellExecutor extends ShellExecutor {

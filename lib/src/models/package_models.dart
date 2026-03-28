@@ -145,6 +145,96 @@ class PackageCommand {
   final String label;
   final String command;
   final Duration timeout;
+
+  PackageCommand copyWith({String? busyKey}) {
+    return PackageCommand(
+      managerId: managerId,
+      busyKey: busyKey ?? this.busyKey,
+      label: label,
+      command: command,
+      timeout: timeout,
+    );
+  }
+}
+
+class SearchPackage {
+  const SearchPackage({
+    required this.name,
+    required this.managerId,
+    required this.managerName,
+    this.version,
+    this.description,
+    this.identifier,
+    this.source,
+    this.installOptions = const <SearchPackageInstallOption>[],
+  });
+
+  final String name;
+  final String managerId;
+  final String managerName;
+  final String? version;
+  final String? description;
+  final String? identifier;
+  final String? source;
+  final List<SearchPackageInstallOption> installOptions;
+
+  String get key => '$managerId::$name::${identifier ?? ''}';
+
+  bool get isInstalled => installOptions.any((option) => option.isInstalled);
+
+  SearchPackage copyWith({
+    String? name,
+    String? managerId,
+    String? managerName,
+    String? version,
+    String? description,
+    String? identifier,
+    String? source,
+    List<SearchPackageInstallOption>? installOptions,
+  }) {
+    return SearchPackage(
+      name: name ?? this.name,
+      managerId: managerId ?? this.managerId,
+      managerName: managerName ?? this.managerName,
+      version: version ?? this.version,
+      description: description ?? this.description,
+      identifier: identifier ?? this.identifier,
+      source: source ?? this.source,
+      installOptions: installOptions ?? this.installOptions,
+    );
+  }
+}
+
+class SearchPackageInstallOption {
+  const SearchPackageInstallOption({
+    required this.managerId,
+    required this.managerName,
+    required this.packageName,
+    this.identifier,
+    this.version,
+    this.source,
+    this.isInstalled = false,
+  });
+
+  final String managerId;
+  final String managerName;
+  final String packageName;
+  final String? identifier;
+  final String? version;
+  final String? source;
+  final bool isInstalled;
+
+  SearchPackageInstallOption copyWith({bool? isInstalled}) {
+    return SearchPackageInstallOption(
+      managerId: managerId,
+      managerName: managerName,
+      packageName: packageName,
+      identifier: identifier,
+      version: version,
+      source: source,
+      isInstalled: isInstalled ?? this.isInstalled,
+    );
+  }
 }
 
 class PackageManagerVisibilityState {

@@ -13,6 +13,19 @@ abstract class PackageManagerAdapter {
 
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell);
 
+  bool supportsSearch() => false;
+
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    throw UnsupportedError('${definition.displayName} 不支持搜索。');
+  }
+
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    throw UnsupportedError('${definition.displayName} 不支持安装。');
+  }
+
   PackageCommand buildCommand(PackageAction action, ManagedPackage package);
 
   PackageCommand? buildBatchUpdateCommand() => null;
@@ -88,6 +101,31 @@ class NpmAdapter extends PackageManagerAdapter {
         source: _globalSourceLabel,
       );
     }).toList()..sort(_packageSort);
+  }
+
+  @override
+  bool supportsSearch() => true;
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    final result = await shell.run(
+      'npm search ${_psQuote(query)} --json --searchlimit=20',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseNpmSearchResults(result, manager: definition);
+  }
+
+  @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: 'npm install -g ${_psQuote(package.packageName)}',
+      timeout: const Duration(minutes: 10),
+    );
   }
 
   @override
@@ -203,6 +241,31 @@ class PnpmAdapter extends PackageManagerAdapter {
       }
     }
     return output;
+  }
+
+  @override
+  bool supportsSearch() => true;
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    final result = await shell.run(
+      'npm search ${_psQuote(query)} --json --searchlimit=20',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseNpmSearchResults(result, manager: definition);
+  }
+
+  @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: 'pnpm add -g ${_psQuote(package.packageName)}',
+      timeout: const Duration(minutes: 10),
+    );
   }
 
   @override
@@ -430,6 +493,16 @@ class UvToolAdapter extends PackageManagerAdapter {
   }
 
   @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: 'uv tool install ${_psQuote(package.packageName)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
   PackageCommand buildCommand(PackageAction action, ManagedPackage package) {
     return switch (action) {
       PackageAction.update => _command(
@@ -558,6 +631,31 @@ class CargoAdapter extends PackageManagerAdapter {
     flush();
     packages.sort(_packageSort);
     return packages;
+  }
+
+  @override
+  bool supportsSearch() => true;
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    final result = await shell.run(
+      'cargo search ${_psQuote(query)} --registry crates-io --limit 20',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseCargoSearchResults(result, manager: definition);
+  }
+
+  @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: 'cargo install ${_psQuote(package.packageName)}',
+      timeout: const Duration(minutes: 12),
+    );
   }
 
   @override
@@ -699,6 +797,31 @@ class ScoopAdapter extends PackageManagerAdapter {
   }
 
   @override
+  bool supportsSearch() => true;
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    final result = await shell.run(
+      'scoop search ${_psQuote(query)}',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseScoopSearchResults(result, manager: definition);
+  }
+
+  @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: 'scoop install ${_psQuote(package.packageName)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
   PackageCommand buildCommand(PackageAction action, ManagedPackage package) {
     return switch (action) {
       PackageAction.update => _command(
@@ -786,6 +909,31 @@ class ChocolateyAdapter extends PackageManagerAdapter {
 
     packages.sort(_packageSort);
     return packages;
+  }
+
+  @override
+  bool supportsSearch() => true;
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    final result = await shell.run(
+      'choco search ${_psQuote(query)} --limit-output',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseChocolateySearchResults(result, manager: definition);
+  }
+
+  @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: 'choco install ${_psQuote(package.packageName)} -y',
+      timeout: const Duration(minutes: 12),
+    );
   }
 
   @override
@@ -917,6 +1065,39 @@ class WingetAdapter extends PackageManagerAdapter {
   }
 
   @override
+  bool supportsSearch() => true;
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    final result = await shell.run(
+      'winget search ${_psQuote(query)} --disable-interactivity',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseWingetSearchResults(result, manager: definition);
+  }
+
+  @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: [
+        'winget install',
+        '--id ${_psQuote(target)}',
+        '--exact',
+        '--accept-package-agreements',
+        '--accept-source-agreements',
+        '--disable-interactivity',
+      ].join(' '),
+      timeout: const Duration(minutes: 15),
+    );
+  }
+
+  @override
   PackageCommand buildCommand(PackageAction action, ManagedPackage package) {
     final target = package.identifier ?? package.name;
     return switch (action) {
@@ -1036,6 +1217,31 @@ class BunAdapter extends PackageManagerAdapter {
     }
 
     return _scanBunBinFallback(binDir.path);
+  }
+
+  @override
+  bool supportsSearch() => true;
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    final result = await shell.run(
+      'npm search ${_psQuote(query)} --json --searchlimit=20',
+      timeout: const Duration(seconds: 45),
+    );
+    return _parseNpmSearchResults(result, manager: definition);
+  }
+
+  @override
+  PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    return _command(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}',
+      command: 'bun add -g ${_psQuote(package.packageName)}',
+      timeout: const Duration(minutes: 10),
+    );
   }
 
   @override
@@ -1410,6 +1616,284 @@ String _parseDetailOutput(ShellResult result, {required String managerName}) {
     throw PackageAdapterException(managerName, '没有返回详情信息。');
   }
   return output;
+}
+
+List<SearchPackage> _parseNpmSearchResults(
+  ShellResult result, {
+  required PackageManagerDefinition manager,
+}) {
+  final payload = _decodeJsonArray(result, managerName: manager.displayName);
+  return payload
+      .map((entry) {
+        final package = entry['package'] is Map<String, dynamic>
+            ? entry['package'] as Map<String, dynamic>
+            : entry;
+        return SearchPackage(
+          name: '${package['name'] ?? ''}'.trim(),
+          managerId: manager.id,
+          managerName: manager.displayName,
+          version: _nullableSearchValue(package['version']),
+          description: _nullableSearchValue(package['description']),
+          identifier: _nullableSearchValue(package['name']),
+          source: _nullableSearchValue(package['publisher']?['username']),
+          installOptions: <SearchPackageInstallOption>[
+            SearchPackageInstallOption(
+              managerId: manager.id,
+              managerName: manager.displayName,
+              packageName: '${package['name'] ?? ''}'.trim(),
+              identifier: _nullableSearchValue(package['name']),
+              version: _nullableSearchValue(package['version']),
+              source: _nullableSearchValue(package['publisher']?['username']),
+            ),
+          ],
+        );
+      })
+      .where((item) => item.name.isNotEmpty)
+      .toList(growable: false);
+}
+
+List<SearchPackage> _parseCargoSearchResults(
+  ShellResult result, {
+  required PackageManagerDefinition manager,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(manager.displayName, result.combinedOutput);
+  }
+
+  final output = <SearchPackage>[];
+  final pattern = RegExp(r'^([\w\-.]+)\s*=\s*"([^"]+)"\s*#\s*(.*)$');
+  for (final line in LineSplitter.split(result.stdout)) {
+    final match = pattern.firstMatch(line.trim());
+    if (match == null) {
+      continue;
+    }
+    output.add(
+      SearchPackage(
+        name: match.group(1)!.trim(),
+        managerId: manager.id,
+        managerName: manager.displayName,
+        version: match.group(2)!.trim(),
+        description: match.group(3)!.trim(),
+        identifier: match.group(1)!.trim(),
+        installOptions: <SearchPackageInstallOption>[
+          SearchPackageInstallOption(
+            managerId: manager.id,
+            managerName: manager.displayName,
+            packageName: match.group(1)!.trim(),
+            identifier: match.group(1)!.trim(),
+            version: match.group(2)!.trim(),
+          ),
+        ],
+      ),
+    );
+  }
+  return output;
+}
+
+List<SearchPackage> _parseScoopSearchResults(
+  ShellResult result, {
+  required PackageManagerDefinition manager,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(manager.displayName, result.combinedOutput);
+  }
+
+  final lines = LineSplitter.split(result.stdout)
+      .map((line) => line.trimRight())
+      .where((line) => line.trim().isNotEmpty)
+      .toList(growable: false);
+
+  final headerLine = lines.cast<String?>().firstWhere(
+    (line) => line != null && line.trimLeft().startsWith('Name'),
+    orElse: () => null,
+  );
+  if (headerLine == null) {
+    return const <SearchPackage>[];
+  }
+
+  final headerIndex = lines.indexOf(headerLine);
+  final versionStart = headerLine.indexOf('Version');
+  final sourceStart = headerLine.indexOf('Source');
+  final binariesStart = headerLine.indexOf('Binaries');
+
+  if (versionStart < 0 || sourceStart < 0) {
+    return const <SearchPackage>[];
+  }
+
+  final output = <SearchPackage>[];
+  for (final line in lines.skip(headerIndex + 2)) {
+    final name = _sliceColumn(line, 0, versionStart);
+    if (name.isEmpty) {
+      continue;
+    }
+    final version = _sliceColumn(line, versionStart, sourceStart);
+    final source = _sliceColumn(
+      line,
+      sourceStart,
+      binariesStart >= 0 ? binariesStart : null,
+    );
+    final binaries = binariesStart >= 0
+        ? _sliceColumn(line, binariesStart, null)
+        : '';
+    final description = binaries.isEmpty ? null : '命令: $binaries';
+
+    output.add(
+      SearchPackage(
+        name: name,
+        managerId: manager.id,
+        managerName: manager.displayName,
+        version: version.isEmpty ? null : version,
+        description: description,
+        identifier: name,
+        source: source.isEmpty ? null : source,
+        installOptions: <SearchPackageInstallOption>[
+          SearchPackageInstallOption(
+            managerId: manager.id,
+            managerName: manager.displayName,
+            packageName: name,
+            identifier: name,
+            version: version.isEmpty ? null : version,
+            source: source.isEmpty ? null : source,
+          ),
+        ],
+      ),
+    );
+  }
+  return output;
+}
+
+List<SearchPackage> _parseChocolateySearchResults(
+  ShellResult result, {
+  required PackageManagerDefinition manager,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(manager.displayName, result.combinedOutput);
+  }
+
+  final output = <SearchPackage>[];
+  for (final line in LineSplitter.split(result.stdout)) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty ||
+        trimmed.startsWith('Chocolatey v') ||
+        trimmed.startsWith('packages found.')) {
+      continue;
+    }
+    final separatorIndex = trimmed.indexOf('|');
+    if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+      continue;
+    }
+    output.add(
+      SearchPackage(
+        name: trimmed.substring(0, separatorIndex).trim(),
+        managerId: manager.id,
+        managerName: manager.displayName,
+        version: trimmed.substring(separatorIndex + 1).trim(),
+        identifier: trimmed.substring(0, separatorIndex).trim(),
+        installOptions: <SearchPackageInstallOption>[
+          SearchPackageInstallOption(
+            managerId: manager.id,
+            managerName: manager.displayName,
+            packageName: trimmed.substring(0, separatorIndex).trim(),
+            identifier: trimmed.substring(0, separatorIndex).trim(),
+            version: trimmed.substring(separatorIndex + 1).trim(),
+          ),
+        ],
+      ),
+    );
+  }
+  return output;
+}
+
+List<SearchPackage> _parseWingetSearchResults(
+  ShellResult result, {
+  required PackageManagerDefinition manager,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(manager.displayName, result.combinedOutput);
+  }
+
+  final output = <SearchPackage>[];
+  final lines = LineSplitter.split(result.stdout)
+      .map((line) => line.trimRight())
+      .where((line) => line.trim().isNotEmpty)
+      .toList(growable: false);
+  final headerLine = lines.cast<String?>().firstWhere(
+    (line) =>
+        line != null &&
+        _firstIndexOfAny(line, const <String>['ID', 'Id']) >= 0 &&
+        _firstIndexOfAny(line, const <String>['Version', '版本']) >= 0,
+    orElse: () => null,
+  );
+  if (headerLine == null) {
+    return const <SearchPackage>[];
+  }
+
+  final headerIndex = lines.indexOf(headerLine);
+  final idStart = _firstIndexOfAny(headerLine, const <String>['ID', 'Id']);
+  final versionStart = _firstIndexOfAny(headerLine, const <String>[
+    'Version',
+    '版本',
+  ]);
+  final sourceStart = _firstIndexOfAny(headerLine, const <String>[
+    'Source',
+    '源',
+  ]);
+
+  if (idStart < 0 || versionStart < 0) {
+    return const <SearchPackage>[];
+  }
+
+  for (final line in lines.skip(headerIndex + 2)) {
+    final name = _sliceColumn(line, 0, idStart);
+    final identifier = _sliceColumn(line, idStart, versionStart);
+    final version = _sliceColumn(
+      line,
+      versionStart,
+      sourceStart >= 0 ? sourceStart : null,
+    );
+    final source = sourceStart >= 0
+        ? _sliceColumn(line, sourceStart, null)
+        : '';
+    if (name.isEmpty || identifier.isEmpty || version.isEmpty) {
+      continue;
+    }
+    output.add(
+      SearchPackage(
+        name: name,
+        managerId: manager.id,
+        managerName: manager.displayName,
+        identifier: identifier,
+        version: version,
+        source: source.isEmpty ? null : source,
+        installOptions: <SearchPackageInstallOption>[
+          SearchPackageInstallOption(
+            managerId: manager.id,
+            managerName: manager.displayName,
+            packageName: name,
+            identifier: identifier,
+            version: version,
+            source: source.isEmpty ? null : source,
+          ),
+        ],
+      ),
+    );
+  }
+  return output;
+}
+
+String? _nullableSearchValue(Object? value) {
+  final text = '${value ?? ''}'.trim();
+  return text.isEmpty ? null : text;
+}
+
+int _firstIndexOfAny(String text, List<String> needles) {
+  for (final needle in needles) {
+    final index = text.indexOf(needle);
+    if (index >= 0) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 String _extractUvToolDetails(

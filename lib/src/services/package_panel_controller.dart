@@ -83,14 +83,18 @@ class PackagePanelController extends ChangeNotifier {
   final Map<String, String> _customManagerIconPaths;
   final Map<String, String> _customManagerDisplayNames;
   final Map<String, String> _packageIconPaths = <String, String>{};
+  final List<SearchPackage> _searchResults = <SearchPackage>[];
+  int _searchRequestId = 0;
 
   String _searchQuery = '';
+  String _installSearchQuery = '';
   String? _customFontFamily;
   final List<String> _customFallbackFontFamilies;
   String? _selectedManagerId;
   ManagedPackage? _selectedPackage;
   String? _selectionAnchorKey;
   bool _isRefreshingAll = false;
+  bool _isSearchingPackages = false;
   bool _hasCachedSnapshots;
   bool _hasTriggeredInitialRefresh = false;
   bool _hasInitializedManagerVisibility;
@@ -106,7 +110,12 @@ class PackagePanelController extends ChangeNotifier {
   List<ActivityEntry> get activity =>
       List<ActivityEntry>.unmodifiable(_activity);
 
+  List<SearchPackage> get searchResults =>
+      List<SearchPackage>.unmodifiable(_searchResults);
+
   String get searchQuery => _searchQuery;
+
+  String get installSearchQuery => _installSearchQuery;
 
   String? get selectedManagerId => _selectedManagerId;
 
@@ -115,6 +124,8 @@ class PackagePanelController extends ChangeNotifier {
   int get selectedPackageCount => _selectedPackageKeys.length;
 
   bool get isRefreshingAll => _isRefreshingAll;
+
+  bool get isSearchingPackages => _isSearchingPackages;
 
   ThemeMode get themeMode => _themeMode;
 
@@ -240,6 +251,14 @@ class PackagePanelController extends ChangeNotifier {
     return _runningCommands.contains(_packageDetailsBusyKey(package));
   }
 
+  bool isInstallingPackage(SearchPackage package) {
+    return package.installOptions.any(isInstallingSearchOption);
+  }
+
+  bool isInstallingSearchOption(SearchPackageInstallOption option) {
+    return _runningCommands.contains(_installBusyKey(option));
+  }
+
   bool isPackageSelected(ManagedPackage package) {
     return _selectedPackageKeys.contains(package.key);
   }
@@ -321,6 +340,99 @@ class PackagePanelController extends ChangeNotifier {
       _customFallbackFontFamilies,
     );
     notifyListeners();
+  }
+
+  List<PackageManagerAdapter> get searchableAdapters => _adapters
+      .where(
+        (adapter) =>
+            adapter.supportsSearch() &&
+            isManagerAvailable(adapter.definition.id),
+      )
+      .toList(growable: false);
+
+  Future<void> searchPackages({
+    String? managerId,
+    required String query,
+  }) async {
+    final trimmed = query.trim();
+    final requestId = ++_searchRequestId;
+    _installSearchQuery = query;
+    if (trimmed.isEmpty) {
+      _searchResults.clear();
+      _isSearchingPackages = false;
+      notifyListeners();
+      return;
+    }
+
+    final adapters = managerId == null
+        ? searchableAdapters
+        : _adapters
+              .where(
+                (adapter) =>
+                    adapter.definition.id == managerId &&
+                    adapter.supportsSearch(),
+              )
+              .toList(growable: false);
+
+    _isSearchingPackages = true;
+    _searchResults.clear();
+    notifyListeners();
+
+    if (adapters.isEmpty) {
+      _isSearchingPackages = false;
+      notifyListeners();
+      return;
+    }
+
+    final partialResults = <String, List<SearchPackage>>{};
+    var remaining = adapters.length;
+
+    void publish() {
+      if (requestId != _searchRequestId) {
+        return;
+      }
+      final flattened = <SearchPackage>[];
+      for (final adapter in adapters) {
+        flattened.addAll(
+          partialResults[adapter.definition.id] ?? const <SearchPackage>[],
+        );
+      }
+      final merged = managerId == null
+          ? _mergeSearchResults(flattened)
+          : flattened.map(_markInstalledSearchPackage).toList(growable: false);
+      _searchResults
+        ..clear()
+        ..addAll(merged);
+      _isSearchingPackages = remaining > 0;
+      notifyListeners();
+    }
+
+    for (final adapter in adapters) {
+      unawaited(() async {
+        List<SearchPackage> items;
+        try {
+          items = await adapter.searchPackages(_shell, trimmed);
+        } catch (_) {
+          items = const <SearchPackage>[];
+        }
+        if (requestId != _searchRequestId) {
+          return;
+        }
+        partialResults[adapter.definition.id] = items;
+        remaining -= 1;
+        publish();
+      }());
+    }
+  }
+
+  PackageCommand? installCommandFor(SearchPackageInstallOption option) {
+    final adapter = _adapterFor(option.managerId);
+    if (adapter == null) {
+      return null;
+    }
+    return adapter
+        .buildInstallCommand(option)
+        .copyWith(busyKey: _installBusyKey(option));
   }
 
   Future<void> reorderManager(int oldIndex, int newIndex) async {
@@ -1075,6 +1187,11 @@ class PackagePanelController extends ChangeNotifier {
     return 'package-details::${package.key}';
   }
 
+  String _installBusyKey(SearchPackageInstallOption package) {
+    final identifier = package.identifier?.trim() ?? '';
+    return 'install-package::${package.managerId}::${package.packageName}::$identifier';
+  }
+
   String _batchLatestBusyKey(String managerId) {
     return 'batch-latest::$managerId';
   }
@@ -1099,6 +1216,115 @@ class PackagePanelController extends ChangeNotifier {
           );
         })
         .toList(growable: false);
+  }
+
+  List<SearchPackage> _mergeSearchResults(List<SearchPackage> packages) {
+    final merged = <String, SearchPackage>{};
+    final ordered = <SearchPackage>[];
+
+    for (final package in packages) {
+      final marked = _markInstalledSearchPackage(package);
+      final key = _searchMergeKey(marked);
+      if (key == null) {
+        ordered.add(marked);
+        continue;
+      }
+
+      final existing = merged[key];
+      if (existing == null) {
+        merged[key] = marked;
+        ordered.add(marked);
+        continue;
+      }
+
+      final combinedOptions = <SearchPackageInstallOption>[
+        ...existing.installOptions,
+      ];
+      for (final option in marked.installOptions) {
+        final exists = combinedOptions.any(
+          (item) => item.managerId == option.managerId,
+        );
+        if (!exists) {
+          combinedOptions.add(option);
+        }
+      }
+
+      final updated = existing.copyWith(
+        version: existing.version ?? marked.version,
+        description: existing.description ?? marked.description,
+        source: existing.source ?? marked.source,
+        installOptions: combinedOptions,
+      );
+      merged[key] = updated;
+      final orderedIndex = ordered.indexOf(existing);
+      if (orderedIndex >= 0) {
+        ordered[orderedIndex] = updated;
+      }
+    }
+
+    return ordered;
+  }
+
+  SearchPackage _markInstalledSearchPackage(SearchPackage package) {
+    final options = package.installOptions.isEmpty
+        ? <SearchPackageInstallOption>[
+            SearchPackageInstallOption(
+              managerId: package.managerId,
+              managerName: package.managerName,
+              packageName: package.name,
+              identifier: package.identifier,
+              version: package.version,
+              source: package.source,
+            ),
+          ]
+        : package.installOptions;
+
+    return package.copyWith(
+      installOptions: options
+          .map(
+            (option) =>
+                option.copyWith(isInstalled: _isSearchOptionInstalled(option)),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  bool _isSearchOptionInstalled(SearchPackageInstallOption option) {
+    for (final snapshot in _snapshots) {
+      if (snapshot.manager.id != option.managerId) {
+        continue;
+      }
+      for (final package in snapshot.packages) {
+        if (_matchesInstalledSearchOption(package, option)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _matchesInstalledSearchOption(
+    ManagedPackage installed,
+    SearchPackageInstallOption option,
+  ) {
+    final installedIdentifier = installed.identifier?.trim().toLowerCase();
+    final optionIdentifier = option.identifier?.trim().toLowerCase();
+    if (installedIdentifier != null &&
+        installedIdentifier.isNotEmpty &&
+        optionIdentifier != null &&
+        optionIdentifier.isNotEmpty) {
+      return installedIdentifier == optionIdentifier;
+    }
+    return installed.name.trim().toLowerCase() ==
+        option.packageName.trim().toLowerCase();
+  }
+
+  String? _searchMergeKey(SearchPackage package) {
+    final identifier = package.identifier?.trim().toLowerCase();
+    if (identifier == null || identifier.isEmpty) {
+      return null;
+    }
+    return identifier;
   }
 
   int _indexOfPackage(List<ManagedPackage> packages, String key) {
