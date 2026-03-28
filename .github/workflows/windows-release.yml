@@ -13,6 +13,15 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: Derive release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -28,11 +37,14 @@ jobs:
       - name: Build Windows release
         run: flutter build windows --release
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
       - name: Package Windows release
         id: package
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
+          $tag = "${{ steps.meta.outputs.tag }}"
           $archiveDir = "build\release"
           $archivePath = Join-Path $archiveDir "pkg_panel-windows-$tag.zip"
 
@@ -45,11 +57,33 @@ jobs:
 
           "archive_path=$archivePath" >> $env:GITHUB_OUTPUT
 
+      - name: Build Windows installer
+        id: installer
+        shell: pwsh
+        run: |
+          $outputDir = "build\installer"
+          $sourceDir = (Resolve-Path "build\windows\x64\runner\Release").Path
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DMyAppVersion=${{ steps.meta.outputs.version }}" `
+            "/DMyAppSourceDir=$sourceDir" `
+            "/DMyAppOutputDir=$outputDir" `
+            "windows\installer.iss"
+
+          $installer = Get-ChildItem $outputDir -Filter "*.exe" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          "installer_path=$installer" >> $env:GITHUB_OUTPUT
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          name: Pkg Panel ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          name: Pkg Panel ${{ steps.meta.outputs.tag }}
+          tag_name: ${{ steps.meta.outputs.tag }}
           body_path: docs/CHANGELOG.md
-          files: ${{ steps.package.outputs.archive_path }}
+          files: |
+            ${{ steps.package.outputs.archive_path }}
+            ${{ steps.installer.outputs.installer_path }}
           fail_on_unmatched_files: true
