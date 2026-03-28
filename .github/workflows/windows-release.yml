@@ -3,7 +3,7 @@ name: Windows Release
 on:
   push:
     tags:
-      - '*'
+      - "*"
 
 permissions:
   contents: write
@@ -83,7 +83,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2.5.0
         with:
-          name: Pkg Panel ${{ steps.meta.outputs.tag }}
+          name: Release ${{ steps.meta.outputs.tag }}
           tag_name: ${{ steps.meta.outputs.tag }}
           body_path: docs/CHANGELOG.md
           files: |
