@@ -4,14 +4,23 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'models/package_models.dart';
 import 'services/package_panel_controller.dart';
+import 'services/external_link_opener.dart';
 import 'widgets/local_icon_image.dart';
 
 void runPkgPanel(PackagePanelController controller) {
   runApp(PkgPanelApp(controller: controller));
 }
+
+const String _appDisplayName = 'Pkg Panel';
+const String _appTagline = '一个管理各种包管理器的面板。';
+const String _appAuthor = 'caolib';
+const String _appAuthorUrl = 'https://github.com/caolib';
+const String _appRepositoryUrl = 'https://github.com/caolib/pkg-panel';
 
 class PkgPanelApp extends StatefulWidget {
   const PkgPanelApp({
@@ -2425,13 +2434,14 @@ class PackageSettingsPage extends StatelessWidget {
     final theme = Theme.of(context);
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         children: <Widget>[
           const TabBar(
             tabs: <Widget>[
               Tab(text: '包管理器'),
               Tab(text: '外观'),
+              Tab(text: '关于'),
             ],
           ),
           const SizedBox(height: 16),
@@ -2740,165 +2750,171 @@ class PackageSettingsPage extends StatelessWidget {
                         ),
                       ],
                     ),
-                    ListView(
+                    SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                      children: <Widget>[
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  '主题模式',
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
+                      child: Column(
+                        children: <Widget>[
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    '主题模式',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w700),
                                   ),
-                                ),
-                                const SizedBox(height: 12),
-                                SegmentedButton<ThemeMode>(
-                                  segments: const <ButtonSegment<ThemeMode>>[
-                                    ButtonSegment<ThemeMode>(
-                                      value: ThemeMode.system,
-                                      label: Text('系统'),
-                                      icon: Icon(
-                                        Icons.brightness_auto_outlined,
+                                  const SizedBox(height: 12),
+                                  SegmentedButton<ThemeMode>(
+                                    segments: const <ButtonSegment<ThemeMode>>[
+                                      ButtonSegment<ThemeMode>(
+                                        value: ThemeMode.system,
+                                        label: Text('系统'),
+                                        icon: Icon(
+                                          Icons.brightness_auto_outlined,
+                                        ),
                                       ),
-                                    ),
-                                    ButtonSegment<ThemeMode>(
-                                      value: ThemeMode.light,
-                                      label: Text('浅色'),
-                                      icon: Icon(Icons.light_mode_outlined),
-                                    ),
-                                    ButtonSegment<ThemeMode>(
-                                      value: ThemeMode.dark,
-                                      label: Text('深色'),
-                                      icon: Icon(Icons.dark_mode_outlined),
-                                    ),
-                                  ],
-                                  selected: <ThemeMode>{controller.themeMode},
-                                  onSelectionChanged: (values) {
-                                    controller.setThemeMode(values.first);
-                                  },
-                                ),
-                              ],
+                                      ButtonSegment<ThemeMode>(
+                                        value: ThemeMode.light,
+                                        label: Text('浅色'),
+                                        icon: Icon(Icons.light_mode_outlined),
+                                      ),
+                                      ButtonSegment<ThemeMode>(
+                                        value: ThemeMode.dark,
+                                        label: Text('深色'),
+                                        icon: Icon(Icons.dark_mode_outlined),
+                                      ),
+                                    ],
+                                    selected: <ThemeMode>{controller.themeMode},
+                                    onSelectionChanged: (values) {
+                                      controller.setThemeMode(values.first);
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Row(
-                                  children: <Widget>[
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          Text(
-                                            '字体',
-                                            style: theme.textTheme.titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            controller.customFontFamily ??
-                                                'Cascadia Code',
-                                            style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
-                                          ),
-                                        ],
+                          const SizedBox(height: 16),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Row(
+                                    children: <Widget>[
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Text(
+                                              '字体',
+                                              style: theme.textTheme.titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              controller.customFontFamily ??
+                                                  'Cascadia Code',
+                                              style: theme.textTheme.bodyMedium
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      FilledButton.tonal(
+                                        onPressed: () =>
+                                            _editFontFamily(context),
+                                        child: const Text('设置字体'),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: theme
+                                          .colorScheme
+                                          .surfaceContainerLowest,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: theme.colorScheme.outlineVariant,
                                       ),
                                     ),
-                                    FilledButton.tonal(
-                                      onPressed: () => _editFontFamily(context),
-                                      child: const Text('设置字体'),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: theme
-                                        .colorScheme
-                                        .surfaceContainerLowest,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color: theme.colorScheme.outlineVariant,
+                                    child: const Text(
+                                      '字体预览：The quick brown fox jumps over the lazy dog. 敏捷的棕狐跳过了懒狗。',
                                     ),
                                   ),
-                                  child: const Text(
-                                    '字体预览：The quick brown fox jumps over the lazy dog. 敏捷的棕狐跳过了懒狗。',
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Row(
-                                  children: <Widget>[
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: <Widget>[
-                                          Text(
-                                            'Fallback 字体',
-                                            style: theme.textTheme.titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            controller
-                                                    .customFallbackFontFamilies
-                                                    .isEmpty
-                                                ? '使用默认 fallback 字体栈'
-                                                : controller
+                          const SizedBox(height: 16),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Row(
+                                    children: <Widget>[
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Text(
+                                              'Fallback 字体',
+                                              style: theme.textTheme.titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              controller
                                                       .customFallbackFontFamilies
-                                                      .join(', '),
-                                            style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                                ),
-                                          ),
-                                        ],
+                                                      .isEmpty
+                                                  ? '使用默认 fallback 字体栈'
+                                                  : controller
+                                                        .customFallbackFontFamilies
+                                                        .join(', '),
+                                              style: theme.textTheme.bodyMedium
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    FilledButton.tonal(
-                                      onPressed: () =>
-                                          _editFallbackFontFamilies(context),
-                                      child: const Text('设置 fallback'),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                      FilledButton.tonal(
+                                        onPressed: () =>
+                                            _editFallbackFontFamilies(context),
+                                        child: const Text('设置 fallback'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                    SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                      child: _AboutAppCard(theme: theme),
                     ),
                   ],
                 );
@@ -2909,6 +2925,149 @@ class PackageSettingsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AboutAppCard extends StatelessWidget {
+  const _AboutAppCard({required this.theme});
+
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              '关于',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: SvgPicture.asset(
+                'assets/branding/logo.svg',
+                width: 120,
+                height: 120,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: Text(
+                _appDisplayName,
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: Text(
+                _appTagline,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const _AboutMetaRow(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AboutMetaRow extends StatelessWidget {
+  const _AboutMetaRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final packageInfo = snapshot.data;
+        final versionLabel = packageInfo == null
+            ? '读取中...'
+            : packageInfo.buildNumber.trim().isEmpty
+            ? packageInfo.version
+            : '${packageInfo.version}+${packageInfo.buildNumber}';
+        final theme = Theme.of(context);
+        return Center(
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 12,
+            children: <Widget>[
+              Chip(
+                avatar: const Icon(Icons.sell_outlined, size: 18),
+                label: Text(versionLabel),
+                labelStyle: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+                side: BorderSide(color: theme.colorScheme.outlineVariant),
+                backgroundColor: theme.colorScheme.surfaceContainerLow,
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _openExternalLink(context, _appAuthorUrl),
+                icon: const Icon(Icons.person_outline),
+                label: const Text(_appAuthor),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: () => _openExternalLink(context, _appRepositoryUrl),
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('GitHub 仓库'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+Future<void> _openExternalLink(BuildContext context, String url) async {
+  final uri = Uri.parse(url);
+  try {
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (launched || !context.mounted) {
+      return;
+    }
+  } catch (_) {
+    final openedWithSystem = await openExternalLinkWithSystem(url);
+    if (openedWithSystem || !context.mounted) {
+      return;
+    }
+  }
+  ScaffoldMessenger.of(context)
+    ..clearSnackBars()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text('无法打开链接：$url'),
+      ),
+    );
 }
 
 class PackageInstallPage extends StatefulWidget {
