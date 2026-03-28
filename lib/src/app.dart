@@ -710,12 +710,19 @@ class _PackageListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final versionInstallOption = _installOptionFromManagedPackage(package);
     final updateCommand = controller.commandFor(PackageAction.update, package);
     final removeCommand = controller.commandFor(PackageAction.remove, package);
     final canViewDetails = controller.canViewPackageDetails(package);
     final canCheckLatest = controller.canCheckLatestVersion(package);
+    final canInstallSpecificVersion = controller.canInstallSpecificVersion(
+      versionInstallOption,
+    );
     final isLoadingDetails = controller.isLoadingPackageDetails(package);
     final isCheckingLatest = controller.isCheckingLatestVersion(package);
+    final isInstallingSpecificVersion = controller.isInstallingSearchOption(
+      versionInstallOption,
+    );
     final isUpdating =
         updateCommand != null && controller.isBusy(updateCommand.busyKey);
     final isRemoving =
@@ -869,6 +876,9 @@ class _PackageListTile extends StatelessWidget {
             isCheckingLatest: isCheckingLatest,
             isUpdating: isUpdating,
             isRemoving: isRemoving,
+            canInstallSpecificVersion: canInstallSpecificVersion,
+            isInstallingSpecificVersion: isInstallingSpecificVersion,
+            versionInstallOption: versionInstallOption,
             updateCommand: updateCommand,
             removeCommand: removeCommand,
           ),
@@ -887,6 +897,9 @@ class _PackageListTile extends StatelessWidget {
     required bool isLoadingDetails,
     required bool isUpdating,
     required bool isRemoving,
+    required bool canInstallSpecificVersion,
+    required bool isInstallingSpecificVersion,
+    required SearchPackageInstallOption versionInstallOption,
     required PackageCommand? updateCommand,
     required PackageCommand? removeCommand,
   }) async {
@@ -930,6 +943,18 @@ class _PackageListTile extends StatelessWidget {
           label: package.hasUpdate ? '升级' : '更新',
           enabled: !isUpdating,
           onPressed: () => onRunAction(updateCommand),
+        ),
+      if (canInstallSpecificVersion)
+        _ContextMenuActionItem(
+          icon: Icons.pin_outlined,
+          label: '安装特定版本',
+          enabled: !isInstallingSpecificVersion,
+          onPressed: () => _showSpecificVersionInstallDialog(
+            context: context,
+            controller: controller,
+            option: versionInstallOption,
+            onInstall: onRunAction,
+          ),
         ),
       if (removeCommand != null)
         _ContextMenuActionItem(
@@ -1397,6 +1422,599 @@ class _CommandOutputDialog extends StatelessWidget {
       ],
     );
   }
+}
+
+const int _maxVisibleInstallVersions = 200;
+
+Future<void> _showInstallOptionsDialog({
+  required BuildContext context,
+  required PackagePanelController controller,
+  required SearchPackageInstallOption option,
+  bool startWithVersionSearch = false,
+  required Future<void> Function(PackageCommand command) onInstall,
+}) async {
+  final command = await showDialog<PackageCommand>(
+    context: context,
+    builder: (context) => _InstallOptionsDialog(
+      controller: controller,
+      option: option,
+      startWithVersionSearch: startWithVersionSearch,
+    ),
+  );
+  if (command == null || !context.mounted) {
+    return;
+  }
+  await onInstall(command);
+}
+
+Future<void> _showSpecificVersionInstallDialog({
+  required BuildContext context,
+  required PackagePanelController controller,
+  required SearchPackageInstallOption option,
+  required Future<void> Function(PackageCommand command) onInstall,
+}) async {
+  final version = await showDialog<String>(
+    context: context,
+    builder: (context) =>
+        _InstallSpecificVersionDialog(controller: controller, option: option),
+  );
+  if (version == null || !context.mounted) {
+    return;
+  }
+
+  final command = controller.installCommandForVersion(option, version);
+  if (command == null) {
+    return;
+  }
+  await onInstall(command);
+}
+
+class _InstallOptionsDialog extends StatefulWidget {
+  const _InstallOptionsDialog({
+    required this.controller,
+    required this.option,
+    this.startWithVersionSearch = false,
+  });
+
+  final PackagePanelController controller;
+  final SearchPackageInstallOption option;
+  final bool startWithVersionSearch;
+
+  @override
+  State<_InstallOptionsDialog> createState() => _InstallOptionsDialogState();
+}
+
+class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
+  late final TextEditingController _versionController;
+  late bool _installLatest;
+  Future<PackageVersionQueryResult>? _versionsFuture;
+  bool _showVersionSearch = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _versionController = TextEditingController();
+    final canInstallLatest = widget.controller.canInstallLatestTag(
+      widget.option,
+    );
+    _showVersionSearch =
+        widget.startWithVersionSearch &&
+        widget.controller.canInstallSpecificVersion(widget.option);
+    _installLatest = canInstallLatest && !_showVersionSearch;
+    if (_showVersionSearch) {
+      _versionsFuture = widget.controller.loadInstallableVersions(
+        widget.option,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _versionController.dispose();
+    super.dispose();
+  }
+
+  void _startVersionSearch() {
+    if (_showVersionSearch) {
+      return;
+    }
+    setState(() {
+      _showVersionSearch = true;
+      _installLatest = false;
+      _versionsFuture ??= widget.controller.loadInstallableVersions(
+        widget.option,
+      );
+    });
+  }
+
+  void _selectVersion(String version) {
+    _versionController
+      ..text = version
+      ..selection = TextSelection.collapsed(offset: version.length);
+    setState(() {
+      _installLatest = false;
+    });
+  }
+
+  PackageCommand? _currentCommand() {
+    final typedVersion = _versionController.text.trim();
+    if (typedVersion.isNotEmpty) {
+      return widget.controller.installCommandForVersion(
+        widget.option,
+        typedVersion,
+      );
+    }
+    if (_installLatest) {
+      return widget.controller.installCommandForLatest(widget.option);
+    }
+    if (_showVersionSearch) {
+      return null;
+    }
+    return widget.controller.installCommandFor(widget.option);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final viewportHeight = MediaQuery.sizeOf(context).height;
+    final contentMaxHeight = _showVersionSearch
+        ? (viewportHeight - 210).clamp(320.0, 560.0)
+        : (viewportHeight - 260).clamp(260.0, 360.0);
+    final managerName = widget.controller.displayNameForManagerId(
+      widget.option.managerId,
+    );
+    final canInstallLatest = widget.controller.canInstallLatestTag(
+      widget.option,
+    );
+    final canInstallSpecificVersion = widget.controller
+        .canInstallSpecificVersion(widget.option);
+    final typedVersion = _versionController.text.trim();
+    final command = _currentCommand();
+
+    return AlertDialog(
+      title: Text('使用 $managerName 安装'),
+      content: SizedBox(
+        width: 560,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: contentMaxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Flexible(
+                fit: FlexFit.loose,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        widget.option.packageName,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        typedVersion.isNotEmpty
+                            ? '当前将安装版本 $typedVersion。'
+                            : _installLatest
+                            ? '当前将显式安装 @latest。'
+                            : '当前将执行默认安装命令。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (command != null) ...<Widget>[
+                        const SizedBox(height: 12),
+                        Text('将要执行的命令', style: theme.textTheme.labelLarge),
+                        const SizedBox(height: 8),
+                        _CommandPreview(command: command.command),
+                      ],
+                      if (canInstallLatest) ...<Widget>[
+                        const SizedBox(height: 12),
+                        CheckboxListTile(
+                          value: _installLatest,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: const Text('安装最新'),
+                          subtitle: const Text('使用 @latest 形式安装'),
+                          onChanged: (value) {
+                            setState(() {
+                              _installLatest = value ?? false;
+                              if (_installLatest) {
+                                _showVersionSearch = false;
+                                _versionController.clear();
+                              }
+                            });
+                          },
+                        ),
+                      ],
+                      if (canInstallSpecificVersion) ...<Widget>[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed: _startVersionSearch,
+                            icon: const Icon(Icons.manage_search_outlined),
+                            label: const Text('安装特定版本'),
+                          ),
+                        ),
+                      ],
+                      if (_showVersionSearch) ...<Widget>[
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _versionController,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            hintText: '输入版本号快速筛选，例如 1.2.3',
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              if (_showVersionSearch) ...<Widget>[
+                const SizedBox(height: 12),
+                Flexible(
+                  child: FutureBuilder<PackageVersionQueryResult>(
+                    future: _versionsFuture,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        );
+                      }
+                      if (snapshot.hasError) {
+                        return _buildInstallVersionStatus(
+                          context,
+                          message: '读取版本列表失败：${snapshot.error}',
+                        );
+                      }
+
+                      final result =
+                          snapshot.data ?? const PackageVersionQueryResult();
+                      final visibleVersions = _computeVisibleVersions(
+                        versions: result.versions,
+                        filter: _versionController.text.trim(),
+                      );
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          if (result.note != null &&
+                              result.note!.trim().isNotEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLow,
+                                border: Border.all(
+                                  color: theme.colorScheme.outlineVariant,
+                                ),
+                              ),
+                              child: Text(
+                                result.note!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          if (result.note != null &&
+                              result.note!.trim().isNotEmpty)
+                            const SizedBox(height: 12),
+                          Text(
+                            result.versions.isEmpty
+                                ? '当前命令没有返回可用版本列表。'
+                                : visibleVersions.isTruncated
+                                ? _versionController.text.trim().isEmpty
+                                      ? '共 ${visibleVersions.matchedCount} 个可选版本，仅显示最新 $_maxVisibleInstallVersions 个，请输入版本号缩小范围。'
+                                      : '匹配 ${visibleVersions.matchedCount} 个版本，仅显示前 $_maxVisibleInstallVersions 个，请继续输入缩小范围。'
+                                : '共 ${visibleVersions.matchedCount} 个可选版本',
+                            style: theme.textTheme.labelLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: visibleVersions.items.isEmpty
+                                ? _buildInstallVersionStatus(
+                                    context,
+                                    message:
+                                        _versionController.text.trim().isEmpty
+                                        ? '没有可显示的版本。'
+                                        : '没有匹配的版本，确定时会直接使用输入框里的版本号。',
+                                  )
+                                : ListView.separated(
+                                    itemCount: visibleVersions.items.length,
+                                    separatorBuilder: (_, _) =>
+                                        const Divider(height: 1),
+                                    itemBuilder: (context, index) {
+                                      final version =
+                                          visibleVersions.items[index];
+                                      return ListTile(
+                                        dense: true,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                            ),
+                                        title: Text(version),
+                                        selected:
+                                            version ==
+                                            _versionController.text.trim(),
+                                        trailing: const Icon(
+                                          Icons.download_outlined,
+                                          size: 18,
+                                        ),
+                                        onTap: () => _selectVersion(version),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: command == null
+              ? null
+              : () => Navigator.of(context).pop(command),
+          child: const Text('确定'),
+        ),
+      ],
+    );
+  }
+}
+
+class _InstallSpecificVersionDialog extends StatefulWidget {
+  const _InstallSpecificVersionDialog({
+    required this.controller,
+    required this.option,
+  });
+
+  final PackagePanelController controller;
+  final SearchPackageInstallOption option;
+
+  @override
+  State<_InstallSpecificVersionDialog> createState() =>
+      _InstallSpecificVersionDialogState();
+}
+
+class _InstallSpecificVersionDialogState
+    extends State<_InstallSpecificVersionDialog> {
+  late final TextEditingController _filterController;
+  late final Future<PackageVersionQueryResult> _versionsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _filterController = TextEditingController();
+    _versionsFuture = widget.controller.loadInstallableVersions(widget.option);
+  }
+
+  @override
+  void dispose() {
+    _filterController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final filter = _filterController.text.trim();
+    final managerName = widget.controller.displayNameForManagerId(
+      widget.option.managerId,
+    );
+    return AlertDialog(
+      title: const Text('安装特定版本'),
+      content: SizedBox(
+        width: 560,
+        height: 460,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              '$managerName · ${widget.option.packageName}',
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '选择一个可用版本，或直接输入版本号执行安装。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _filterController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '输入版本号快速筛选，例如 1.2.3',
+              ),
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (value) {
+                final normalized = value.trim();
+                if (normalized.isEmpty) {
+                  return;
+                }
+                Navigator.of(context).pop(normalized);
+              },
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: FutureBuilder<PackageVersionQueryResult>(
+                future: _versionsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return _buildInstallVersionStatus(
+                      context,
+                      message: '读取版本列表失败：${snapshot.error}',
+                    );
+                  }
+
+                  final result =
+                      snapshot.data ?? const PackageVersionQueryResult();
+                  final visibleVersions = _computeVisibleVersions(
+                    versions: result.versions,
+                    filter: filter,
+                  );
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      if (result.note != null && result.note!.trim().isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerLow,
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Text(
+                            result.note!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      if (result.note != null && result.note!.trim().isNotEmpty)
+                        const SizedBox(height: 12),
+                      Text(
+                        result.versions.isEmpty
+                            ? '当前命令没有返回可用版本列表。'
+                            : visibleVersions.isTruncated
+                            ? filter.isEmpty
+                                  ? '共 ${visibleVersions.matchedCount} 个可选版本，仅显示最新 $_maxVisibleInstallVersions 个，请输入版本号缩小范围。'
+                                  : '匹配 ${visibleVersions.matchedCount} 个版本，仅显示前 $_maxVisibleInstallVersions 个，请继续输入缩小范围。'
+                            : '共 ${visibleVersions.matchedCount} 个可选版本',
+                        style: theme.textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: visibleVersions.items.isEmpty
+                            ? _buildInstallVersionStatus(
+                                context,
+                                message: filter.isEmpty
+                                    ? '没有可显示的版本。'
+                                    : '没有匹配的版本，可以直接使用下方按钮安装输入值。',
+                              )
+                            : ListView.separated(
+                                itemCount: visibleVersions.items.length,
+                                separatorBuilder: (_, _) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final version = visibleVersions.items[index];
+                                  return ListTile(
+                                    dense: true,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                    ),
+                                    title: Text(version),
+                                    trailing: const Icon(
+                                      Icons.download_outlined,
+                                      size: 18,
+                                    ),
+                                    onTap: () =>
+                                        Navigator.of(context).pop(version),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: filter.isEmpty
+              ? null
+              : () => Navigator.of(context).pop(filter),
+          child: const Text('安装输入版本'),
+        ),
+      ],
+    );
+  }
+}
+
+Widget _buildInstallVersionStatus(
+  BuildContext context, {
+  required String message,
+}) {
+  final theme = Theme.of(context);
+  return Container(
+    width: double.infinity,
+    alignment: Alignment.center,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.surfaceContainerLowest,
+      border: Border.all(color: theme.colorScheme.outlineVariant),
+    ),
+    child: Text(
+      message,
+      textAlign: TextAlign.center,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+}
+
+_VisibleVersions _computeVisibleVersions({
+  required List<String> versions,
+  required String filter,
+}) {
+  final normalizedFilter = filter.trim().toLowerCase();
+  final items = <String>[];
+  var matchedCount = 0;
+
+  for (final version in versions) {
+    if (normalizedFilter.isNotEmpty &&
+        !version.toLowerCase().contains(normalizedFilter)) {
+      continue;
+    }
+    matchedCount += 1;
+    if (items.length < _maxVisibleInstallVersions) {
+      items.add(version);
+    }
+  }
+
+  return _VisibleVersions(items: items, matchedCount: matchedCount);
+}
+
+class _VisibleVersions {
+  const _VisibleVersions({required this.items, required this.matchedCount});
+
+  final List<String> items;
+  final int matchedCount;
+
+  bool get isTruncated => matchedCount > items.length;
 }
 
 class _CommandPreview extends StatelessWidget {
@@ -2328,17 +2946,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
     );
   }
 
-  Future<void> _confirmAndRunCommand(PackageCommand command) async {
-    final shouldRun =
-        await showDialog<bool>(
-          context: context,
-          builder: (context) => _CommandDialog(command: command),
-        ) ??
-        false;
-    if (!shouldRun || !mounted) {
-      return;
-    }
-
+  Future<void> _runCommandWithFeedback(PackageCommand command) async {
     setState(() {
       _runningCommandLabels[command.busyKey] = command.label;
     });
@@ -2511,7 +3119,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                                             package: results[index],
                                             controller: widget.controller,
                                             compact: compact,
-                                            onInstall: _confirmAndRunCommand,
+                                            onInstall: _runCommandWithFeedback,
                                           );
                                         },
                                       ),
@@ -2766,7 +3374,14 @@ class _SearchPackageListTile extends StatelessWidget {
         .map((option) {
           final label = controller.displayNameForManagerId(option.managerId);
           final isInstalling = controller.isInstallingSearchOption(option);
-          final command = controller.installCommandFor(option);
+          final canInstallSpecificVersion = controller
+              .canInstallSpecificVersion(option);
+          final canInstall = controller.installCommandFor(option) != null;
+          final canOpenInstalledAction =
+              option.isInstalled && canInstallSpecificVersion;
+          final enabled =
+              !isInstalling &&
+              ((!option.isInstalled && canInstall) || canOpenInstalledAction);
           return _ContextMenuActionItem(
             leading: _ManagerIcon(
               managerId: option.managerId,
@@ -2777,12 +3392,22 @@ class _SearchPackageListTile extends StatelessWidget {
               fallbackColor: _managerAccent(option.managerId),
             ),
             label: option.isInstalled
-                ? '$label 已安装'
+                ? canInstallSpecificVersion
+                      ? '使用 $label 安装特定版本'
+                      : '$label 已安装'
                 : isInstalling
                 ? '$label 安装中'
                 : '使用 $label 安装',
-            enabled: !option.isInstalled && !isInstalling && command != null,
-            onPressed: command == null ? null : () => onInstall(command),
+            enabled: enabled,
+            onPressed: !enabled
+                ? null
+                : () => _showInstallOptionsDialog(
+                    context: context,
+                    controller: controller,
+                    option: option,
+                    startWithVersionSearch: canOpenInstalledAction,
+                    onInstall: onInstall,
+                  ),
           );
         })
         .toList(growable: false);
@@ -2793,6 +3418,20 @@ class _SearchPackageListTile extends StatelessWidget {
       items: items,
     );
   }
+}
+
+SearchPackageInstallOption _installOptionFromManagedPackage(
+  ManagedPackage package,
+) {
+  return SearchPackageInstallOption(
+    managerId: package.managerId,
+    managerName: package.managerName,
+    packageName: package.name,
+    identifier: package.identifier,
+    version: package.version,
+    source: package.source,
+    isInstalled: true,
+  );
 }
 
 String _compactSummaryLine(ManagedPackage package) {

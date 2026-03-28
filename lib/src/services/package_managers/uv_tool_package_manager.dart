@@ -11,6 +11,7 @@ class UvToolAdapter extends PackageManagerAdapter
     with
         InstalledPackageCapability,
         PackageInstallCapability,
+        VersionedPackageInstallCapability,
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
@@ -89,10 +90,45 @@ class UvToolAdapter extends PackageManagerAdapter
 
   @override
   PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
-      command: 'uv tool install ${psQuote(package.packageName)}',
+      command: 'uv tool install ${psQuote(target)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  ) async {
+    final target = package.identifier ?? package.packageName;
+    final result = await shell.run(
+      'pip index versions ${psQuote(target)} --disable-pip-version-check --no-color',
+      timeout: const Duration(seconds: 45),
+    );
+    return PackageVersionQueryResult(
+      versions: parsePipVersionList(
+        result,
+        managerName: definition.displayName,
+      ),
+    );
+  }
+
+  @override
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  ) {
+    final target = package.identifier ?? package.packageName;
+    final normalizedVersion = version.trim();
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}==$normalizedVersion',
+      command:
+          'uv tool install ${psQuote('$target==$normalizedVersion')} --reinstall',
       timeout: const Duration(minutes: 10),
     );
   }

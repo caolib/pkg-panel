@@ -12,6 +12,7 @@ class ChocolateyAdapter extends PackageManagerAdapter
         InstalledPackageCapability,
         PackageSearchCapability,
         PackageInstallCapability,
+        VersionedPackageInstallCapability,
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability {
@@ -87,10 +88,49 @@ class ChocolateyAdapter extends PackageManagerAdapter
 
   @override
   PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
-      command: 'choco install ${psQuote(package.packageName)} -y',
+      command: 'choco install ${psQuote(target)} -y',
+      timeout: const Duration(minutes: 12),
+    );
+  }
+
+  @override
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  ) async {
+    final target = package.identifier ?? package.packageName;
+    final result = await shell.run(
+      'choco search ${psQuote(target)} --exact --all-versions --limit-output',
+      timeout: const Duration(seconds: 45),
+    );
+    return PackageVersionQueryResult(
+      versions: parseChocolateyVersionList(
+        result,
+        managerName: definition.displayName,
+      ),
+    );
+  }
+
+  @override
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  ) {
+    final target = package.identifier ?? package.packageName;
+    final normalizedVersion = version.trim();
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@$normalizedVersion',
+      command: [
+        'choco install ${psQuote(target)}',
+        '--version ${psQuote(normalizedVersion)}',
+        '--allow-downgrade',
+        '-y',
+      ].join(' '),
       timeout: const Duration(minutes: 12),
     );
   }

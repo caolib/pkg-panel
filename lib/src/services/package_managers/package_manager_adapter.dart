@@ -22,6 +22,24 @@ mixin PackageInstallCapability {
   PackageCommand buildInstallCommand(SearchPackageInstallOption package);
 }
 
+// Looks up installable versions and builds commands for specific versions.
+mixin VersionedPackageInstallCapability {
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  );
+
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  );
+}
+
+// Builds an explicit "latest" install command such as package@latest.
+mixin LatestTagInstallCapability {
+  PackageCommand buildLatestInstallCommand(SearchPackageInstallOption package);
+}
+
 // Builds per-package actions such as update or remove.
 mixin PackageActionCapability {
   PackageCommand? buildCommand(PackageAction action, ManagedPackage package);

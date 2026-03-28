@@ -13,6 +13,8 @@ class BunAdapter extends PackageManagerAdapter
         InstalledPackageCapability,
         PackageSearchCapability,
         PackageInstallCapability,
+        VersionedPackageInstallCapability,
+        LatestTagInstallCapability,
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
@@ -97,10 +99,57 @@ class BunAdapter extends PackageManagerAdapter
 
   @override
   PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
-      command: 'bun add -g ${psQuote(package.packageName)}',
+      command: 'bun add -g ${psQuote(target)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  ) async {
+    final target = package.identifier ?? package.packageName;
+    final result = await shell.run(
+      'npm view ${psQuote(target)} versions --json',
+      timeout: const Duration(seconds: 45),
+    );
+    return PackageVersionQueryResult(
+      versions: parseVersionListValue(
+        result,
+        managerName: definition.displayName,
+        newestFirst: true,
+      ),
+    );
+  }
+
+  @override
+  PackageCommand buildLatestInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
+    final spec = '$target@latest';
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@latest',
+      command: 'bun add -g ${psQuote(spec)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  ) {
+    final target = package.identifier ?? package.packageName;
+    final spec = '$target@${version.trim()}';
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@${version.trim()}',
+      command: 'bun add -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
   }
@@ -136,17 +185,10 @@ class BunAdapter extends PackageManagerAdapter
     ManagedPackage package,
   ) async {
     final result = await shell.run(
-      'bun pm view ${psQuote(package.name)}',
-      timeout: const Duration(seconds: 45),
-    );
-    if (result.isSuccess) {
-      return parseDetailOutput(result, managerName: definition.displayName);
-    }
-    final fallback = await shell.run(
       'npm view ${psQuote(package.name)}',
       timeout: const Duration(seconds: 45),
     );
-    return parseDetailOutput(fallback, managerName: definition.displayName);
+    return parseDetailOutput(result, managerName: definition.displayName);
   }
 
   @override
@@ -155,24 +197,10 @@ class BunAdapter extends PackageManagerAdapter
     ManagedPackage package,
   ) async {
     final result = await shell.run(
-      'bun pm view ${psQuote(package.name)} version --json',
-      timeout: const Duration(seconds: 45),
-    );
-    if (result.isSuccess) {
-      return parseSingleVersionValue(
-        result,
-        managerName: definition.displayName,
-      );
-    }
-
-    final fallback = await shell.run(
       'npm view ${psQuote(package.name)} version --json',
       timeout: const Duration(seconds: 45),
     );
-    return parseSingleVersionValue(
-      fallback,
-      managerName: definition.displayName,
-    );
+    return parseSingleVersionValue(result, managerName: definition.displayName);
   }
 
   Future<ManagedPackage> _readBunPackage({

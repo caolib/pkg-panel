@@ -161,6 +161,189 @@ String parseSingleVersionValue(
   return firstLine.replaceAll('"', '').trim();
 }
 
+List<String> parseVersionListValue(
+  ShellResult result, {
+  required String managerName,
+  bool newestFirst = false,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final trimmed = result.stdout.trim();
+  if (trimmed.isEmpty) {
+    throw PackageAdapterException(managerName, '没有返回可用版本列表。');
+  }
+
+  final versions = <String>[];
+  final seen = <String>{};
+  void addVersion(String value) {
+    final version = value.replaceAll('"', '').replaceAll("'", '').trim();
+    if (version.isEmpty || !seen.add(version)) {
+      return;
+    }
+    versions.add(version);
+  }
+
+  try {
+    final decoded = jsonDecode(extractJsonPayload(trimmed));
+    if (decoded is List) {
+      for (final item in decoded) {
+        addVersion('$item');
+      }
+    } else if (decoded is String) {
+      addVersion(decoded);
+    }
+  } catch (_) {
+    // Fall back to plain-text parsing below.
+  }
+
+  if (versions.isEmpty) {
+    final quotedPattern = RegExp(r"""['"]([^'"\r\n]+)['"]""");
+    for (final match in quotedPattern.allMatches(trimmed)) {
+      final version = match.group(1);
+      if (version != null) {
+        addVersion(version);
+      }
+    }
+  }
+
+  if (versions.isEmpty) {
+    for (final line in LineSplitter.split(trimmed)) {
+      final candidate = line
+          .trim()
+          .replaceAll(',', '')
+          .replaceAll('[', '')
+          .replaceAll(']', '')
+          .trim();
+      if (candidate.isEmpty ||
+          candidate.contains(' ') ||
+          candidate.contains(':') ||
+          candidate == '-') {
+        continue;
+      }
+      addVersion(candidate);
+    }
+  }
+
+  if (versions.isEmpty) {
+    throw PackageAdapterException(managerName, '没有解析到可用版本。');
+  }
+
+  return newestFirst
+      ? versions.reversed.toList(growable: false)
+      : versions.toList(growable: false);
+}
+
+List<String> parseChocolateyVersionList(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final versions = <String>[];
+  final seen = <String>{};
+  for (final line in LineSplitter.split(result.stdout)) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty ||
+        trimmed.startsWith('Chocolatey v') ||
+        trimmed.endsWith('packages found.') ||
+        trimmed.endsWith('package found.')) {
+      continue;
+    }
+    final separatorIndex = trimmed.indexOf('|');
+    if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+      continue;
+    }
+    final version = trimmed.substring(separatorIndex + 1).trim();
+    if (version.isEmpty || !seen.add(version)) {
+      continue;
+    }
+    versions.add(version);
+  }
+
+  if (versions.isEmpty) {
+    throw PackageAdapterException(managerName, '没有解析到可用版本。');
+  }
+  return versions;
+}
+
+List<String> parseWingetVersionList(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final versions = <String>[];
+  final seen = <String>{};
+  final lines = LineSplitter.split(result.stdout)
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toList(growable: false);
+
+  var sawVersionHeader = false;
+  var inVersions = false;
+  for (final line in lines) {
+    if (!inVersions) {
+      if (sawVersionHeader && RegExp(r'^-+$').hasMatch(line)) {
+        inVersions = true;
+        continue;
+      }
+      if (line == 'Version' || line == '版本') {
+        sawVersionHeader = true;
+      }
+      continue;
+    }
+
+    if (line.startsWith('Found ') ||
+        line.startsWith('找到 ') ||
+        line.contains(':') ||
+        line.contains(' ')) {
+      continue;
+    }
+    if (seen.add(line)) {
+      versions.add(line);
+    }
+  }
+
+  if (versions.isEmpty) {
+    throw PackageAdapterException(managerName, '没有解析到可用版本。');
+  }
+  return versions;
+}
+
+List<String> parsePipVersionList(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  for (final line in LineSplitter.split(result.stdout)) {
+    final trimmed = line.trim();
+    const prefix = 'Available versions:';
+    if (!trimmed.startsWith(prefix)) {
+      continue;
+    }
+    final raw = trimmed.substring(prefix.length).trim();
+    final versions = raw
+        .split(',')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    if (versions.isNotEmpty) {
+      return versions;
+    }
+  }
+
+  throw PackageAdapterException(managerName, '没有解析到可用版本。');
+}
+
 String parseDetailOutput(ShellResult result, {required String managerName}) {
   if (!result.isSuccess) {
     throw PackageAdapterException(managerName, result.combinedOutput);
@@ -384,32 +567,37 @@ List<SearchPackage> parseWingetSearchResults(
   }
 
   final headerIndex = lines.indexOf(headerLine);
-  final idStart = firstIndexOfAny(headerLine, const <String>['ID', 'Id']);
-  final versionStart = firstIndexOfAny(headerLine, const <String>[
-    'Version',
-    '版本',
-  ]);
-  final sourceStart = firstIndexOfAny(headerLine, const <String>[
-    'Source',
-    '源',
-  ]);
-
-  if (idStart < 0 || versionStart < 0) {
-    return const <SearchPackage>[];
-  }
+  final rowPattern = RegExp(r'^(.*?)\s+(\S+)\s+(\S+)(?:\s+(\S+))?$');
 
   for (final line in lines.skip(headerIndex + 2)) {
-    final name = sliceColumn(line, 0, idStart);
-    final identifier = sliceColumn(line, idStart, versionStart);
-    final version = sliceColumn(
-      line,
-      versionStart,
-      sourceStart >= 0 ? sourceStart : null,
-    );
-    final source = sourceStart >= 0 ? sliceColumn(line, sourceStart, null) : '';
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || RegExp(r'^-+$').hasMatch(trimmed)) {
+      continue;
+    }
+
+    final match = rowPattern.firstMatch(trimmed);
+    if (match == null) {
+      continue;
+    }
+
+    final name = (match.group(1) ?? '').trim();
+    final identifier = (match.group(2) ?? '').trim();
+    final version = (match.group(3) ?? '').trim();
+    final source = (match.group(4) ?? '').trim();
+
+    if (looksLikeWingetHeaderRow(<String>[
+      name,
+      identifier,
+      version,
+      if (source.isNotEmpty) source,
+    ])) {
+      continue;
+    }
+
     if (name.isEmpty || identifier.isEmpty || version.isEmpty) {
       continue;
     }
+
     output.add(
       SearchPackage(
         name: name,

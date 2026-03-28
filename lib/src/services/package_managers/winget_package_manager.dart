@@ -12,6 +12,7 @@ class WingetAdapter extends PackageManagerAdapter
         InstalledPackageCapability,
         PackageSearchCapability,
         PackageInstallCapability,
+        VersionedPackageInstallCapability,
         PackageActionCapability,
         PackageDetailsCapability {
   const WingetAdapter()
@@ -112,6 +113,54 @@ class WingetAdapter extends PackageManagerAdapter
         'winget install',
         '--id ${psQuote(target)}',
         '--exact',
+        '--accept-package-agreements',
+        '--accept-source-agreements',
+        '--disable-interactivity',
+      ].join(' '),
+      timeout: const Duration(minutes: 15),
+    );
+  }
+
+  @override
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  ) async {
+    final target = package.identifier ?? package.packageName;
+    final result = await shell.run(
+      [
+        'winget show',
+        '--id ${psQuote(target)}',
+        '--exact',
+        '--versions',
+        '--accept-source-agreements',
+        '--disable-interactivity',
+      ].join(' '),
+      timeout: const Duration(seconds: 45),
+    );
+    return PackageVersionQueryResult(
+      versions: parseWingetVersionList(
+        result,
+        managerName: definition.displayName,
+      ),
+    );
+  }
+
+  @override
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  ) {
+    final target = package.identifier ?? package.packageName;
+    final normalizedVersion = version.trim();
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@$normalizedVersion',
+      command: [
+        'winget install',
+        '--id ${psQuote(target)}',
+        '--exact',
+        '--version ${psQuote(normalizedVersion)}',
         '--accept-package-agreements',
         '--accept-source-agreements',
         '--disable-interactivity',

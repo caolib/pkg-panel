@@ -157,6 +157,16 @@ class PackageCommand {
   }
 }
 
+class PackageVersionQueryResult {
+  const PackageVersionQueryResult({
+    this.versions = const <String>[],
+    this.note,
+  });
+
+  final List<String> versions;
+  final String? note;
+}
+
 class SearchPackage {
   const SearchPackage({
     required this.name,

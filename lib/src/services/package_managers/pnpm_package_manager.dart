@@ -10,6 +10,8 @@ class PnpmAdapter extends PackageManagerAdapter
         InstalledPackageCapability,
         PackageSearchCapability,
         PackageInstallCapability,
+        VersionedPackageInstallCapability,
+        LatestTagInstallCapability,
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
@@ -83,10 +85,71 @@ class PnpmAdapter extends PackageManagerAdapter
 
   @override
   PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
-      command: 'pnpm add -g ${psQuote(package.packageName)}',
+      command: 'pnpm add -g ${psQuote(target)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  ) async {
+    final target = package.identifier ?? package.packageName;
+    final result = await shell.run(
+      'pnpm view ${psQuote(target)} versions --json',
+      timeout: const Duration(seconds: 45),
+    );
+    if (result.isSuccess) {
+      return PackageVersionQueryResult(
+        versions: parseVersionListValue(
+          result,
+          managerName: definition.displayName,
+          newestFirst: true,
+        ),
+      );
+    }
+
+    final fallback = await shell.run(
+      'npm view ${psQuote(target)} versions --json',
+      timeout: const Duration(seconds: 45),
+    );
+    return PackageVersionQueryResult(
+      versions: parseVersionListValue(
+        fallback,
+        managerName: definition.displayName,
+        newestFirst: true,
+      ),
+    );
+  }
+
+  @override
+  PackageCommand buildLatestInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
+    final spec = '$target@latest';
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@latest',
+      command: 'pnpm add -g ${psQuote(spec)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  ) {
+    final target = package.identifier ?? package.packageName;
+    final spec = '$target@${version.trim()}';
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@${version.trim()}',
+      command: 'pnpm add -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
   }

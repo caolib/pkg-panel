@@ -8,6 +8,7 @@ import 'package_manager_helpers.dart';
 class PipAdapter extends PackageManagerAdapter
     with
         InstalledPackageCapability,
+        VersionedPackageInstallCapability,
         PackageActionCapability,
         LatestVersionLookupCapability,
         PackageDetailsCapability {
@@ -42,6 +43,38 @@ class PipAdapter extends PackageManagerAdapter
             : '可编辑路径: ${entry['editable_project_location']}',
       );
     }).toList()..sort(packageSort);
+  }
+
+  @override
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  ) async {
+    final target = package.identifier ?? package.packageName;
+    final result = await shell.run(
+      'pip index versions ${psQuote(target)} --disable-pip-version-check --no-color',
+      timeout: const Duration(seconds: 45),
+    );
+    return PackageVersionQueryResult(
+      versions: parsePipVersionList(
+        result,
+        managerName: definition.displayName,
+      ),
+    );
+  }
+
+  @override
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  ) {
+    final target = package.identifier ?? package.packageName;
+    final normalizedVersion = version.trim();
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}==$normalizedVersion',
+      command: 'pip install ${psQuote('$target==$normalizedVersion')}',
+    );
   }
 
   @override

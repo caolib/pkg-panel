@@ -281,7 +281,10 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   bool isInstallingSearchOption(SearchPackageInstallOption option) {
-    return _runningCommands.contains(_installBusyKey(option));
+    final prefix = _installBusyKeyPrefix(option);
+    return _runningCommands.any(
+      (key) => key == prefix || key.startsWith('$prefix::'),
+    );
   }
 
   bool isPackageSelected(ManagedPackage package) {
@@ -461,6 +464,77 @@ class PackagePanelController extends ChangeNotifier {
     return capability
         .buildInstallCommand(option)
         .copyWith(busyKey: _installBusyKey(option));
+  }
+
+  bool canInstallSpecificVersion(SearchPackageInstallOption option) {
+    return _capabilityOf<VersionedPackageInstallCapability>(
+          _adapterFor(option.managerId),
+        ) !=
+        null;
+  }
+
+  bool canInstallLatestTag(SearchPackageInstallOption option) {
+    return _capabilityOf<LatestTagInstallCapability>(
+          _adapterFor(option.managerId),
+        ) !=
+        null;
+  }
+
+  Future<PackageVersionQueryResult> loadInstallableVersions(
+    SearchPackageInstallOption option,
+  ) async {
+    final capability = _capabilityOf<VersionedPackageInstallCapability>(
+      _adapterFor(option.managerId),
+    );
+    if (capability == null) {
+      return const PackageVersionQueryResult();
+    }
+
+    final result = await capability.listInstallableVersions(_shell, option);
+    final versions = <String>[];
+    final seen = <String>{};
+    for (final value in result.versions) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) {
+        continue;
+      }
+      versions.add(trimmed);
+    }
+    return PackageVersionQueryResult(versions: versions, note: result.note);
+  }
+
+  PackageCommand? installCommandForLatest(SearchPackageInstallOption option) {
+    final capability = _capabilityOf<LatestTagInstallCapability>(
+      _adapterFor(option.managerId),
+    );
+    if (capability == null) {
+      return null;
+    }
+
+    return capability
+        .buildLatestInstallCommand(option)
+        .copyWith(busyKey: _installBusyKey(option, version: 'latest'));
+  }
+
+  PackageCommand? installCommandForVersion(
+    SearchPackageInstallOption option,
+    String version,
+  ) {
+    final normalizedVersion = version.trim();
+    if (normalizedVersion.isEmpty) {
+      return null;
+    }
+
+    final capability = _capabilityOf<VersionedPackageInstallCapability>(
+      _adapterFor(option.managerId),
+    );
+    if (capability == null) {
+      return null;
+    }
+
+    return capability
+        .buildVersionedInstallCommand(option, normalizedVersion)
+        .copyWith(busyKey: _installBusyKey(option, version: normalizedVersion));
   }
 
   Future<void> reorderManager(int oldIndex, int newIndex) async {
@@ -1259,9 +1333,21 @@ class PackagePanelController extends ChangeNotifier {
     return 'package-details::${package.key}';
   }
 
-  String _installBusyKey(SearchPackageInstallOption package) {
+  String _installBusyKeyPrefix(SearchPackageInstallOption package) {
     final identifier = package.identifier?.trim() ?? '';
     return 'install-package::${package.managerId}::${package.packageName}::$identifier';
+  }
+
+  String _installBusyKey(
+    SearchPackageInstallOption package, {
+    String? version,
+  }) {
+    final prefix = _installBusyKeyPrefix(package);
+    final normalizedVersion = version?.trim();
+    if (normalizedVersion == null || normalizedVersion.isEmpty) {
+      return prefix;
+    }
+    return '$prefix::$normalizedVersion';
   }
 
   String _batchLatestBusyKey(String managerId) {

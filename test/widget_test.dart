@@ -57,7 +57,7 @@ void main() {
     expect(find.text('删除'), findsNothing);
 
     final gesture = await tester.startGesture(
-      tester.getCenter(find.text('eslint')),
+      tester.getCenter(find.text('eslint').last),
       kind: PointerDeviceKind.mouse,
       buttons: kSecondaryMouseButton,
     );
@@ -106,6 +106,432 @@ void main() {
     expect(find.text('choco'), findsWidgets);
   });
 
+  testWidgets('install page uses a single menu item and defaults npm to latest', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      "npm search 'eslint' --json --searchlimit=20": const ShellResult(
+        exitCode: 0,
+        stdout:
+            '[{"name":"eslint","version":"9.0.0","description":"Lint tool","publisher":{"username":"npm"}}]',
+        stderr: '',
+      ),
+      "npm install -g 'eslint@latest'": const ShellResult(
+        exitCode: 0,
+        stdout: 'installed latest',
+        stderr: '',
+      ),
+      'npm ls -g --depth=0 --json': const ShellResult(
+        exitCode: 0,
+        stdout: '{"dependencies":{"eslint":{"version":"9.1.1"}}}',
+        stderr: '',
+      ),
+      RegExp(r"Get-Command '", caseSensitive: false): const ShellResult(
+        exitCode: 0,
+        stdout: '0',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialManagerAvailability: const <String, bool>{'npm': true},
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(SearchBar), 'eslint');
+    await tester.tap(find.text('搜索'));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('eslint').last),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('使用 npm 安装'), findsOneWidget);
+    expect(find.text('使用 npm 安装特定版本'), findsNothing);
+
+    await tester.tap(find.text('使用 npm 安装'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('使用 npm 安装'), findsOneWidget);
+    expect(find.text('安装最新'), findsOneWidget);
+    expect(
+      tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+      isTrue,
+    );
+    expect(find.text('将要执行的命令'), findsOneWidget);
+    expect(
+      find.textContaining("npm install -g 'eslint@latest'"),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('确定'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('确认执行命令'), findsNothing);
+    expect(shell.commands, contains("npm install -g 'eslint@latest'"));
+  });
+
+  testWidgets('install options dialog loads versions in the same panel', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      "npm search 'eslint' --json --searchlimit=20": const ShellResult(
+        exitCode: 0,
+        stdout:
+            '[{"name":"eslint","version":"9.0.0","description":"Lint tool","publisher":{"username":"npm"}}]',
+        stderr: '',
+      ),
+      "npm view 'eslint' versions --json": const ShellResult(
+        exitCode: 0,
+        stdout: '["9.0.0","9.1.0","9.1.1"]',
+        stderr: '',
+      ),
+      RegExp(r"Get-Command '", caseSensitive: false): const ShellResult(
+        exitCode: 0,
+        stdout: '0',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialManagerAvailability: const <String, bool>{'npm': true},
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(SearchBar), 'eslint');
+    await tester.tap(find.text('搜索'));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('eslint').last),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('使用 npm 安装'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装特定版本'));
+    await tester.pumpAndSettle();
+
+    final dialogFinder = find.byType(AlertDialog);
+    expect(shell.commands, contains("npm view 'eslint' versions --json"));
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('9.1.1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('9.1.0')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: dialogFinder,
+        matching: find.widgetWithText(ListTile, '9.0.0'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+      isFalse,
+    );
+  });
+
+  testWidgets('installed search result keeps version-install menu enabled', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      "npm search 'eslint' --json --searchlimit=20": const ShellResult(
+        exitCode: 0,
+        stdout:
+            '[{"name":"eslint","version":"9.0.0","description":"Lint tool","publisher":{"username":"npm"}}]',
+        stderr: '',
+      ),
+      "pnpm view 'eslint' versions --json": const ShellResult(
+        exitCode: 0,
+        stdout: '["9.0.0","9.1.0","9.1.1"]',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialManagerAvailability: const <String, bool>{'pnpm': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'pnpm')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'pnpm',
+              managerName: 'pnpm',
+              version: '9.1.1',
+              source: 'global',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('pnpm'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(SearchBar), 'eslint');
+    await tester.tap(find.text('搜索'));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('eslint').last),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('pnpm 已安装'), findsNothing);
+    expect(find.text('使用 pnpm 安装特定版本'), findsOneWidget);
+
+    await tester.tap(find.text('使用 pnpm 安装特定版本'));
+    await tester.pumpAndSettle();
+
+    final dialogFinder = find.byType(AlertDialog);
+    expect(shell.commands, contains("pnpm view 'eslint' versions --json"));
+    expect(
+      find.descendant(of: dialogFinder, matching: find.byType(TextField)),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+      isFalse,
+    );
+  });
+
+  testWidgets('local package menu installs a selected npm version', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: _MappedShellExecutor(<Pattern, ShellResult>{
+        "npm view 'eslint' versions --json": const ShellResult(
+          exitCode: 0,
+          stdout: '["9.0.0","9.1.0","9.1.1"]',
+          stderr: '',
+        ),
+      }),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'npm')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.1.1',
+              source: 'global',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('eslint')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('安装特定版本'), findsOneWidget);
+
+    await tester.tap(find.text('安装特定版本'));
+    await tester.pumpAndSettle();
+
+    final dialogFinder = find.byType(AlertDialog);
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('9.1.1')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('9.1.0')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('9.0.0')),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.descendant(of: dialogFinder, matching: find.byType(TextField)),
+      '9.0',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('9.0.0')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialogFinder, matching: find.text('9.1.1')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.descendant(of: dialogFinder, matching: find.text('9.0.0')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认执行命令'), findsOneWidget);
+    expect(
+      find.textContaining("npm install -g 'eslint@9.0.0'"),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'specific-version dialog limits huge version lists until filtered',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final versionsJson = [
+        for (var i = 1; i <= 250; i++) '"1.0.$i"',
+      ].join(',');
+      final controller = PackagePanelController(
+        shell: _MappedShellExecutor(<Pattern, ShellResult>{
+          "npm view 'opencode-ai' versions --json": ShellResult(
+            exitCode: 0,
+            stdout: '[$versionsJson]',
+            stderr: '',
+          ),
+        }),
+        adapters: PackageManagerRegistry.defaultAdapters,
+        initialVisibleManagerIds: const <String>{'npm'},
+        initialManagerAvailability: const <String, bool>{'npm': true},
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: PackageManagerRegistry.defaultAdapters
+                .firstWhere((adapter) => adapter.definition.id == 'npm')
+                .definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'opencode-ai',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '1.0.250',
+                source: 'global',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('opencode-ai')),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('安装特定版本'));
+      await tester.pumpAndSettle();
+
+      final dialogFinder = find.byType(AlertDialog);
+      expect(find.textContaining('仅显示最新 200 个'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: dialogFinder,
+          matching: find.widgetWithText(ListTile, '1.0.250'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: dialogFinder,
+          matching: find.widgetWithText(ListTile, '1.0.50'),
+        ),
+        findsNothing,
+      );
+
+      await tester.enterText(
+        find.descendant(of: dialogFinder, matching: find.byType(TextField)),
+        '1.0.50',
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: dialogFinder,
+          matching: find.widgetWithText(ListTile, '1.0.50'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   test('winget parser skips localized header rows', () async {
     final shell = _FakeShellExecutor(
       const ShellResult(
@@ -128,6 +554,67 @@ MuMu模拟器               ARP\\Machine\\X64\\MuMuPlayer       5.22.0.3094     
     expect(packages.single.version, '5.22.0.3094');
     expect(packages.single.latestVersion, '可用');
   });
+
+  test(
+    'controller only enables specific-version install on supported managers',
+    () {
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: PackageManagerRegistry.defaultAdapters,
+      );
+
+      expect(
+        controller.canInstallSpecificVersion(
+          const SearchPackageInstallOption(
+            managerId: 'npm',
+            managerName: 'npm',
+            packageName: 'eslint',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        controller.canInstallSpecificVersion(
+          const SearchPackageInstallOption(
+            managerId: 'cargo',
+            managerName: 'cargo',
+            packageName: 'cargo-edit',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        controller.canInstallSpecificVersion(
+          const SearchPackageInstallOption(
+            managerId: 'scoop',
+            managerName: 'scoop',
+            packageName: 'git',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        controller.canInstallLatestTag(
+          const SearchPackageInstallOption(
+            managerId: 'npm',
+            managerName: 'npm',
+            packageName: 'eslint',
+          ),
+        ),
+        isTrue,
+      );
+      expect(
+        controller.canInstallLatestTag(
+          const SearchPackageInstallOption(
+            managerId: 'winget',
+            managerName: 'winget',
+            packageName: 'Microsoft PowerToys',
+          ),
+        ),
+        isFalse,
+      );
+    },
+  );
 
   test('choco parser reads local packages from limit-output', () async {
     final shell = _FakeShellExecutor(
@@ -176,6 +663,31 @@ git|2.49.0
     );
 
     expect(version, '2.49.0');
+  });
+
+  test('choco specific-version lookup parses all returned versions', () async {
+    final result = await const ChocolateyAdapter().listInstallableVersions(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        "choco search 'git' --exact --all-versions --limit-output":
+            const ShellResult(
+              exitCode: 0,
+              stdout: '''
+Chocolatey v2.5.1
+git|2.49.0
+git|2.48.1
+2 packages found.
+''',
+              stderr: '',
+            ),
+      }),
+      const SearchPackageInstallOption(
+        managerId: 'choco',
+        managerName: 'choco',
+        packageName: 'git',
+      ),
+    );
+
+    expect(result.versions, <String>['2.49.0', '2.48.1']);
   });
 
   test('first initialization only enables detected managers', () async {
@@ -393,6 +905,25 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(details, contains('uipro-cli@2.2.3'));
   });
 
+  test('bun version lookup uses npm registry metadata directly', () async {
+    final result = await const BunAdapter().listInstallableVersions(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        "npm view 'opencode-ai' versions --json": const ShellResult(
+          exitCode: 0,
+          stdout: '["0.1.0","0.2.0"]',
+          stderr: '',
+        ),
+      }),
+      const SearchPackageInstallOption(
+        managerId: 'bun',
+        managerName: 'bun',
+        packageName: 'opencode-ai',
+      ),
+    );
+
+    expect(result.versions, <String>['0.2.0', '0.1.0']);
+  });
+
   test('uv package details use filtered tool list output', () async {
     final details = await const UvToolAdapter().loadPackageDetails(
       _MappedShellExecutor(<Pattern, ShellResult>{
@@ -436,6 +967,31 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(details, isNot(contains('just v1.39.0:')));
   });
 
+  test('pip specific-version lookup parses available versions', () async {
+    final result = await const PipAdapter().listInstallableVersions(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        "pip index versions 'ruff' --disable-pip-version-check --no-color":
+            const ShellResult(
+              exitCode: 0,
+              stdout: '''
+ruff (0.9.0)
+Available versions: 0.9.0, 0.8.6, 0.8.5
+  INSTALLED: 0.8.6
+  LATEST:    0.9.0
+''',
+              stderr: '',
+            ),
+      }),
+      const SearchPackageInstallOption(
+        managerId: 'pip',
+        managerName: 'pip',
+        packageName: 'ruff',
+      ),
+    );
+
+    expect(result.versions, <String>['0.9.0', '0.8.6', '0.8.5']);
+  });
+
   test('scoop search parses tabular output', () async {
     final results = await const ScoopAdapter().searchPackages(
       _MappedShellExecutor(<Pattern, ShellResult>{
@@ -453,6 +1009,68 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(results.single.name, 'chafa');
     expect(results.single.version, '1.16.1');
     expect(results.single.source, 'main');
+  });
+
+  test('winget specific-version lookup parses show output', () async {
+    final result = await const WingetAdapter().listInstallableVersions(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        "winget show --id 'Microsoft.PowerToys' --exact --versions --accept-source-agreements --disable-interactivity":
+            const ShellResult(
+              exitCode: 0,
+              stdout: '''
+Found Microsoft PowerToys [Microsoft.PowerToys]
+Version
+-------
+0.90.0
+0.89.0
+''',
+              stderr: '',
+            ),
+      }),
+      const SearchPackageInstallOption(
+        managerId: 'winget',
+        managerName: 'winget',
+        packageName: 'Microsoft PowerToys',
+        identifier: 'Microsoft.PowerToys',
+      ),
+    );
+
+    expect(result.versions, <String>['0.90.0', '0.89.0']);
+  });
+
+  test('winget search keeps full version with localized header', () async {
+    final results = await const WingetAdapter().searchPackages(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        "winget search 'claude code' --disable-interactivity":
+            const ShellResult(
+              exitCode: 0,
+              stdout: '''
+名称                                ID                                         版本   源
+---------------------------------------------------------------------------------------------
+Claude Code                         Anthropic.ClaudeCode                       2.1.86 winget
+Claude Code Usage Monitor           CodeZeno.ClaudeCodeUsageMonitor            1.2.9  winget
+Claude Code Switcher                Fanis.ClaudeCodeSwitcher                   0.3.0  winget
+Claude Code 配置管理器 - 命令行版本 ronghuaxueleng.ClaudeCodeConfigManager.CLI 1.7.0  winget
+''',
+              stderr: '',
+            ),
+      }),
+      'claude code',
+    );
+
+    expect(results, hasLength(4));
+    expect(results[0].name, 'Claude Code');
+    expect(results[0].identifier, 'Anthropic.ClaudeCode');
+    expect(results[0].version, '2.1.86');
+    expect(results[0].source, 'winget');
+
+    expect(results[1].version, '1.2.9');
+    expect(results[1].source, 'winget');
+
+    expect(results[3].name, 'Claude Code 配置管理器 - 命令行版本');
+    expect(results[3].identifier, 'ronghuaxueleng.ClaudeCodeConfigManager.CLI');
+    expect(results[3].version, '1.7.0');
+    expect(results[3].source, 'winget');
   });
 }
 
@@ -495,6 +1113,32 @@ class _MappedShellExecutor extends ShellExecutor {
       stdout: '',
       stderr: 'Unexpected command: $command',
     );
+  }
+}
+
+class _RecordingShellExecutor extends ShellExecutor {
+  _RecordingShellExecutor(this.results);
+
+  final Map<Pattern, ShellResult> results;
+  final List<String> commands = <String>[];
+
+  @override
+  Future<ShellResult> run(
+    String command, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    commands.add(command);
+    for (final entry in results.entries) {
+      final pattern = entry.key;
+      if (pattern is String && command == pattern) {
+        return entry.value;
+      }
+      if (pattern is RegExp && pattern.hasMatch(command)) {
+        return entry.value;
+      }
+    }
+
+    return const ShellResult(exitCode: 0, stdout: '', stderr: '');
   }
 }
 

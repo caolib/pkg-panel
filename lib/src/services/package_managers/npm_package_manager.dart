@@ -10,6 +10,8 @@ class NpmAdapter extends PackageManagerAdapter
         InstalledPackageCapability,
         PackageSearchCapability,
         PackageInstallCapability,
+        VersionedPackageInstallCapability,
+        LatestTagInstallCapability,
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
@@ -66,10 +68,57 @@ class NpmAdapter extends PackageManagerAdapter
 
   @override
   PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
-      command: 'npm install -g ${psQuote(package.packageName)}',
+      command: 'npm install -g ${psQuote(target)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
+  Future<PackageVersionQueryResult> listInstallableVersions(
+    ShellExecutor shell,
+    SearchPackageInstallOption package,
+  ) async {
+    final target = package.identifier ?? package.packageName;
+    final result = await shell.run(
+      'npm view ${psQuote(target)} versions --json',
+      timeout: const Duration(seconds: 45),
+    );
+    return PackageVersionQueryResult(
+      versions: parseVersionListValue(
+        result,
+        managerName: definition.displayName,
+        newestFirst: true,
+      ),
+    );
+  }
+
+  @override
+  PackageCommand buildLatestInstallCommand(SearchPackageInstallOption package) {
+    final target = package.identifier ?? package.packageName;
+    final spec = '$target@latest';
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@latest',
+      command: 'npm install -g ${psQuote(spec)}',
+      timeout: const Duration(minutes: 10),
+    );
+  }
+
+  @override
+  PackageCommand buildVersionedInstallCommand(
+    SearchPackageInstallOption package,
+    String version,
+  ) {
+    final target = package.identifier ?? package.packageName;
+    final spec = '$target@${version.trim()}';
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 ${package.packageName}@${version.trim()}',
+      command: 'npm install -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
   }
