@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -23,7 +26,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -45,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ steps.meta.outputs.tag }}"
-          $archiveDir = "build\release"
+          $archiveDir = Join-Path (Get-Location) "build\release"
           $archivePath = Join-Path $archiveDir "pkg_panel-windows-$tag.zip"
 
           if (Test-Path $archivePath) {
@@ -61,7 +64,7 @@ jobs:
         id: installer
         shell: pwsh
         run: |
-          $outputDir = "build\installer"
+          $outputDir = Join-Path (Get-Location) "build\installer"
           $sourceDir = (Resolve-Path "build\windows\x64\runner\Release").Path
           New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 
@@ -78,7 +81,7 @@ jobs:
           "installer_path=$installer" >> $env:GITHUB_OUTPUT
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.5.0
         with:
           name: Pkg Panel ${{ steps.meta.outputs.tag }}
           tag_name: ${{ steps.meta.outputs.tag }}
