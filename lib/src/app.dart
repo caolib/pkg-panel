@@ -612,9 +612,7 @@ class _PackageListView extends StatelessWidget {
           child: packages.isEmpty
               ? _EmptyPackages(
                   hasManagersLoading: controller.isRefreshingAll,
-                  hasVisibleManagers: controller.managerVisibilityStates.any(
-                    (state) => state.isVisible,
-                  ),
+                  hasVisibleManagers: controller.hasVisibleLocalManagers,
                   onOpenSettings: onOpenSettings,
                   searchQuery: controller.searchQuery,
                 )
@@ -926,22 +924,20 @@ class _PackageListTile extends StatelessWidget {
             }
           },
         ),
-      _ContextMenuActionItem(
-        icon: Icons.system_update_alt,
-        label: package.hasUpdate ? '升级' : '更新',
-        enabled: updateCommand != null && !isUpdating,
-        onPressed: updateCommand == null
-            ? null
-            : () => onRunAction(updateCommand),
-      ),
-      _ContextMenuActionItem(
-        icon: Icons.delete_outline,
-        label: '删除',
-        enabled: removeCommand != null && !isRemoving,
-        onPressed: removeCommand == null
-            ? null
-            : () => onRunAction(removeCommand),
-      ),
+      if (updateCommand != null)
+        _ContextMenuActionItem(
+          icon: Icons.system_update_alt,
+          label: package.hasUpdate ? '升级' : '更新',
+          enabled: !isUpdating,
+          onPressed: () => onRunAction(updateCommand),
+        ),
+      if (removeCommand != null)
+        _ContextMenuActionItem(
+          icon: Icons.delete_outline,
+          label: '删除',
+          enabled: !isRemoving,
+          onPressed: () => onRunAction(removeCommand),
+        ),
     ];
 
     _DesktopContextMenu.show(

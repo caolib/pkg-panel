@@ -104,7 +104,11 @@ class PackagePanelController extends ChangeNotifier {
       List<ManagerSnapshot>.unmodifiable(_snapshots);
 
   List<ManagerSnapshot> get visibleSnapshots => _snapshots
-      .where((snapshot) => isManagerVisible(snapshot.manager.id))
+      .where(
+        (snapshot) =>
+            isManagerVisible(snapshot.manager.id) &&
+            _supportsInstalledPackagesById(snapshot.manager.id),
+      )
       .toList(growable: false);
 
   List<ActivityEntry> get activity =>
@@ -141,17 +145,31 @@ class PackagePanelController extends ChangeNotifier {
       visibleSnapshots.fold<int>(0, (sum, item) => sum + item.packages.length);
 
   int get readyManagers => _snapshots
-      .where((snapshot) => isManagerVisible(snapshot.manager.id))
+      .where(
+        (snapshot) =>
+            isManagerVisible(snapshot.manager.id) &&
+            _supportsInstalledPackagesById(snapshot.manager.id),
+      )
       .where((snapshot) => snapshot.loadState == ManagerLoadState.ready)
       .length;
 
   int get errorManagers => _snapshots
-      .where((snapshot) => isManagerVisible(snapshot.manager.id))
+      .where(
+        (snapshot) =>
+            isManagerVisible(snapshot.manager.id) &&
+            _supportsInstalledPackagesById(snapshot.manager.id),
+      )
       .where((snapshot) => snapshot.loadState == ManagerLoadState.error)
       .length;
 
   int get updateCandidates =>
       visiblePackages.where((package) => package.hasUpdate).length;
+
+  bool get hasVisibleLocalManagers => _adapters.any(
+    (adapter) =>
+        isManagerVisible(adapter.definition.id) &&
+        _supportsInstalledPackages(adapter),
+  );
 
   List<ManagedPackage> get visiblePackages {
     final selectedSnapshots = _selectedManagerId == null
@@ -196,7 +214,8 @@ class PackagePanelController extends ChangeNotifier {
 
     for (final snapshot in _snapshots) {
       if (snapshot.manager.id == _selectedManagerId) {
-        if (!isManagerVisible(snapshot.manager.id)) {
+        if (!isManagerVisible(snapshot.manager.id) ||
+            !_supportsInstalledPackagesById(snapshot.manager.id)) {
           return null;
         }
         return snapshot;
@@ -215,12 +234,14 @@ class PackagePanelController extends ChangeNotifier {
 
   bool get canBatchCheckLatestForSelectedManager {
     final snapshot = selectedManagerSnapshot;
-    final adapter = selectedAdapter;
-    if (snapshot == null || adapter == null) {
+    final capability = _capabilityOf<LatestVersionLookupCapability>(
+      selectedAdapter,
+    );
+    if (snapshot == null || capability == null) {
       return false;
     }
 
-    return snapshot.packages.any(adapter.supportsLatestVersionLookup);
+    return snapshot.packages.any(capability.supportsLatestVersionLookup);
   }
 
   bool get isBatchCheckingLatestForSelectedManager {
@@ -234,13 +255,17 @@ class PackagePanelController extends ChangeNotifier {
   bool isBusy(String busyKey) => _runningCommands.contains(busyKey);
 
   bool canCheckLatestVersion(ManagedPackage package) {
-    final adapter = _adapterFor(package.managerId);
-    return adapter?.supportsLatestVersionLookup(package) ?? false;
+    final capability = _capabilityOf<LatestVersionLookupCapability>(
+      _adapterFor(package.managerId),
+    );
+    return capability?.supportsLatestVersionLookup(package) ?? false;
   }
 
   bool canViewPackageDetails(ManagedPackage package) {
-    final adapter = _adapterFor(package.managerId);
-    return adapter?.supportsPackageDetails(package) ?? false;
+    final capability = _capabilityOf<PackageDetailsCapability>(
+      _adapterFor(package.managerId),
+    );
+    return capability?.supportsPackageDetails(package) ?? false;
   }
 
   bool isCheckingLatestVersion(ManagedPackage package) {
@@ -345,7 +370,7 @@ class PackagePanelController extends ChangeNotifier {
   List<PackageManagerAdapter> get searchableAdapters => _adapters
       .where(
         (adapter) =>
-            adapter.supportsSearch() &&
+            adapter is PackageSearchCapability &&
             isManagerAvailable(adapter.definition.id),
       )
       .toList(growable: false);
@@ -370,7 +395,7 @@ class PackagePanelController extends ChangeNotifier {
               .where(
                 (adapter) =>
                     adapter.definition.id == managerId &&
-                    adapter.supportsSearch(),
+                    adapter is PackageSearchCapability,
               )
               .toList(growable: false);
 
@@ -411,7 +436,8 @@ class PackagePanelController extends ChangeNotifier {
       unawaited(() async {
         List<SearchPackage> items;
         try {
-          items = await adapter.searchPackages(_shell, trimmed);
+          final capability = adapter as PackageSearchCapability;
+          items = await capability.searchPackages(_shell, trimmed);
         } catch (_) {
           items = const <SearchPackage>[];
         }
@@ -426,11 +452,13 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   PackageCommand? installCommandFor(SearchPackageInstallOption option) {
-    final adapter = _adapterFor(option.managerId);
-    if (adapter == null) {
+    final capability = _capabilityOf<PackageInstallCapability>(
+      _adapterFor(option.managerId),
+    );
+    if (capability == null) {
       return null;
     }
-    return adapter
+    return capability
         .buildInstallCommand(option)
         .copyWith(busyKey: _installBusyKey(option));
   }
@@ -489,7 +517,11 @@ class PackagePanelController extends ChangeNotifier {
     await _ensureManagerVisibilityInitialized();
 
     final visibleAdapters = _adapters
-        .where((adapter) => isManagerVisible(adapter.definition.id))
+        .where(
+          (adapter) =>
+              isManagerVisible(adapter.definition.id) &&
+              _supportsInstalledPackages(adapter),
+        )
         .toList(growable: false);
 
     if (visibleAdapters.isEmpty) {
@@ -524,7 +556,7 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     final adapter = _adapterFor(managerId);
-    if (adapter == null) {
+    if (adapter == null || !_supportsInstalledPackages(adapter)) {
       return;
     }
     await _loadAdapter(adapter);
@@ -533,6 +565,11 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   Future<void> _loadAdapter(PackageManagerAdapter adapter) async {
+    final capability = _capabilityOf<InstalledPackageCapability>(adapter);
+    if (capability == null) {
+      return;
+    }
+
     _setSnapshot(
       adapter.definition.id,
       _snapshotFor(
@@ -543,7 +580,7 @@ class PackagePanelController extends ChangeNotifier {
 
     try {
       final packages = _mergeLatestInfoIntoPackages(
-        await adapter.listPackages(_shell),
+        await capability.listPackages(_shell),
       );
       await _resolvePackageIcons(adapter.definition.id, packages);
       _setSnapshot(
@@ -587,7 +624,9 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   void selectManager(String? managerId) {
-    if (managerId != null && !isManagerVisible(managerId)) {
+    if (managerId != null &&
+        (!isManagerVisible(managerId) ||
+            !_supportsInstalledPackagesById(managerId))) {
       return;
     }
     _selectedManagerId = managerId;
@@ -783,23 +822,29 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   PackageCommand? commandFor(PackageAction action, ManagedPackage package) {
-    final adapter = _adapterFor(package.managerId);
-    return adapter?.buildCommand(action, package);
+    final capability = _capabilityOf<PackageActionCapability>(
+      _adapterFor(package.managerId),
+    );
+    return capability?.buildCommand(action, package);
   }
 
   PackageCommand? batchUpdateCommandForSelectedManager() {
-    final adapter = selectedAdapter;
-    if (adapter == null) {
+    final capability = _capabilityOf<PackageBatchUpdateCapability>(
+      selectedAdapter,
+    );
+    if (capability == null) {
       return null;
     }
-    return adapter.buildBatchUpdateCommand();
+    return capability.buildBatchUpdateCommand();
   }
 
   Future<void> batchCheckLatestVersionsForSelectedManager() async {
     final managerId = _selectedManagerId;
     final snapshot = selectedManagerSnapshot;
-    final adapter = selectedAdapter;
-    if (managerId == null || snapshot == null || adapter == null) {
+    final capability = _capabilityOf<LatestVersionLookupCapability>(
+      selectedAdapter,
+    );
+    if (managerId == null || snapshot == null || capability == null) {
       return;
     }
 
@@ -809,7 +854,7 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     final packages = snapshot.packages
-        .where(adapter.supportsLatestVersionLookup)
+        .where(capability.supportsLatestVersionLookup)
         .toList(growable: false);
     if (packages.isEmpty) {
       return;
@@ -879,8 +924,11 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   Future<String?> checkLatestVersion(ManagedPackage package) async {
-    final adapter = _adapterFor(package.managerId);
-    if (adapter == null || !adapter.supportsLatestVersionLookup(package)) {
+    final capability = _capabilityOf<LatestVersionLookupCapability>(
+      _adapterFor(package.managerId),
+    );
+    if (capability == null ||
+        !capability.supportsLatestVersionLookup(package)) {
       return null;
     }
 
@@ -901,7 +949,10 @@ class PackagePanelController extends ChangeNotifier {
 
     try {
       final checkedAt = DateTime.now();
-      final latestVersion = await adapter.lookupLatestVersion(_shell, package);
+      final latestVersion = await capability.lookupLatestVersion(
+        _shell,
+        package,
+      );
       final updatedPackage = package.copyWith(
         latestVersion: latestVersion,
         latestVersionCheckedAt: checkedAt,
@@ -942,8 +993,10 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   Future<String?> loadPackageDetails(ManagedPackage package) async {
-    final adapter = _adapterFor(package.managerId);
-    if (adapter == null || !adapter.supportsPackageDetails(package)) {
+    final capability = _capabilityOf<PackageDetailsCapability>(
+      _adapterFor(package.managerId),
+    );
+    if (capability == null || !capability.supportsPackageDetails(package)) {
       return null;
     }
 
@@ -963,7 +1016,7 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final details = await adapter.loadPackageDetails(_shell, package);
+      final details = await capability.loadPackageDetails(_shell, package);
       _pushActivity(
         ActivityEntry(
           timestamp: DateTime.now(),
@@ -1132,8 +1185,27 @@ class PackagePanelController extends ChangeNotifier {
     return null;
   }
 
+  T? _capabilityOf<T>(PackageManagerAdapter? adapter) {
+    final current = adapter;
+    if (current is T) {
+      return current as T;
+    }
+    return null;
+  }
+
+  bool _supportsInstalledPackages(PackageManagerAdapter adapter) {
+    return adapter is InstalledPackageCapability;
+  }
+
+  bool _supportsInstalledPackagesById(String managerId) {
+    final adapter = _adapterFor(managerId);
+    return adapter != null && _supportsInstalledPackages(adapter);
+  }
+
   void _realignSelection() {
-    if (_selectedManagerId != null && !isManagerVisible(_selectedManagerId!)) {
+    if (_selectedManagerId != null &&
+        (!isManagerVisible(_selectedManagerId!) ||
+            !_supportsInstalledPackagesById(_selectedManagerId!))) {
       _selectedManagerId = null;
     }
     final packages = visiblePackages;
