@@ -14,7 +14,9 @@ class ScoopAdapter extends PackageManagerAdapter
         PackageSearchCapability,
         PackageInstallCapability,
         PackageActionCapability,
-        PackageBatchUpdateCapability {
+        PackageBatchUpdateCapability,
+        LatestVersionLookupCapability,
+        BatchLatestVersionLookupCapability {
   const ScoopAdapter()
     : super(
         const PackageManagerDefinition(
@@ -50,14 +52,11 @@ class ScoopAdapter extends PackageManagerAdapter
         .where((line) => line.trim().isNotEmpty)
         .toList();
 
-    final headerLine = lines.cast<String?>().firstWhere(
-      (line) {
-        if (line == null) return false;
-        final trimmed = line.trim();
-        return trimmed.startsWith('Name') && trimmed.contains('Version');
-      },
-      orElse: () => null,
-    );
+    final headerLine = lines.cast<String?>().firstWhere((line) {
+      if (line == null) return false;
+      final trimmed = line.trim();
+      return trimmed.startsWith('Name') && trimmed.contains('Version');
+    }, orElse: () => null);
     if (headerLine == null) {
       final debugOutput = lines.take(10).map((l) => '"$l"').join('\n');
       throw PackageAdapterException(
@@ -93,13 +92,13 @@ class ScoopAdapter extends PackageManagerAdapter
       final source = sourceStart > 0 && updatedStart > 0
           ? sliceColumn(line, sourceStart, updatedStart)
           : sourceStart > 0
-              ? sliceColumn(line, sourceStart, null)
-              : '';
+          ? sliceColumn(line, sourceStart, null)
+          : '';
       final updated = updatedStart > 0 && infoStart > 0
           ? sliceColumn(line, updatedStart, infoStart)
           : updatedStart > 0
-              ? sliceColumn(line, updatedStart, null)
-              : '';
+          ? sliceColumn(line, updatedStart, null)
+          : '';
       final info = infoStart > 0 ? sliceColumn(line, infoStart, null) : '';
       final details = <String>[
         if (updated.isNotEmpty) '更新于: $updated',
@@ -175,5 +174,78 @@ class ScoopAdapter extends PackageManagerAdapter
       command: 'scoop update *',
       timeout: const Duration(minutes: 8),
     );
+  }
+
+  @override
+  String latestVersionLookupCommand(ManagedPackage package) {
+    return 'scoop status';
+  }
+
+  @override
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    return 'scoop status';
+  }
+
+  @override
+  Future<String> lookupLatestVersion(
+    ShellExecutor shell,
+    ManagedPackage package,
+  ) async {
+    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
+      package,
+    ]);
+    return latestVersions[package.key] ?? package.version;
+  }
+
+  @override
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    if (packages.isEmpty) {
+      return const <String, String>{};
+    }
+
+    final result = await _runStatusWithBucketRefresh(shell);
+    final latestByName = parseScoopStatusLatestVersions(
+      result,
+      managerName: definition.displayName,
+    );
+    return <String, String>{
+      for (final package in packages)
+        package.key: latestByName[package.name.trim().toLowerCase()] ?? package.version,
+    };
+  }
+
+  Future<ShellResult> _runStatusWithBucketRefresh(ShellExecutor shell) async {
+    var result = await shell.runPowerShell(
+      'scoop status',
+      timeout: const Duration(seconds: 30),
+    );
+    if (!_hasOutdatedBucketWarning(result)) {
+      return result;
+    }
+
+    final updateResult = await shell.runPowerShell(
+      'scoop update',
+      timeout: const Duration(minutes: 3),
+    );
+    if (!updateResult.isSuccess) {
+      throw PackageAdapterException(
+        definition.displayName,
+        '执行 scoop update 失败：${updateResult.combinedOutput}',
+      );
+    }
+
+    result = await shell.runPowerShell(
+      'scoop status',
+      timeout: const Duration(seconds: 30),
+    );
+    return result;
+  }
+
+  bool _hasOutdatedBucketWarning(ShellResult result) {
+    final output = result.combinedOutput.toLowerCase();
+    return output.contains('scoop bucket(s) out of date');
   }
 }

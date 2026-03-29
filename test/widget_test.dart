@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pkg_panel/src/app.dart';
 import 'package:pkg_panel/src/models/package_models.dart';
 import 'package:pkg_panel/src/services/package_adapters.dart';
+import 'package:pkg_panel/src/services/package_latest_info_store.dart';
 import 'package:pkg_panel/src/services/package_manager_settings_store.dart';
 import 'package:pkg_panel/src/services/package_panel_controller.dart';
 import 'package:pkg_panel/src/services/package_snapshot_store.dart';
@@ -67,6 +68,125 @@ void main() {
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('升级'), findsOneWidget);
     expect(find.text('删除'), findsOneWidget);
+  });
+
+  testWidgets('pip manager hides batch check button but keeps single-package lookup', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialVisibleManagerIds: const <String>{'pip'},
+      initialManagerAvailability: const <String, bool>{'pip': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'pip')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'ruff',
+              managerId: 'pip',
+              managerName: 'pip',
+              version: '0.8.6',
+            ),
+          ],
+        ),
+      ],
+    );
+    controller.selectManager('pip');
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(FilledButton, '检查更新'), findsNothing);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('ruff').last),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.text('检查更新'), findsOneWidget);
+  });
+
+  test('refresh current selection only reloads selected manager', () async {
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      'npm ls -g --depth=0 --json': const ShellResult(
+        exitCode: 0,
+        stdout: '{"dependencies":{"eslint":{"version":"9.1.0"}}}',
+        stderr: '',
+      ),
+      'pip list --format=json': const ShellResult(
+        exitCode: 0,
+        stdout: '[{"name":"ruff","version":"0.8.6"}]',
+        stderr: '',
+      ),
+    });
+    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'npm',
+    );
+    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'pip',
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm', 'pip'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pip': true,
+      },
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: npmAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+            ),
+          ],
+        ),
+        ManagerSnapshot(
+          manager: pipAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'ruff',
+              managerId: 'pip',
+              managerName: 'pip',
+              version: '0.8.5',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager('npm');
+    await controller.refreshCurrentSelection();
+
+    expect(
+      shell.commands.where((command) => command == 'npm ls -g --depth=0 --json'),
+      hasLength(1),
+    );
+    expect(
+      shell.commands.where((command) => command == 'pip list --format=json'),
+      isEmpty,
+    );
   });
 
   testWidgets('opens dedicated settings page', (tester) async {
@@ -639,14 +759,19 @@ nodejs|22.14.0
     expect(packages[1].version, '22.14.0');
   });
 
-  test('choco latest version lookup parses exact search result', () async {
+  test('choco latest version lookup parses outdated output', () async {
     final shell = _FakeShellExecutor(
       const ShellResult(
-        exitCode: 0,
+        exitCode: 2,
         stdout: '''
-Chocolatey v2.3.0
-git|2.49.0
-1 packages found.
+Chocolatey v2.5.1
+Outdated Packages
+ Output is Id | Version | Available Version | Pinned
+
+chocolatey|2.5.1|2.7.0|false
+git|2.48.1|2.49.0|false
+
+Chocolatey has determined 2 package(s) are outdated.
 ''',
         stderr: '',
       ),
@@ -663,6 +788,72 @@ git|2.49.0
     );
 
     expect(version, '2.49.0');
+  });
+
+  test('controller batch latest check uses choco outdated once', () async {
+    const adapter = ChocolateyAdapter();
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      'choco outdated': const ShellResult(
+        exitCode: 2,
+        stdout: '''
+Chocolatey v2.5.1
+Outdated Packages
+ Output is Id | Version | Available Version | Pinned
+
+chocolatey|2.5.1|2.7.0|false
+dart-sdk|3.9.4|3.11.4|false
+
+Chocolatey has determined 2 package(s) are outdated.
+''',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[adapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'choco'},
+      initialManagerAvailability: const <String, bool>{'choco': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: adapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'dart-sdk',
+              managerId: 'choco',
+              managerName: 'choco',
+              version: '3.9.4',
+            ),
+            ManagedPackage(
+              name: 'git',
+              managerId: 'choco',
+              managerName: 'choco',
+              version: '2.48.1',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager('choco');
+    await controller.batchCheckLatestVersionsForSelectedManager();
+
+    expect(
+      shell.commands.where((command) => command == 'choco outdated'),
+      hasLength(1),
+    );
+    final packages = controller.selectedManagerSnapshot!.packages;
+    expect(
+      packages.firstWhere((package) => package.name == 'dart-sdk').latestVersion,
+      '3.11.4',
+    );
+    expect(
+      packages.firstWhere((package) => package.name == 'git').latestVersion,
+      '2.48.1',
+    );
   });
 
   test('choco specific-version lookup parses all returned versions', () async {
@@ -688,6 +879,167 @@ git|2.48.1
     );
 
     expect(result.versions, <String>['2.49.0', '2.48.1']);
+  });
+
+  test('cargo batch latest check uses cargo install-update list output', () async {
+    const adapter = CargoAdapter();
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      'cargo install-update --list': const ShellResult(
+        exitCode: 0,
+        stdout: '''
+    Polling registry 'https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/'.....
+
+Package         Installed  Latest   Needs update
+cargo-binstall  v1.17.7    v1.17.8  Yes
+tauri-cli       v2.6.2     v2.10.1  Yes
+zoxide          v0.9.8     v0.9.9   Yes
+cargo-sweep     v0.8.0     v0.8.0   No
+cargo-update    v18.2.0    v18.2.0  No
+
+cargo-binstall contains removed executables (cargo-binstall), which will be re-installed on update
+''',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[adapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'cargo'},
+      initialManagerAvailability: const <String, bool>{'cargo': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: adapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'cargo-binstall',
+              managerId: 'cargo',
+              managerName: 'cargo',
+              version: '1.17.7',
+            ),
+            ManagedPackage(
+              name: 'cargo-sweep',
+              managerId: 'cargo',
+              managerName: 'cargo',
+              version: '0.8.0',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager('cargo');
+    await controller.batchCheckLatestVersionsForSelectedManager();
+
+    expect(
+      shell.commands.where((command) => command == 'cargo install-update --list'),
+      hasLength(1),
+    );
+    final packages = controller.selectedManagerSnapshot!.packages;
+    expect(
+      packages
+          .firstWhere((package) => package.name == 'cargo-binstall')
+          .latestVersion,
+      '1.17.8',
+    );
+    expect(
+      packages.firstWhere((package) => package.name == 'cargo-sweep').latestVersion,
+      '0.8.0',
+    );
+  });
+
+  test('cargo batch latest prerequisite command installs cargo-update when missing', () async {
+    const adapter = CargoAdapter();
+    final shell = _MappedShellExecutor(<Pattern, ShellResult>{
+      'cargo install-update --version': const ShellResult(
+        exitCode: 1,
+        stdout: '',
+        stderr: 'error: no such command: `install-update`',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[adapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'cargo'},
+      initialManagerAvailability: const <String, bool>{'cargo': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: adapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'tauri-cli',
+              managerId: 'cargo',
+              managerName: 'cargo',
+              version: '2.6.2',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager('cargo');
+    final command =
+        await controller.batchLatestVersionPrerequisiteCommandForSelectedManager();
+
+    expect(command, isNotNull);
+    expect(command!.command, 'cargo install cargo-update');
+  });
+
+  testWidgets('cargo batch check prompts to install cargo-update when missing', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: _MappedShellExecutor(<Pattern, ShellResult>{
+        'cargo install-update --version': const ShellResult(
+          exitCode: 1,
+          stdout: '',
+          stderr: 'error: no such command: `install-update`',
+        ),
+      }),
+      adapters: <PackageManagerAdapter>[const CargoAdapter()],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'cargo'},
+      initialManagerAvailability: const <String, bool>{'cargo': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: const CargoAdapter().definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'tauri-cli',
+              managerId: 'cargo',
+              managerName: 'cargo',
+              version: '2.6.2',
+            ),
+          ],
+        ),
+      ],
+    );
+    controller.selectManager('cargo');
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '检查更新'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('需要先安装依赖'), findsOneWidget);
+    expect(find.textContaining('cargo-update'), findsWidgets);
+    expect(find.text('cargo install cargo-update'), findsOneWidget);
   });
 
   test('first initialization only enables detected managers', () async {
@@ -839,6 +1191,117 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(controller.visiblePackages.single.name, 'prettier');
   });
 
+  testWidgets('latest-version lookup toast shows current command', (
+    tester,
+  ) async {
+    final shell = _DelayedShellExecutor(
+      const <Pattern, ShellResult>{},
+      delayedCommand: "npm view 'eslint' version --json",
+      delayedResult: const ShellResult(
+        exitCode: 0,
+        stdout: '"9.1.0"',
+        stderr: '',
+      ),
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'npm')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pump();
+
+    final lookupFuture = controller.checkLatestVersion(
+      controller.visiblePackages.single,
+    );
+    await tester.pump();
+
+    expect(find.text('正在执行命令'), findsOneWidget);
+    expect(find.text("npm view 'eslint' version --json"), findsOneWidget);
+
+    shell.completeDelayed();
+    await lookupFuture;
+    await tester.pump();
+
+    expect(find.text("npm view 'eslint' version --json"), findsNothing);
+  });
+
+  test('controller tracks scoop batch latest command while lookup runs', () async {
+    const adapter = ScoopAdapter();
+    final shell = _DelayedShellExecutor(
+      const <Pattern, ShellResult>{},
+      delayedCommand: 'scoop status',
+      delayedResult: const ShellResult(
+        exitCode: 0,
+        stdout: '''
+Scoop is up to date.
+
+Name  Installed Version Latest Version Missing Dependencies Info
+----  ----------------- -------------- -------------------- ----
+7zip  25.01             26.00
+''',
+        stderr: '',
+      ),
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[adapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'scoop'},
+      initialManagerAvailability: const <String, bool>{'scoop': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: adapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: '7zip',
+              managerId: 'scoop',
+              managerName: 'scoop',
+              version: '25.01',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager('scoop');
+    final lookupFuture = controller.batchCheckLatestVersionsForSelectedManager();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.runningCommandTexts, contains('scoop status'));
+
+    shell.completeDelayed();
+    await lookupFuture;
+
+    expect(controller.runningCommandTexts, isEmpty);
+  });
+
   test('manager reorder changes visible order', () async {
     final controller = PackagePanelController(
       shell: const ShellExecutor(),
@@ -945,13 +1408,13 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(details, isNot(contains('ruff v0.6.0')));
   });
 
-  test('cargo package details use filtered install list output', () async {
+  test('cargo package details use cargo info output', () async {
     final details = await const CargoAdapter().loadPackageDetails(
       _MappedShellExecutor(<Pattern, ShellResult>{
-        'cargo install --list': const ShellResult(
+        "cargo info 'cargo-edit' --registry crates-io": const ShellResult(
           exitCode: 0,
           stdout:
-              'cargo-edit v0.13.0:\n    cargo-add\n    cargo-rm\njust v1.39.0:\n    just\n',
+              'cargo-edit #cli\nAdd Cargo subcommands for modifying a Cargo.toml file\nversion: 0.13.0\nrepository: https://github.com/killercup/cargo-edit\n',
           stderr: '',
         ),
       }),
@@ -963,8 +1426,8 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
       ),
     );
 
-    expect(details, contains('cargo-edit v0.13.0:'));
-    expect(details, isNot(contains('just v1.39.0:')));
+    expect(details, contains('cargo-edit #cli'));
+    expect(details, contains('version: 0.13.0'));
   });
 
   test('pip specific-version lookup parses available versions', () async {
@@ -1009,6 +1472,145 @@ Available versions: 0.9.0, 0.8.6, 0.8.5
     expect(results.single.name, 'chafa');
     expect(results.single.version, '1.16.1');
     expect(results.single.source, 'main');
+  });
+
+  test('scoop batch latest lookup refreshes buckets before reading status', () async {
+    final shell = _SequenceShellExecutor(<String, List<ShellResult>>{
+      'scoop status': <ShellResult>[
+        const ShellResult(
+          exitCode: 0,
+          stdout:
+              "WARN  Scoop bucket(s) out of date. Run 'scoop update' to get the latest changes.\n",
+          stderr: '',
+        ),
+        const ShellResult(
+          exitCode: 0,
+          stdout: '''
+Scoop is up to date.
+
+Name  Installed Version Latest Version Missing Dependencies Info
+----  ----------------- -------------- -------------------- ----
+7zip  25.01             26.00
+llvm  20.1.8            22.1.1         zlib
+''',
+          stderr: '',
+        ),
+      ],
+      'scoop update': <ShellResult>[
+        const ShellResult(exitCode: 0, stdout: 'updated', stderr: ''),
+      ],
+    });
+    final packages = const <ManagedPackage>[
+      ManagedPackage(
+        name: '7zip',
+        managerId: 'scoop',
+        managerName: 'scoop',
+        version: '25.01',
+      ),
+      ManagedPackage(
+        name: 'llvm',
+        managerId: 'scoop',
+        managerName: 'scoop',
+        version: '20.1.8',
+      ),
+      ManagedPackage(
+        name: 'git',
+        managerId: 'scoop',
+        managerName: 'scoop',
+        version: '2.48.1',
+      ),
+    ];
+
+    final versions = await const ScoopAdapter().lookupLatestVersions(
+      shell,
+      packages,
+    );
+
+    expect(versions[packages[0].key], '26.00');
+    expect(versions[packages[1].key], '22.1.1');
+    expect(versions[packages[2].key], '2.48.1');
+    expect(
+      shell.commands.where((command) => command == 'scoop status'),
+      hasLength(2),
+    );
+    expect(
+      shell.commands.where((command) => command == 'scoop update'),
+      hasLength(1),
+    );
+  });
+
+  test('controller batch latest check uses scoop status once', () async {
+    const adapter = ScoopAdapter();
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      'scoop status': const ShellResult(
+        exitCode: 0,
+        stdout: '''
+Scoop is up to date.
+
+Name  Installed Version Latest Version Missing Dependencies Info
+----  ----------------- -------------- -------------------- ----
+7zip  25.01             26.00
+chafa 1.16.2            1.18.1
+''',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[adapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'scoop'},
+      initialManagerAvailability: const <String, bool>{'scoop': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: adapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: '7zip',
+              managerId: 'scoop',
+              managerName: 'scoop',
+              version: '25.01',
+            ),
+            ManagedPackage(
+              name: 'chafa',
+              managerId: 'scoop',
+              managerName: 'scoop',
+              version: '1.16.2',
+            ),
+            ManagedPackage(
+              name: 'git',
+              managerId: 'scoop',
+              managerName: 'scoop',
+              version: '2.48.1',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager('scoop');
+    await controller.batchCheckLatestVersionsForSelectedManager();
+
+    expect(
+      shell.commands.where((command) => command == 'scoop status'),
+      hasLength(1),
+    );
+    final packages = controller.selectedManagerSnapshot!.packages;
+    expect(
+      packages.firstWhere((package) => package.name == '7zip').latestVersion,
+      '26.00',
+    );
+    expect(
+      packages.firstWhere((package) => package.name == 'chafa').latestVersion,
+      '1.18.1',
+    );
+    expect(
+      packages.firstWhere((package) => package.name == 'git').latestVersion,
+      '2.48.1',
+    );
   });
 
   test('winget specific-version lookup parses show output', () async {
@@ -1144,6 +1746,43 @@ class _RecordingShellExecutor extends ShellExecutor {
   }
 }
 
+class _SequenceShellExecutor extends ShellExecutor {
+  _SequenceShellExecutor(this.results);
+
+  final Map<String, List<ShellResult>> results;
+  final List<String> commands = <String>[];
+  final Map<String, int> _indices = <String, int>{};
+
+  @override
+  Future<ShellResult> runRequest(
+    ShellRequest request, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final command = request.displayCommand;
+    commands.add(command);
+    final queue = results[command];
+    if (queue == null || queue.isEmpty) {
+      return ShellResult(
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Unexpected command: $command',
+      );
+    }
+
+    final index = _indices[command] ?? 0;
+    if (index >= queue.length) {
+      return ShellResult(
+        exitCode: 1,
+        stdout: '',
+        stderr: 'No queued result left for command: $command',
+      );
+    }
+
+    _indices[command] = index + 1;
+    return queue[index];
+  }
+}
+
 class _MemorySettingsStore extends PackageManagerSettingsStore {
   const _MemorySettingsStore();
 
@@ -1178,6 +1817,18 @@ class _MemorySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveCustomManagerDisplayNames(
     Map<String, String> displayNames,
   ) async {}
+}
+
+class _MemoryLatestInfoStore extends PackageLatestInfoStore {
+  const _MemoryLatestInfoStore();
+
+  @override
+  Future<Map<String, PersistedPackageLatestInfo>> load() async {
+    return const <String, PersistedPackageLatestInfo>{};
+  }
+
+  @override
+  Future<void> save(Map<String, PersistedPackageLatestInfo> entries) async {}
 }
 
 class _MemorySnapshotStore extends PackageSnapshotStore {

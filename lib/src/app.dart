@@ -233,7 +233,6 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     with SingleTickerProviderStateMixin {
   late final TextEditingController _searchController;
   late final TabController _tabController;
-  final Map<String, String> _runningCommandLabels = <String, String>{};
 
   @override
   void initState() {
@@ -262,6 +261,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
+        final runningCommands = widget.controller.runningCommandTexts;
         return Scaffold(
           body: SafeArea(
             child: Stack(
@@ -290,10 +290,10 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                                 _ActionBar(
                                   controller: widget.controller,
                                   searchController: _searchController,
-                                  onRefreshAll: widget.controller.loadAll,
-                                  onBatchCheckLatest: widget
-                                      .controller
-                                      .batchCheckLatestVersionsForSelectedManager,
+                                  onRefreshAll:
+                                      widget.controller.refreshCurrentSelection,
+                                  onBatchCheckLatest:
+                                      _handleBatchCheckLatestForSelectedManager,
                                   onShowLoadErrors: _showLoadErrorsDialog,
                                   onBatchUpdate: () async {
                                     final command = widget.controller
@@ -327,14 +327,12 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                     ],
                   ),
                 ),
-                if (_runningCommandLabels.isNotEmpty)
+                if (runningCommands.isNotEmpty)
                   Positioned(
                     right: 24,
                     bottom: 24,
                     child: _RunningCommandToast(
-                      labels: _runningCommandLabels.values.toList(
-                        growable: false,
-                      ),
+                      commands: runningCommands,
                     ),
                   ),
               ],
@@ -356,16 +354,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
       return;
     }
 
-    setState(() {
-      _runningCommandLabels[command.busyKey] = command.label;
-    });
-
     final result = await widget.controller.runCommand(command);
-    if (mounted) {
-      setState(() {
-        _runningCommandLabels.remove(command.busyKey);
-      });
-    }
     if (!mounted) {
       return;
     }
@@ -375,7 +364,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        content: Text(result.isSuccess ? '命令执行完成。' : '命令执行失败。'),
+        content: Text(command.command),
       ),
     );
 
@@ -390,6 +379,78 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
         ),
       );
     }
+  }
+
+  Future<void> _handleBatchCheckLatestForSelectedManager() async {
+    final prerequisiteCommand = await widget
+        .controller
+        .batchLatestVersionPrerequisiteCommandForSelectedManager();
+    if (!mounted) {
+      return;
+    }
+
+    if (prerequisiteCommand != null) {
+      final prompt =
+          widget.controller.batchLatestVersionPrerequisitePromptForSelectedManager() ??
+          '批量检查更新前需要先安装依赖命令，是否现在安装？';
+      final shouldInstall =
+          await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('需要先安装依赖'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(prompt),
+                  const SizedBox(height: 12),
+                  _CommandPreview(command: prerequisiteCommand.command),
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('安装'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+      if (!shouldInstall || !mounted) {
+        return;
+      }
+
+      final result = await widget.controller.runCommand(prerequisiteCommand);
+      if (!mounted) {
+        return;
+      }
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.clearSnackBars();
+      messenger.showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text(prerequisiteCommand.command),
+        ),
+      );
+      if (!result.isSuccess) {
+        await showDialog<void>(
+          context: context,
+          builder: (context) => _CommandOutputDialog(
+            title: '命令执行失败',
+            output: result.combinedOutput.isEmpty
+                ? '没有输出内容。'
+                : result.combinedOutput,
+          ),
+        );
+        return;
+      }
+    }
+
+    await widget.controller.batchCheckLatestVersionsForSelectedManager();
   }
 
   Future<void> _openSettings() async {
@@ -411,20 +472,20 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
 }
 
 class _RunningCommandToast extends StatelessWidget {
-  const _RunningCommandToast({required this.labels});
+  const _RunningCommandToast({required this.commands});
 
-  final List<String> labels;
+  final List<String> commands;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primaryLabel = labels.first;
-    final extraCount = labels.length - 1;
+    final previewCommands = commands.take(3).toList(growable: false);
+    final extraCount = commands.length - previewCommands.length;
     return IgnorePointer(
       child: Material(
         color: Colors.transparent,
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 360),
+          constraints: const BoxConstraints(maxWidth: 520),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHigh,
@@ -448,13 +509,43 @@ class _RunningCommandToast extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Flexible(
-                child: Text(
-                  extraCount > 0
-                      ? '正在执行 $primaryLabel 等 $extraCount 个任务...'
-                      : '正在执行 $primaryLabel...',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      '正在执行命令',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ...previewCommands.map(
+                      (command) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          command,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'Cascadia Code',
+                            fontFamilyFallback: theme
+                                .textTheme
+                                .bodyMedium
+                                ?.fontFamilyFallback,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (extraCount > 0)
+                      Text(
+                        '另外 $extraCount 个命令正在运行',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -524,8 +615,10 @@ class _ActionBar extends StatelessWidget {
               ),
             ),
             FilledButton.icon(
-              onPressed: controller.isRefreshingAll ? null : onRefreshAll,
-              icon: controller.isRefreshingAll
+              onPressed: controller.isRefreshingCurrentSelection
+                  ? null
+                  : onRefreshAll,
+              icon: controller.isRefreshingCurrentSelection
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -646,7 +739,7 @@ class _PackageListView extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: packages.isEmpty
               ? _EmptyPackages(
-                  hasManagersLoading: controller.isRefreshingAll,
+                  hasManagersLoading: controller.isRefreshingCurrentSelection,
                   hasVisibleManagers: controller.hasVisibleLocalManagers,
                   errorManagerCount: controller.errorManagers,
                   onOpenSettings: onOpenSettings,
@@ -724,8 +817,7 @@ class _PackageHeaderRow extends StatelessWidget {
                 Expanded(flex: 5, child: Text('包名', style: style)),
                 Expanded(flex: 2, child: Text('当前版本', style: style)),
                 Expanded(flex: 2, child: Text('最新版本', style: style)),
-                Expanded(flex: 3, child: Text('来源', style: style)),
-                Expanded(flex: 5, child: Text('附加信息', style: style)),
+                Expanded(flex: 8, child: Text('附加信息', style: style)),
               ],
             ),
     );
@@ -862,18 +954,7 @@ class _PackageListTile extends StatelessWidget {
                 ),
               ),
               Expanded(
-                flex: 3,
-                child: Text(
-                  package.source ?? '-',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 5,
+                flex: 8,
                 child: Text(
                   extra.isEmpty ? '-' : extra,
                   maxLines: 1,
@@ -890,36 +971,46 @@ class _PackageListTile extends StatelessWidget {
         : const EdgeInsets.fromLTRB(16, 8, 16, 8);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Material(
-        color: isSelected
-            ? theme.colorScheme.primary.withAlpha(36)
-            : Colors.transparent,
-        child: InkWell(
-          onTap: () => controller.selectPackage(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: (event) {
+          if (event.kind == PointerDeviceKind.mouse &&
+              event.buttons != kPrimaryMouseButton) {
+            return;
+          }
+          controller.selectPackage(
             package,
             additive: _isAdditiveSelectionPressed(),
             range: _isRangeSelectionPressed(),
+          );
+        },
+        child: Material(
+          color: isSelected
+              ? theme.colorScheme.primary.withAlpha(36)
+              : Colors.transparent,
+          child: InkWell(
+            onTap: () {},
+            onDoubleTap: canViewDetails && !isLoadingDetails
+                ? () => _openPackageDetails(context)
+                : null,
+            onSecondaryTapUp: (details) => _showContextMenu(
+              context,
+              details.globalPosition,
+              canViewDetails: canViewDetails,
+              canCheckLatest: canCheckLatest,
+              isLoadingDetails: isLoadingDetails,
+              isCheckingLatest: isCheckingLatest,
+              isUpdating: isUpdating,
+              isRemoving: isRemoving,
+              canInstallSpecificVersion: canInstallSpecificVersion,
+              isInstallingSpecificVersion: isInstallingSpecificVersion,
+              versionInstallOption: versionInstallOption,
+              updateCommand: updateCommand,
+              removeCommand: removeCommand,
+            ),
+            child: Padding(padding: innerPadding, child: rowContent),
           ),
-          onDoubleTap: canViewDetails && !isLoadingDetails
-              ? () => _openPackageDetails(context)
-              : null,
-          onSecondaryTapUp: (details) => _showContextMenu(
-            context,
-            details.globalPosition,
-            canViewDetails: canViewDetails,
-            canCheckLatest: canCheckLatest,
-            isLoadingDetails: isLoadingDetails,
-            isCheckingLatest: isCheckingLatest,
-            isUpdating: isUpdating,
-            isRemoving: isRemoving,
-            canInstallSpecificVersion: canInstallSpecificVersion,
-            isInstallingSpecificVersion: isInstallingSpecificVersion,
-            versionInstallOption: versionInstallOption,
-            updateCommand: updateCommand,
-            removeCommand: removeCommand,
-          ),
-          child: Padding(padding: innerPadding, child: rowContent),
         ),
       ),
     );
@@ -957,20 +1048,44 @@ class _PackageListTile extends StatelessWidget {
           enabled: !isCheckingLatest,
           onPressed: () async {
             final latestVersion = await controller.checkLatestVersion(package);
-            if (latestVersion != null && context.mounted) {
+            if (!context.mounted) {
+              return;
+            }
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.clearSnackBars();
+            if (latestVersion != null) {
               final isLatest = latestVersion.trim() == package.version.trim();
-              ScaffoldMessenger.of(context)
-                ..clearSnackBars()
-                ..showSnackBar(
-                  SnackBar(
-                    behavior: SnackBarBehavior.floating,
-                    content: Text(
-                      isLatest
-                          ? '${package.name} 已经是最新版本。'
-                          : '${package.name} 有新版本：$latestVersion',
-                    ),
+              messenger.showSnackBar(
+                SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  content: Text(
+                    isLatest
+                        ? '${package.name} 已经是最新版本。'
+                        : '${package.name} 有新版本：$latestVersion',
                   ),
-                );
+                ),
+              );
+            } else {
+              final recentError = controller.activity
+                  .where((entry) => entry.isError)
+                  .cast<ActivityEntry?>()
+                  .firstWhere(
+                    (entry) =>
+                        entry != null &&
+                        entry.title.contains(package.name) &&
+                        entry.title.contains('失败'),
+                    orElse: () => null,
+                  );
+              messenger.showSnackBar(
+                SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  content: Text(
+                    recentError != null
+                        ? '检查 ${package.name} 失败：${recentError.message}'
+                        : '检查 ${package.name} 失败，请查看活动日志。',
+                  ),
+                ),
+              );
             }
           },
         ),
@@ -1100,36 +1215,38 @@ class _DesktopContextMenu {
         return Positioned(
           left: left,
           top: top,
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: width,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: theme.colorScheme.outlineVariant),
-                boxShadow: <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withAlpha(40),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: items
-                    .map(
-                      (item) => _DesktopContextMenuItem(
-                        item: item,
-                        onPressed: () async {
-                          hide();
-                          await item.onPressed?.call();
-                        },
-                      ),
-                    )
-                    .toList(growable: false),
+          child: ExcludeSemantics(
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: width,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: Colors.black.withAlpha(40),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: items
+                      .map(
+                        (item) => _DesktopContextMenuItem(
+                          item: item,
+                          onPressed: () async {
+                            hide();
+                            await item.onPressed?.call();
+                          },
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
               ),
             ),
           ),
@@ -1294,13 +1411,9 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
                           SingleChildScrollView(
                             child: SelectableText(
                               details,
-                              style: theme.textTheme.bodyMedium?.copyWith(
+                              style: _monospaceTextStyle(
+                                context,
                                 height: 1.5,
-                                fontFamily: 'Cascadia Code',
-                                fontFamilyFallback: theme
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.fontFamilyFallback,
                               ),
                             ),
                           ),
@@ -1487,14 +1600,22 @@ String? _buildLoadErrorOutput(PackagePanelController controller) {
     return null;
   }
 
-  return failedSnapshots.map((snapshot) {
-    final managerName = controller.displayNameForManagerId(snapshot.manager.id);
-    final errorOutput = snapshot.errorMessage?.trim();
-    return [
-      '[$managerName]',
-      errorOutput == null || errorOutput.isEmpty ? '没有返回错误输出。' : errorOutput,
-    ].join('\n');
-  }).join('\n\n------------------------------------------------------------\n\n');
+  return failedSnapshots
+      .map((snapshot) {
+        final managerName = controller.displayNameForManagerId(
+          snapshot.manager.id,
+        );
+        final errorOutput = snapshot.errorMessage?.trim();
+        return [
+          '[$managerName]',
+          errorOutput == null || errorOutput.isEmpty
+              ? '没有返回错误输出。'
+              : errorOutput,
+        ].join('\n');
+      })
+      .join(
+        '\n\n------------------------------------------------------------\n\n',
+      );
 }
 
 const int _maxVisibleInstallVersions = 200;
@@ -2106,14 +2227,36 @@ class _CommandPreview extends StatelessWidget {
       ),
       child: SelectableText(
         command,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        style: _monospaceTextStyle(
+          context,
           color: Colors.white,
-          fontFamily: 'Consolas',
           height: 1.45,
         ),
       ),
     );
   }
+}
+
+TextStyle? _monospaceTextStyle(
+  BuildContext context, {
+  Color? color,
+  double? height,
+}) {
+  final baseStyle = Theme.of(context).textTheme.bodyMedium;
+  final fallback = <String>[
+    ...?baseStyle?.fontFamilyFallback,
+    'Cascadia Code',
+    'JetBrains Mono',
+    'Microsoft YaHei UI',
+    'Microsoft YaHei',
+    'Segoe UI',
+  ];
+  return baseStyle?.copyWith(
+    color: color,
+    height: height,
+    fontFamily: 'Cascadia Code',
+    fontFamilyFallback: fallback.toSet().toList(growable: false),
+  );
 }
 
 class _EmptyPackages extends StatelessWidget {
@@ -3161,7 +3304,6 @@ class PackageInstallPage extends StatefulWidget {
 
 class _PackageInstallPageState extends State<PackageInstallPage> {
   late final TextEditingController _searchController;
-  final Map<String, String> _runningCommandLabels = <String, String>{};
   String? _selectedManagerId;
 
   @override
@@ -3186,16 +3328,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
   }
 
   Future<void> _runCommandWithFeedback(PackageCommand command) async {
-    setState(() {
-      _runningCommandLabels[command.busyKey] = command.label;
-    });
-
     final result = await widget.controller.runCommand(command);
-    if (mounted) {
-      setState(() {
-        _runningCommandLabels.remove(command.busyKey);
-      });
-    }
     if (!mounted) {
       return;
     }
@@ -3205,7 +3338,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
     messenger.showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
-        content: Text(result.isSuccess ? '命令执行完成。' : '命令执行失败。'),
+        content: Text(command.command),
       ),
     );
 
@@ -3225,6 +3358,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final runningCommands = widget.controller.runningCommandTexts;
     return Stack(
       children: <Widget>[
         AnimatedBuilder(
@@ -3374,12 +3508,12 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
             );
           },
         ),
-        if (_runningCommandLabels.isNotEmpty)
+        if (runningCommands.isNotEmpty)
           Positioned(
             right: 24,
             bottom: 24,
             child: _RunningCommandToast(
-              labels: _runningCommandLabels.values.toList(growable: false),
+              commands: runningCommands,
             ),
           ),
       ],

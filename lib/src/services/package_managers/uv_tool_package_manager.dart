@@ -205,6 +205,11 @@ class UvToolAdapter extends PackageManagerAdapter
   }
 
   @override
+  String latestVersionLookupCommand(ManagedPackage package) {
+    return 'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color';
+  }
+
+  @override
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,

@@ -769,6 +769,113 @@ String parsePipLatestVersion(
   throw PackageAdapterException(managerName, '无法从 pip 输出中解析最新版本。');
 }
 
+String parseScoopLatestVersion(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  for (final line in LineSplitter.split(result.stdout)) {
+    final trimmed = line.trim();
+    if (trimmed.toLowerCase().startsWith('version')) {
+      // Format: "Version     : 25.01 (Update to 26.00 available)"
+      final updatePattern = RegExp(
+        r'Update to ([^\s]+) available',
+        caseSensitive: false,
+      );
+      final match = updatePattern.firstMatch(trimmed);
+      if (match != null) {
+        final version = match.group(1)?.trim();
+        if (version != null && version.isNotEmpty) {
+          return version;
+        }
+      }
+    }
+  }
+
+  throw PackageAdapterException(managerName, '没有可用的更新版本。');
+}
+
+String parseScoopStatusLatestVersion(
+  ShellResult result, {
+  required String packageName,
+  required String managerName,
+}) {
+  final latestVersions = parseScoopStatusLatestVersions(
+    result,
+    managerName: managerName,
+  );
+  final normalizedTarget = packageName.trim().toLowerCase();
+  final latestVersion = latestVersions[normalizedTarget];
+  if (latestVersion != null && latestVersion.isNotEmpty) {
+    return latestVersion;
+  }
+
+  throw PackageAdapterException(managerName, '包 $packageName 没有可用的更新版本。');
+}
+
+Map<String, String> parseScoopStatusLatestVersions(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final lines = LineSplitter.split(result.stdout)
+      .map((line) => line.trimRight())
+      .where((line) => line.trim().isNotEmpty)
+      .toList(growable: false);
+
+  // Find header line
+  final headerLine = lines.cast<String?>().firstWhere((line) {
+    if (line == null) return false;
+    final trimmed = line.trim();
+    return trimmed.startsWith('Name') && trimmed.contains('Latest Version');
+  }, orElse: () => null);
+  if (headerLine == null) {
+    return const <String, String>{};
+  }
+
+  final headerIndex = lines.indexOf(headerLine);
+  final nameEnd = headerLine.indexOf('Installed Version');
+  final latestVersionStart = headerLine.indexOf('Latest Version');
+  final missingDependenciesStart = headerLine.indexOf('Missing Dependencies');
+  final infoStart = headerLine.indexOf('Info');
+
+  if (nameEnd < 0 || latestVersionStart < 0 || latestVersionStart <= nameEnd) {
+    throw PackageAdapterException(managerName, '无法识别 scoop status 的列布局。');
+  }
+
+  final latestVersionEndCandidates = <int>[
+    if (missingDependenciesStart > latestVersionStart) missingDependenciesStart,
+    if (infoStart > latestVersionStart) infoStart,
+  ]..sort();
+  final latestVersionEnd = latestVersionEndCandidates.isEmpty
+      ? null
+      : latestVersionEndCandidates.first;
+  final latestVersions = <String, String>{};
+  for (final line in lines.skip(headerIndex + 2)) {
+    if (line.trim().startsWith('-')) {
+      continue;
+    }
+
+    final name = sliceColumn(line, 0, nameEnd);
+    if (name.isEmpty) {
+      continue;
+    }
+
+    final latestVersion = sliceColumn(line, latestVersionStart, latestVersionEnd);
+    if (latestVersion.isNotEmpty) {
+      latestVersions[name.toLowerCase()] = latestVersion;
+    }
+  }
+
+  return latestVersions;
+}
+
 String parseCargoLatestVersion(
   ShellResult result, {
   required String managerName,
@@ -803,36 +910,99 @@ String parseCargoLatestVersion(
   throw PackageAdapterException(managerName, '无法从 cargo 搜索结果中解析最新版本。');
 }
 
-String parseChocolateyLatestVersion(
+Map<String, String> parseCargoInstallUpdateLatestVersions(
   ShellResult result, {
   required String managerName,
-  required String packageName,
 }) {
   if (!result.isSuccess) {
     throw PackageAdapterException(managerName, result.combinedOutput);
   }
 
+  final versions = <String, String>{};
+  final rowPattern = RegExp(
+    r'^([^\s]+)\s+v?([^\s]+)\s+v?([^\s]+)\s+(Yes|No)$',
+    caseSensitive: false,
+  );
+
+  for (final line in LineSplitter.split(result.stdout)) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty ||
+        trimmed.startsWith('Polling registry ') ||
+        trimmed.startsWith('Package') ||
+        trimmed.startsWith('cargo-') && trimmed.contains('contains removed executables')) {
+      continue;
+    }
+
+    final match = rowPattern.firstMatch(trimmed);
+    if (match == null) {
+      continue;
+    }
+
+    final name = match.group(1)?.trim() ?? '';
+    final latestVersion = match.group(3)?.trim() ?? '';
+    if (name.isEmpty || latestVersion.isEmpty) {
+      continue;
+    }
+    versions[name.toLowerCase()] = latestVersion;
+  }
+
+  return versions;
+}
+
+String parseChocolateyLatestVersion(
+  ShellResult result, {
+  required String managerName,
+  required String packageName,
+}) {
+  final latestVersions = parseChocolateyOutdatedLatestVersions(
+    result,
+    managerName: managerName,
+  );
+  final latestVersion = latestVersions[packageName.trim().toLowerCase()];
+  if (latestVersion != null && latestVersion.isNotEmpty) {
+    return latestVersion;
+  }
+
+  throw PackageAdapterException(managerName, '无法从 choco 输出中解析最新版本。');
+}
+
+Map<String, String> parseChocolateyOutdatedLatestVersions(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!(result.isSuccess || result.exitCode == 2)) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final latestVersions = <String, String>{};
   for (final line in LineSplitter.split(result.stdout)) {
     final trimmed = line.trim();
     if (trimmed.isEmpty ||
         trimmed.startsWith('Chocolatey v') ||
-        trimmed.startsWith('packages found.')) {
+        trimmed.startsWith('Outdated Packages') ||
+        trimmed.startsWith('Output is ') ||
+        trimmed.startsWith('Chocolatey has determined')) {
       continue;
     }
 
-    final separatorIndex = trimmed.indexOf('|');
-    if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) {
+    final columns = trimmed.split('|').map((part) => part.trim()).toList(
+      growable: false,
+    );
+    if (columns.length < 3) {
+      continue;
+    }
+    if (columns[0].toLowerCase() == 'chocolatey has determined 0 package(s) are outdated.') {
       continue;
     }
 
-    final name = trimmed.substring(0, separatorIndex).trim();
-    final version = trimmed.substring(separatorIndex + 1).trim();
-    if (name.toLowerCase() == packageName.toLowerCase() && version.isNotEmpty) {
-      return version;
+    final name = columns[0];
+    final availableVersion = columns[2];
+    if (name.isNotEmpty && availableVersion.isNotEmpty) {
+      latestVersions[name.toLowerCase()] = availableVersion;
     }
   }
 
-  throw PackageAdapterException(managerName, '无法从 choco 输出中解析最新版本。');
+  return latestVersions;
 }
 
 bool looksLikeWingetHeaderRow(List<String> columns) {

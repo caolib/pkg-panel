@@ -214,6 +214,11 @@ class BunAdapter extends PackageManagerAdapter
   }
 
   @override
+  String latestVersionLookupCommand(ManagedPackage package) {
+    return 'npm view ${psQuote(package.name)} version --json';
+  }
+
+  @override
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,

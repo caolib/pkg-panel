@@ -40,6 +40,7 @@ class LocalIconImage extends StatelessWidget {
 
   bool _isSupportedImageFile(String filePath) {
     return filePath.endsWith('.svg') ||
+        filePath.endsWith('.ico') ||
         filePath.endsWith('.png') ||
         filePath.endsWith('.jpg') ||
         filePath.endsWith('.jpeg') ||

@@ -216,6 +216,11 @@ class PnpmAdapter extends PackageManagerAdapter
   }
 
   @override
+  String latestVersionLookupCommand(ManagedPackage package) {
+    return 'pnpm view ${psQuote(package.name)} version --json';
+  }
+
+  @override
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,

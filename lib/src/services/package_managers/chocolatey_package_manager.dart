@@ -15,7 +15,8 @@ class ChocolateyAdapter extends PackageManagerAdapter
         VersionedPackageInstallCapability,
         PackageActionCapability,
         PackageBatchUpdateCapability,
-        LatestVersionLookupCapability {
+        LatestVersionLookupCapability,
+        BatchLatestVersionLookupCapability {
   const ChocolateyAdapter()
     : super(
         const PackageManagerDefinition(
@@ -196,20 +197,48 @@ class ChocolateyAdapter extends PackageManagerAdapter
   }
 
   @override
+  String latestVersionLookupCommand(ManagedPackage package) {
+    return 'choco outdated';
+  }
+
+  @override
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    return 'choco outdated';
+  }
+
+  @override
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
+    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
+      package,
+    ]);
+    return latestVersions[package.key] ?? package.version;
+  }
+
+  @override
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    if (packages.isEmpty) {
+      return const <String, String>{};
+    }
+
     final result = await shell.runExecutable(
       'choco',
-      <String>['search', package.name, '--exact', '--limit-output'],
+      const <String>['outdated'],
       timeout: const Duration(seconds: 45),
-      displayCommand: 'choco search ${psQuote(package.name)} --exact --limit-output',
+      displayCommand: 'choco outdated',
     );
-    return parseChocolateyLatestVersion(
+    final latestByName = parseChocolateyOutdatedLatestVersions(
       result,
       managerName: definition.displayName,
-      packageName: package.name,
     );
+    return <String, String>{
+      for (final package in packages)
+        package.key: latestByName[package.name.trim().toLowerCase()] ?? package.version,
+    };
   }
 }

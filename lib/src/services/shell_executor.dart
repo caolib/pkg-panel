@@ -50,8 +50,7 @@ class ShellResult {
 
 class ShellExecutor {
   const ShellExecutor();
-
-  static const Utf8Codec _utf8 = Utf8Codec(allowMalformed: true);
+  static const Utf8Codec _utf8 = Utf8Codec();
   static final Map<String, String?> _resolvedExecutableCache =
       <String, String?>{};
 
@@ -86,6 +85,14 @@ class ShellExecutor {
     String command, {
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    final wrappedCommand = [
+      r'$utf8NoBom = [System.Text.UTF8Encoding]::new($false)',
+      r'[Console]::InputEncoding = $utf8NoBom',
+      r'[Console]::OutputEncoding = $utf8NoBom',
+      r'$OutputEncoding = $utf8NoBom',
+      'chcp 65001 > \$null',
+      command,
+    ].join('; ');
     return runExecutable(
       'powershell.exe',
       <String>[
@@ -93,7 +100,7 @@ class ShellExecutor {
         '-ExecutionPolicy',
         'Bypass',
         '-Command',
-        command,
+        wrappedCommand,
       ],
       timeout: timeout,
       displayCommand: command,
@@ -137,15 +144,15 @@ class ShellExecutor {
       final result = await Process.run(
         resolvedExecutable,
         arguments,
-        stdoutEncoding: _utf8,
-        stderrEncoding: _utf8,
+        stdoutEncoding: null,
+        stderrEncoding: null,
         workingDirectory: workingDirectory,
       ).timeout(timeout);
 
       return ShellResult(
         exitCode: result.exitCode,
-        stdout: '${result.stdout}',
-        stderr: '${result.stderr}',
+        stdout: _decodeProcessOutput(result.stdout),
+        stderr: _decodeProcessOutput(result.stderr),
       );
     } on TimeoutException {
       return const ShellResult(
@@ -309,6 +316,27 @@ class ShellExecutor {
       return false;
     }
     return (stat.mode & 0x49) != 0;
+  }
+
+  String _decodeProcessOutput(Object? output) {
+    if (output == null) {
+      return '';
+    }
+    if (output is String) {
+      return output;
+    }
+    if (output is! List<int>) {
+      return '$output';
+    }
+    if (output.isEmpty) {
+      return '';
+    }
+
+    try {
+      return _utf8.decode(output);
+    } catch (_) {
+      return systemEncoding.decode(output);
+    }
   }
 
   Future<String> _resolveWorkingDirectory() async {

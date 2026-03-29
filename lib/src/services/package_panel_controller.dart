@@ -77,6 +77,7 @@ class PackagePanelController extends ChangeNotifier {
   final List<ManagerSnapshot> _snapshots;
   final List<ActivityEntry> _activity = <ActivityEntry>[];
   final Set<String> _runningCommands = <String>{};
+  final Map<String, String> _runningCommandTexts = <String, String>{};
   final Set<String> _selectedPackageKeys = <String>{};
   final Set<String> _visibleManagerIds;
   final Map<String, bool> _managerAvailability;
@@ -128,6 +129,14 @@ class PackagePanelController extends ChangeNotifier {
   int get selectedPackageCount => _selectedPackageKeys.length;
 
   bool get isRefreshingAll => _isRefreshingAll;
+
+  bool get isRefreshingCurrentSelection {
+    final managerId = _selectedManagerId;
+    if (managerId == null) {
+      return _isRefreshingAll;
+    }
+    return selectedManagerSnapshot?.loadState == ManagerLoadState.loading;
+  }
 
   bool get isSearchingPackages => _isSearchingPackages;
 
@@ -241,7 +250,13 @@ class PackagePanelController extends ChangeNotifier {
       return false;
     }
 
-    return snapshot.packages.any(capability.supportsLatestVersionLookup);
+    final packages = snapshot.packages
+        .where(capability.supportsLatestVersionLookup)
+        .toList(growable: false);
+    if (packages.isEmpty) {
+      return false;
+    }
+    return capability.supportsBatchLatestVersionLookup(packages);
   }
 
   bool get isBatchCheckingLatestForSelectedManager {
@@ -254,11 +269,56 @@ class PackagePanelController extends ChangeNotifier {
 
   bool isBusy(String busyKey) => _runningCommands.contains(busyKey);
 
+  List<String> get runningCommandTexts =>
+      List<String>.unmodifiable(_runningCommandTexts.values);
+
   bool canCheckLatestVersion(ManagedPackage package) {
     final capability = _capabilityOf<LatestVersionLookupCapability>(
       _adapterFor(package.managerId),
     );
     return capability?.supportsLatestVersionLookup(package) ?? false;
+  }
+
+  Future<PackageCommand?> batchLatestVersionPrerequisiteCommandForSelectedManager()
+  async {
+    final snapshot = selectedManagerSnapshot;
+    final capability = _capabilityOf<LatestVersionLookupCapability>(
+      selectedAdapter,
+    );
+    if (snapshot == null || capability == null) {
+      return null;
+    }
+
+    final packages = snapshot.packages
+        .where(capability.supportsLatestVersionLookup)
+        .toList(growable: false);
+    if (packages.isEmpty ||
+        !capability.supportsBatchLatestVersionLookup(packages) ||
+        capability is! BatchLatestVersionPrerequisiteCapability) {
+      return null;
+    }
+
+    return capability.batchLatestVersionPrerequisiteCommand(_shell, packages);
+  }
+
+  String? batchLatestVersionPrerequisitePromptForSelectedManager() {
+    final snapshot = selectedManagerSnapshot;
+    final capability = _capabilityOf<LatestVersionLookupCapability>(
+      selectedAdapter,
+    );
+    if (snapshot == null ||
+        capability == null ||
+        capability is! BatchLatestVersionPrerequisiteCapability) {
+      return null;
+    }
+
+    final packages = snapshot.packages
+        .where(capability.supportsLatestVersionLookup)
+        .toList(growable: false);
+    if (packages.isEmpty || !capability.supportsBatchLatestVersionLookup(packages)) {
+      return null;
+    }
+    return capability.batchLatestVersionPrerequisitePrompt(packages);
   }
 
   bool canViewPackageDetails(ManagedPackage package) {
@@ -638,6 +698,15 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshCurrentSelection() async {
+    final managerId = _selectedManagerId;
+    if (managerId == null) {
+      await loadAll();
+      return;
+    }
+    await refreshManager(managerId);
+  }
+
   Future<void> _loadAdapter(PackageManagerAdapter adapter) async {
     final capability = _capabilityOf<InstalledPackageCapability>(adapter);
     if (capability == null) {
@@ -930,11 +999,23 @@ class PackagePanelController extends ChangeNotifier {
     final packages = snapshot.packages
         .where(capability.supportsLatestVersionLookup)
         .toList(growable: false);
-    if (packages.isEmpty) {
+    if (packages.isEmpty || !capability.supportsBatchLatestVersionLookup(packages)) {
       return;
     }
 
+    final batchCapability = capability is BatchLatestVersionLookupCapability
+        ? capability
+        : null;
+    final packageBusyKeys = batchCapability == null
+        ? const <String>[]
+        : packages.map(_latestVersionBusyKey).toList(growable: false);
+
     _runningCommands.add(busyKey);
+    if (batchCapability != null) {
+      _runningCommandTexts[busyKey] = batchCapability
+          .batchLatestVersionLookupCommand(packages);
+    }
+    _runningCommands.addAll(packageBusyKeys);
     _pushActivity(
       ActivityEntry(
         timestamp: DateTime.now(),
@@ -945,8 +1026,12 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      for (final package in packages) {
-        await checkLatestVersion(package);
+      if (batchCapability != null) {
+        await _checkLatestVersionsInBatch(packages, batchCapability);
+      } else {
+        for (final package in packages) {
+          await checkLatestVersion(package);
+        }
       }
       _pushActivity(
         ActivityEntry(
@@ -955,14 +1040,26 @@ class PackagePanelController extends ChangeNotifier {
           message: '已完成 ${packages.length} 个包的最新版本检查。',
         ),
       );
+    } catch (error) {
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '${displayNameForManagerId(snapshot.manager.id)} 批量检查更新失败',
+          message: '$error',
+          isError: true,
+        ),
+      );
     } finally {
       _runningCommands.remove(busyKey);
+      _runningCommandTexts.remove(busyKey);
+      _runningCommands.removeAll(packageBusyKeys);
       notifyListeners();
     }
   }
 
   Future<ShellResult> runCommand(PackageCommand command) async {
     _runningCommands.add(command.busyKey);
+    _runningCommandTexts[command.busyKey] = command.command;
     _pushActivity(
       ActivityEntry(
         timestamp: DateTime.now(),
@@ -977,6 +1074,7 @@ class PackagePanelController extends ChangeNotifier {
       timeout: command.timeout,
     );
     _runningCommands.remove(command.busyKey);
+    _runningCommandTexts.remove(command.busyKey);
 
     _pushActivity(
       ActivityEntry(
@@ -1015,6 +1113,9 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     _runningCommands.add(busyKey);
+    _runningCommandTexts[busyKey] = capability.latestVersionLookupCommand(
+      package,
+    );
     _pushActivity(
       ActivityEntry(
         timestamp: DateTime.now(),
@@ -1030,19 +1131,8 @@ class PackagePanelController extends ChangeNotifier {
         _shell,
         package,
       );
-      final updatedPackage = package.copyWith(
-        latestVersion: latestVersion,
-        latestVersionCheckedAt: checkedAt,
-        notes: package.notes,
-      );
-      _replacePackage(updatedPackage);
-      _latestInfo[updatedPackage.key] = PersistedPackageLatestInfo(
-        installedVersion: updatedPackage.version.trim(),
-        latestVersion: latestVersion.trim(),
-        checkedAt: checkedAt,
-      );
-      await _latestInfoStore.save(_latestInfo);
-      await _snapshotStore.save(_snapshots);
+      _applyLatestVersionResult(package, latestVersion, checkedAt);
+      await _persistLatestVersionInfo();
       _pushActivity(
         ActivityEntry(
           timestamp: DateTime.now(),
@@ -1065,6 +1155,7 @@ class PackagePanelController extends ChangeNotifier {
       return null;
     } finally {
       _runningCommands.remove(busyKey);
+      _runningCommandTexts.remove(busyKey);
       notifyListeners();
     }
   }
@@ -1354,6 +1445,49 @@ class PackagePanelController extends ChangeNotifier {
     return 'batch-latest::$managerId';
   }
 
+  Future<void> _checkLatestVersionsInBatch(
+    List<ManagedPackage> packages,
+    BatchLatestVersionLookupCapability capability,
+  ) async {
+    final checkedAt = DateTime.now();
+    final latestVersions = await capability.lookupLatestVersions(_shell, packages);
+    for (final package in packages) {
+      final latestVersion = latestVersions[package.key]?.trim();
+      _applyLatestVersionResult(
+        package,
+        latestVersion == null || latestVersion.isEmpty
+            ? package.version
+            : latestVersion,
+        checkedAt,
+      );
+    }
+    await _persistLatestVersionInfo();
+  }
+
+  void _applyLatestVersionResult(
+    ManagedPackage package,
+    String latestVersion,
+    DateTime checkedAt,
+  ) {
+    final normalizedLatestVersion = latestVersion.trim();
+    final updatedPackage = package.copyWith(
+      latestVersion: normalizedLatestVersion,
+      latestVersionCheckedAt: checkedAt,
+      notes: package.notes,
+    );
+    _replacePackage(updatedPackage);
+    _latestInfo[updatedPackage.key] = PersistedPackageLatestInfo(
+      installedVersion: updatedPackage.version.trim(),
+      latestVersion: normalizedLatestVersion,
+      checkedAt: checkedAt,
+    );
+  }
+
+  Future<void> _persistLatestVersionInfo() async {
+    await _latestInfoStore.save(_latestInfo);
+    await _snapshotStore.save(_snapshots);
+  }
+
   List<ManagedPackage> _mergeLatestInfoIntoPackages(
     List<ManagedPackage> packages,
   ) {
@@ -1361,10 +1495,6 @@ class PackagePanelController extends ChangeNotifier {
         .map((package) {
           final cached = _latestInfo[package.key];
           if (cached == null) {
-            return package;
-          }
-
-          if (cached.installedVersion.trim() != package.version.trim()) {
             return package;
           }
 

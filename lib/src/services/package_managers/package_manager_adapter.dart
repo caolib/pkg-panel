@@ -64,8 +64,41 @@ mixin PackageDetailsCapability {
 mixin LatestVersionLookupCapability {
   bool supportsLatestVersionLookup(ManagedPackage package) => true;
 
+  bool supportsBatchLatestVersionLookup(List<ManagedPackage> packages) => true;
+
+  String latestVersionLookupCommand(ManagedPackage package);
+
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,
   );
+}
+
+// Looks up latest versions for multiple installed packages in one request.
+mixin BatchLatestVersionLookupCapability on LatestVersionLookupCapability {
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    if (packages.isEmpty) {
+      return '';
+    }
+    return latestVersionLookupCommand(packages.first);
+  }
+
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  );
+}
+
+mixin BatchLatestVersionPrerequisiteCapability
+    on BatchLatestVersionLookupCapability {
+  Future<PackageCommand?> batchLatestVersionPrerequisiteCommand(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    return null;
+  }
+
+  String batchLatestVersionPrerequisitePrompt(List<ManagedPackage> packages) {
+    return '批量检查更新前需要先安装依赖命令，是否现在安装？';
+  }
 }

@@ -32,8 +32,13 @@ class WingetPackageIconResolver {
     final output = <String, String>{};
     for (final package in packages) {
       final match = _matchEntry(package, byDisplayName);
-      if (match != null) {
-        output[package.key] = match.iconPath;
+      if (match == null) {
+        continue;
+      }
+
+      final resolvedPath = await _resolveIconPath(shell, match.iconPath);
+      if (resolvedPath != null && resolvedPath.isNotEmpty) {
+        output[package.key] = resolvedPath;
       }
     }
     return output;
@@ -140,7 +145,7 @@ class WingetPackageIconResolver {
     }
 
     final match = RegExp(
-      r'^(.*?\.(?:ico|svg|png|jpg|jpeg|webp|bmp|gif))(?:,.*)?$',
+      r'^(.*?\.(?:exe|dll|ico|svg|png|jpg|jpeg|webp|bmp|gif))(?:,.*)?$',
       caseSensitive: false,
     ).firstMatch(path);
     if (match != null) {
@@ -166,7 +171,9 @@ class WingetPackageIconResolver {
 
   bool _isSupportedIconFile(String path) {
     final lowerPath = path.toLowerCase();
-    return lowerPath.endsWith('.ico') ||
+    return lowerPath.endsWith('.exe') ||
+        lowerPath.endsWith('.dll') ||
+        lowerPath.endsWith('.ico') ||
         lowerPath.endsWith('.svg') ||
         lowerPath.endsWith('.png') ||
         lowerPath.endsWith('.jpg') ||
@@ -178,6 +185,85 @@ class WingetPackageIconResolver {
 
   String _quoteDisplay(String value) {
     return "'${value.replaceAll("'", "''")}'";
+  }
+
+  Future<String?> _resolveIconPath(ShellExecutor shell, String sourcePath) async {
+    final lowerPath = sourcePath.toLowerCase();
+    if (lowerPath.endsWith('.svg') ||
+        lowerPath.endsWith('.png') ||
+        lowerPath.endsWith('.jpg') ||
+        lowerPath.endsWith('.jpeg') ||
+        lowerPath.endsWith('.webp') ||
+        lowerPath.endsWith('.bmp') ||
+        lowerPath.endsWith('.gif')) {
+      return sourcePath;
+    }
+    if (lowerPath.endsWith('.ico') ||
+        lowerPath.endsWith('.exe') ||
+        lowerPath.endsWith('.dll')) {
+      return _extractWindowsIcon(shell, sourcePath);
+    }
+    return null;
+  }
+
+  Future<String?> _extractWindowsIcon(
+    ShellExecutor shell,
+    String sourcePath,
+  ) async {
+    final cacheDirectory = await _resolveCacheDirectory();
+    await cacheDirectory.create(recursive: true);
+    final outputPath =
+        '${cacheDirectory.path}${Platform.pathSeparator}${_iconCacheKey(sourcePath)}.png';
+    final outputFile = File(outputPath);
+    if (outputFile.existsSync()) {
+      return outputFile.path;
+    }
+
+    final command = '''
+Add-Type -AssemblyName System.Drawing;
+\$source = ${_quoteDisplay(sourcePath)};
+\$target = ${_quoteDisplay(outputPath)};
+\$extension = [System.IO.Path]::GetExtension(\$source).ToLowerInvariant();
+if (\$extension -eq '.ico') {
+  \$icon = New-Object System.Drawing.Icon(\$source);
+} else {
+  \$icon = [System.Drawing.Icon]::ExtractAssociatedIcon(\$source);
+}
+if (\$null -eq \$icon) {
+  throw '无法提取图标。';
+}
+\$bitmap = \$icon.ToBitmap();
+\$bitmap.Save(\$target, [System.Drawing.Imaging.ImageFormat]::Png);
+\$bitmap.Dispose();
+\$icon.Dispose();
+''';
+    final result = await shell.runPowerShell(
+      command,
+      timeout: const Duration(seconds: 20),
+    );
+    if (!result.isSuccess || !outputFile.existsSync()) {
+      return null;
+    }
+    return outputFile.path;
+  }
+
+  Future<Directory> _resolveCacheDirectory() async {
+    final basePath =
+        Platform.environment['LOCALAPPDATA'] ??
+        Platform.environment['APPDATA'] ??
+        Directory.systemTemp.path;
+    return Directory(
+      '$basePath${Platform.pathSeparator}pkg_panel${Platform.pathSeparator}winget_icons',
+    );
+  }
+
+  String _iconCacheKey(String value) {
+    var hash = 2166136261;
+    for (final codeUnit in value.toLowerCase().codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 16777619) & 0x7fffffff;
+    }
+    return hash.toRadixString(16);
   }
 
   _RegistryIconEntry? _matchEntry(
