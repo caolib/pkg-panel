@@ -34,7 +34,11 @@ class BunAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('bun pm bin -g');
+    final result = await shell.runExecutable(
+      'bun',
+      const <String>['pm', 'bin', '-g'],
+      displayCommand: 'bun pm bin -g',
+    );
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -90,9 +94,11 @@ class BunAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     String query,
   ) async {
-    final result = await shell.run(
-      'npm search ${psQuote(query)} --json --searchlimit=20',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['search', query, '--json', '--searchlimit=20'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm search ${psQuote(query)} --json --searchlimit=20',
     );
     return parseNpmSearchResults(result, manager: definition);
   }
@@ -103,6 +109,8 @@ class BunAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
+      executable: 'bun',
+      arguments: <String>['add', '-g', target],
       command: 'bun add -g ${psQuote(target)}',
       timeout: const Duration(minutes: 10),
     );
@@ -114,9 +122,11 @@ class BunAdapter extends PackageManagerAdapter
     SearchPackageInstallOption package,
   ) async {
     final target = package.identifier ?? package.packageName;
-    final result = await shell.run(
-      'npm view ${psQuote(target)} versions --json',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['view', target, 'versions', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(target)} versions --json',
     );
     return PackageVersionQueryResult(
       versions: parseVersionListValue(
@@ -134,6 +144,8 @@ class BunAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@latest',
+      executable: 'bun',
+      arguments: <String>['add', '-g', spec],
       command: 'bun add -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
@@ -149,6 +161,8 @@ class BunAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@${version.trim()}',
+      executable: 'bun',
+      arguments: <String>['add', '-g', spec],
       command: 'bun add -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
@@ -160,11 +174,15 @@ class BunAdapter extends PackageManagerAdapter
       PackageAction.update => buildPackageCommand(
         managerId: definition.id,
         label: '更新 ${package.name}',
+        executable: 'bun',
+        arguments: <String>['update', '-g', '--latest', package.name],
         command: 'bun update -g --latest ${psQuote(package.name)}',
       ),
       PackageAction.remove => buildPackageCommand(
         managerId: definition.id,
         label: '删除 ${package.name}',
+        executable: 'bun',
+        arguments: <String>['remove', '-g', package.name],
         command: 'bun remove -g ${psQuote(package.name)}',
       ),
     };
@@ -175,6 +193,8 @@ class BunAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '批量更新 bun 包',
+      executable: 'bun',
+      arguments: const <String>['update', '-g', '--latest'],
       command: 'bun update -g --latest',
     );
   }
@@ -184,9 +204,11 @@ class BunAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'npm view ${psQuote(package.name)}',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['view', package.name],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(package.name)}',
     );
     return parseDetailOutput(result, managerName: definition.displayName);
   }
@@ -196,9 +218,11 @@ class BunAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'npm view ${psQuote(package.name)} version --json',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['view', package.name, 'version', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(package.name)} version --json',
     );
     return parseSingleVersionValue(result, managerName: definition.displayName);
   }

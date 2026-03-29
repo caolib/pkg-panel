@@ -31,7 +31,11 @@ class ChocolateyAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('choco list --local-only --limit-output');
+    final result = await shell.runExecutable(
+      'choco',
+      const <String>['list', '--local-only', '--limit-output'],
+      displayCommand: 'choco list --local-only --limit-output',
+    );
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -79,9 +83,11 @@ class ChocolateyAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     String query,
   ) async {
-    final result = await shell.run(
-      'choco search ${psQuote(query)} --limit-output',
+    final result = await shell.runExecutable(
+      'choco',
+      <String>['search', query, '--limit-output'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'choco search ${psQuote(query)} --limit-output',
     );
     return parseChocolateySearchResults(result, manager: definition);
   }
@@ -92,6 +98,8 @@ class ChocolateyAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
+      executable: 'choco',
+      arguments: <String>['install', target, '-y'],
       command: 'choco install ${psQuote(target)} -y',
       timeout: const Duration(minutes: 12),
     );
@@ -103,9 +111,18 @@ class ChocolateyAdapter extends PackageManagerAdapter
     SearchPackageInstallOption package,
   ) async {
     final target = package.identifier ?? package.packageName;
-    final result = await shell.run(
-      'choco search ${psQuote(target)} --exact --all-versions --limit-output',
+    final result = await shell.runExecutable(
+      'choco',
+      <String>[
+        'search',
+        target,
+        '--exact',
+        '--all-versions',
+        '--limit-output',
+      ],
       timeout: const Duration(seconds: 45),
+      displayCommand:
+          'choco search ${psQuote(target)} --exact --all-versions --limit-output',
     );
     return PackageVersionQueryResult(
       versions: parseChocolateyVersionList(
@@ -125,6 +142,15 @@ class ChocolateyAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@$normalizedVersion',
+      executable: 'choco',
+      arguments: <String>[
+        'install',
+        target,
+        '--version',
+        normalizedVersion,
+        '--allow-downgrade',
+        '-y',
+      ],
       command: [
         'choco install ${psQuote(target)}',
         '--version ${psQuote(normalizedVersion)}',
@@ -141,12 +167,16 @@ class ChocolateyAdapter extends PackageManagerAdapter
       PackageAction.update => buildPackageCommand(
         managerId: definition.id,
         label: '升级 ${package.name}',
+        executable: 'choco',
+        arguments: <String>['upgrade', package.name, '-y'],
         command: 'choco upgrade ${psQuote(package.name)} -y',
         timeout: const Duration(minutes: 10),
       ),
       PackageAction.remove => buildPackageCommand(
         managerId: definition.id,
         label: '卸载 ${package.name}',
+        executable: 'choco',
+        arguments: <String>['uninstall', package.name, '-y'],
         command: 'choco uninstall ${psQuote(package.name)} -y',
         timeout: const Duration(minutes: 10),
       ),
@@ -158,6 +188,8 @@ class ChocolateyAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '批量升级 choco 包',
+      executable: 'choco',
+      arguments: const <String>['upgrade', 'all', '-y'],
       command: 'choco upgrade all -y',
       timeout: const Duration(minutes: 12),
     );
@@ -168,9 +200,11 @@ class ChocolateyAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'choco search ${psQuote(package.name)} --exact --limit-output',
+    final result = await shell.runExecutable(
+      'choco',
+      <String>['search', package.name, '--exact', '--limit-output'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'choco search ${psQuote(package.name)} --exact --limit-output',
     );
     return parseChocolateyLatestVersion(
       result,

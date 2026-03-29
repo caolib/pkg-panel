@@ -1080,8 +1080,8 @@ class _FakeShellExecutor extends ShellExecutor {
   final ShellResult result;
 
   @override
-  Future<ShellResult> run(
-    String command, {
+  Future<ShellResult> runRequest(
+    ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
   }) async {
     return result;
@@ -1094,10 +1094,11 @@ class _MappedShellExecutor extends ShellExecutor {
   final Map<Pattern, ShellResult> results;
 
   @override
-  Future<ShellResult> run(
-    String command, {
+  Future<ShellResult> runRequest(
+    ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    final command = request.displayCommand;
     for (final entry in results.entries) {
       final pattern = entry.key;
       if (pattern is String && command == pattern) {
@@ -1123,10 +1124,11 @@ class _RecordingShellExecutor extends ShellExecutor {
   final List<String> commands = <String>[];
 
   @override
-  Future<ShellResult> run(
-    String command, {
+  Future<ShellResult> runRequest(
+    ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    final command = request.displayCommand;
     commands.add(command);
     for (final entry in results.entries) {
       final pattern = entry.key;
@@ -1228,10 +1230,11 @@ class _DelayedShellExecutor extends ShellExecutor {
   }
 
   @override
-  Future<ShellResult> run(
-    String command, {
+  Future<ShellResult> runRequest(
+    ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    final command = request.displayCommand;
     if (command == delayedCommand) {
       await _completer.future;
       return delayedResult;

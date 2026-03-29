@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/shell_executor.dart';
+
 enum ManagerLoadState { idle, loading, ready, error }
 
 enum PackageAction { update, remove }
@@ -136,22 +138,24 @@ class PackageCommand {
     required this.managerId,
     required this.busyKey,
     required this.label,
-    required this.command,
+    required this.request,
     this.timeout = const Duration(minutes: 5),
   });
 
   final String managerId;
   final String busyKey;
   final String label;
-  final String command;
+  final ShellRequest request;
   final Duration timeout;
+
+  String get command => request.displayCommand;
 
   PackageCommand copyWith({String? busyKey}) {
     return PackageCommand(
       managerId: managerId,
       busyKey: busyKey ?? this.busyKey,
       label: label,
-      command: command,
+      request: request,
       timeout: timeout,
     );
   }

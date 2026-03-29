@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -29,7 +30,14 @@ class WingetAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('winget list --disable-interactivity');
+    if (!Platform.isWindows) {
+      throw PackageAdapterException(
+        definition.displayName,
+        'winget 仅在 Windows 平台可用。',
+      );
+    }
+
+    final result = await shell.runPowerShell('winget list --disable-interactivity');
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -96,7 +104,14 @@ class WingetAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     String query,
   ) async {
-    final result = await shell.run(
+    if (!Platform.isWindows) {
+      throw PackageAdapterException(
+        definition.displayName,
+        'winget 仅在 Windows 平台可用。',
+      );
+    }
+
+    final result = await shell.runPowerShell(
       'winget search ${psQuote(query)} --disable-interactivity',
       timeout: const Duration(seconds: 45),
     );
@@ -106,7 +121,7 @@ class WingetAdapter extends PackageManagerAdapter
   @override
   PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
     final target = package.identifier ?? package.packageName;
-    return buildPackageCommand(
+    return buildPowerShellCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
       command: [
@@ -122,12 +137,13 @@ class WingetAdapter extends PackageManagerAdapter
   }
 
   @override
+  @override
   Future<PackageVersionQueryResult> listInstallableVersions(
     ShellExecutor shell,
     SearchPackageInstallOption package,
   ) async {
     final target = package.identifier ?? package.packageName;
-    final result = await shell.run(
+    final result = await shell.runPowerShell(
       [
         'winget show',
         '--id ${psQuote(target)}',
@@ -153,7 +169,7 @@ class WingetAdapter extends PackageManagerAdapter
   ) {
     final target = package.identifier ?? package.packageName;
     final normalizedVersion = version.trim();
-    return buildPackageCommand(
+    return buildPowerShellCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@$normalizedVersion',
       command: [
@@ -173,7 +189,7 @@ class WingetAdapter extends PackageManagerAdapter
   PackageCommand buildCommand(PackageAction action, ManagedPackage package) {
     final target = package.identifier ?? package.name;
     return switch (action) {
-      PackageAction.update => buildPackageCommand(
+      PackageAction.update => buildPowerShellCommand(
         managerId: definition.id,
         label: '升级 ${package.name}',
         command: [
@@ -186,7 +202,7 @@ class WingetAdapter extends PackageManagerAdapter
         ].join(' '),
         timeout: const Duration(minutes: 10),
       ),
-      PackageAction.remove => buildPackageCommand(
+      PackageAction.remove => buildPowerShellCommand(
         managerId: definition.id,
         label: '卸载 ${package.name}',
         command: [
@@ -207,7 +223,7 @@ class WingetAdapter extends PackageManagerAdapter
     ManagedPackage package,
   ) async {
     final target = package.identifier ?? package.name;
-    final result = await shell.run(
+    final result = await shell.runPowerShell(
       [
         'winget show',
         '--id ${psQuote(target)}',

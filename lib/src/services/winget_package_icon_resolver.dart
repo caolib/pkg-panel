@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import '../models/package_models.dart';
@@ -11,17 +10,11 @@ class WingetPackageIconResolver {
     ShellExecutor shell,
     List<ManagedPackage> packages,
   ) async {
-    if (packages.isEmpty) {
+    if (!Platform.isWindows || packages.isEmpty) {
       return const <String, String>{};
     }
 
-    final cacheDir = await _resolveCacheDirectory();
-    await _cleanupCacheDirectory(cacheDir);
-
-    final entries = <_RegistryIconEntry>[
-      ...await _loadRegistryEntries(shell),
-      ...await _loadShortcutEntries(shell),
-    ];
+    final entries = await _loadRegistryEntries(shell);
     if (entries.isEmpty) {
       return const <String, String>{};
     }
@@ -40,129 +33,141 @@ class WingetPackageIconResolver {
     for (final package in packages) {
       final match = _matchEntry(package, byDisplayName);
       if (match != null) {
-        final materializedPath = await _materializeIconPath(
-          shell,
-          match.iconPath,
-          cacheDir,
-        );
-        if (materializedPath != null && materializedPath.isNotEmpty) {
-          output[package.key] = materializedPath;
-        }
+        output[package.key] = match.iconPath;
       }
     }
     return output;
   }
 
-  Future<String?> _materializeIconPath(
-    ShellExecutor shell,
-    String iconPath,
-    Directory cacheDir,
-  ) async {
-    final lowerPath = iconPath.toLowerCase();
-    if (_isDirectImage(lowerPath)) {
-      return iconPath;
-    }
-
-    if (!lowerPath.endsWith('.exe') && !lowerPath.endsWith('.ico')) {
-      return null;
-    }
-
-    await cacheDir.create(recursive: true);
-    final fileName = '${_sanitizeFileName(iconPath)}.png';
-    final outputFile = File(
-      '${cacheDir.path}${Platform.pathSeparator}$fileName',
-    );
-    if (await outputFile.exists()) {
-      await outputFile.setLastModified(DateTime.now());
-      return outputFile.path;
-    }
-
-    final result = await shell.run(
-      _buildExtractScript(sourcePath: iconPath, outputPath: outputFile.path),
-      timeout: const Duration(seconds: 30),
-    );
-    if (!result.isSuccess || !await outputFile.exists()) {
-      return null;
-    }
-    return outputFile.path;
-  }
-
   Future<List<_RegistryIconEntry>> _loadRegistryEntries(
     ShellExecutor shell,
   ) async {
-    final result = await shell.run(
-      _registryQueryScript,
-      timeout: const Duration(seconds: 45),
-    );
-    if (!result.isSuccess) {
-      return const <_RegistryIconEntry>[];
+    const roots = <String>[
+      r'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+      r'HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+      r'HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    ];
+
+    final output = <_RegistryIconEntry>[];
+    for (final root in roots) {
+      final result = await shell.runExecutable(
+        'reg',
+        <String>['query', root, '/s'],
+        timeout: const Duration(seconds: 45),
+        displayCommand: 'reg query ${_quoteDisplay(root)} /s',
+      );
+      if (!result.isSuccess) {
+        continue;
+      }
+      output.addAll(_parseRegistryEntries(result.stdout));
     }
-    return _parseRegistryEntries(result.stdout);
+    return output;
   }
 
-  Future<List<_RegistryIconEntry>> _loadShortcutEntries(
-    ShellExecutor shell,
-  ) async {
-    final result = await shell.run(
-      _startMenuShortcutQueryScript,
-      timeout: const Duration(seconds: 45),
-    );
-    if (!result.isSuccess) {
-      return const <_RegistryIconEntry>[];
+  List<_RegistryIconEntry> _parseRegistryEntries(String stdout) {
+    final output = <_RegistryIconEntry>[];
+    String? displayName;
+    String? iconPath;
+
+    void flush() {
+      final normalizedName = _normalizeName(displayName ?? '');
+      final normalizedPath = _normalizeIconPath(iconPath);
+      if (normalizedName.isEmpty ||
+          normalizedPath == null ||
+          normalizedPath.isEmpty) {
+        displayName = null;
+        iconPath = null;
+        return;
+      }
+      output.add(
+        _RegistryIconEntry(
+          normalizedDisplayName: normalizedName,
+          iconPath: normalizedPath,
+        ),
+      );
+      displayName = null;
+      iconPath = null;
     }
-    return _parseRegistryEntries(result.stdout);
+
+    for (final rawLine in stdout.split(RegExp(r'\r?\n'))) {
+      final line = rawLine.trimRight();
+      if (line.isEmpty) {
+        continue;
+      }
+
+      if (line.startsWith('HKEY_')) {
+        flush();
+        continue;
+      }
+
+      final trimmed = line.trimLeft();
+      final parts = trimmed.split(RegExp(r'\s{2,}'));
+      if (parts.length < 3) {
+        continue;
+      }
+
+      final key = parts[0].trim();
+      final value = parts.sublist(2).join('  ').trim();
+      if (value.isEmpty) {
+        continue;
+      }
+
+      if (key == 'DisplayName' || key == 'QuietDisplayName') {
+        displayName = value;
+      } else if (key == 'DisplayIcon') {
+        iconPath = value;
+      }
+    }
+
+    flush();
+    return output;
   }
 
-  Future<void> _cleanupCacheDirectory(Directory cacheDir) async {
-    if (!await cacheDir.exists()) {
-      return;
+  String? _normalizeIconPath(String? rawValue) {
+    final raw = rawValue?.trim();
+    if (raw == null || raw.isEmpty) {
+      return null;
     }
 
-    final files = <File>[];
-    await for (final entity in cacheDir.list()) {
-      if (entity is File) {
-        files.add(entity);
+    var path = _expandEnvironmentVariables(raw);
+    if (path.startsWith('"') && path.endsWith('"') && path.length >= 2) {
+      path = path.substring(1, path.length - 1);
+    } else if (path.startsWith('"')) {
+      final closingQuote = path.indexOf('"', 1);
+      if (closingQuote > 1) {
+        path = path.substring(1, closingQuote);
       }
     }
 
-    final expiry = DateTime.now().subtract(const Duration(days: 14));
-    for (final file in files) {
-      try {
-        final stat = await file.stat();
-        if (stat.modified.isBefore(expiry)) {
-          await file.delete();
-        }
-      } catch (_) {
-        // Ignore cache cleanup failures.
-      }
+    final match = RegExp(
+      r'^(.*?\.(?:ico|svg|png|jpg|jpeg|webp|bmp|gif))(?:,.*)?$',
+      caseSensitive: false,
+    ).firstMatch(path);
+    if (match != null) {
+      path = match.group(1)!.trim();
     }
 
-    if (files.length <= 300) {
-      return;
+    if (path.isEmpty || !_isSupportedIconFile(path)) {
+      return null;
     }
 
-    final liveFiles = <(File, DateTime)>[];
-    await for (final entity in cacheDir.list()) {
-      if (entity is File) {
-        try {
-          liveFiles.add((entity, (await entity.stat()).modified));
-        } catch (_) {
-          // Ignore cache cleanup failures.
-        }
-      }
-    }
-    liveFiles.sort((a, b) => b.$2.compareTo(a.$2));
-    for (final entry in liveFiles.skip(250)) {
-      try {
-        await entry.$1.delete();
-      } catch (_) {
-        // Ignore cache cleanup failures.
-      }
-    }
+    return File(path).existsSync() ? path : null;
   }
 
-  bool _isDirectImage(String lowerPath) {
-    return lowerPath.endsWith('.svg') ||
+  String _expandEnvironmentVariables(String value) {
+    return value.replaceAllMapped(RegExp(r'%([^%]+)%'), (match) {
+      final variable = match.group(1)?.trim();
+      if (variable == null || variable.isEmpty) {
+        return match.group(0) ?? '';
+      }
+      return Platform.environment[variable] ?? match.group(0) ?? '';
+    });
+  }
+
+  bool _isSupportedIconFile(String path) {
+    final lowerPath = path.toLowerCase();
+    return lowerPath.endsWith('.ico') ||
+        lowerPath.endsWith('.svg') ||
         lowerPath.endsWith('.png') ||
         lowerPath.endsWith('.jpg') ||
         lowerPath.endsWith('.jpeg') ||
@@ -171,76 +176,7 @@ class WingetPackageIconResolver {
         lowerPath.endsWith('.gif');
   }
 
-  Future<Directory> _resolveCacheDirectory() async {
-    final basePath =
-        Platform.environment['LOCALAPPDATA'] ??
-        Platform.environment['APPDATA'] ??
-        Directory.systemTemp.path;
-    return Directory(
-      '$basePath${Platform.pathSeparator}pkg_panel${Platform.pathSeparator}icon_cache',
-    );
-  }
-
-  String _sanitizeFileName(String value) {
-    final sanitized = value
-        .toLowerCase()
-        .replaceAll(RegExp(r'^[a-z]:'), '')
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-        .replaceAll(RegExp(r'_+'), '_')
-        .trim();
-    if (sanitized.isEmpty) {
-      return 'icon';
-    }
-    return sanitized.length > 80 ? sanitized.substring(0, 80) : sanitized;
-  }
-
-  String _buildExtractScript({
-    required String sourcePath,
-    required String outputPath,
-  }) {
-    final source = _psQuote(sourcePath);
-    final output = _psQuote(outputPath);
-    return r'''
-Add-Type -AssemblyName System.Drawing;
-$source = ''' +
-        source +
-        r''';
-$output = ''' +
-        output +
-        r''';
-$directory = Split-Path -Parent $output;
-New-Item -ItemType Directory -Force -Path $directory | Out-Null;
-$bitmap = $null;
-try {
-  if ($source.ToLower().EndsWith('.exe')) {
-    $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($source);
-  } else {
-    $stream = [System.IO.File]::OpenRead($source);
-    try {
-      $icon = [System.Drawing.Icon]::new($stream);
-    } finally {
-      $stream.Dispose();
-    }
-  }
-  if ($null -eq $icon) {
-    exit 1
-  }
-  $bitmap = $icon.ToBitmap();
-  $bitmap.Save($output, [System.Drawing.Imaging.ImageFormat]::Png);
-} catch {
-  exit 1
-} finally {
-  if ($bitmap -ne $null) {
-    $bitmap.Dispose();
-  }
-  if ($icon -ne $null) {
-    $icon.Dispose();
-  }
-}
-''';
-  }
-
-  String _psQuote(String value) {
+  String _quoteDisplay(String value) {
     return "'${value.replaceAll("'", "''")}'";
   }
 
@@ -275,36 +211,6 @@ try {
     return null;
   }
 
-  List<_RegistryIconEntry> _parseRegistryEntries(String stdout) {
-    try {
-      final decoded = jsonDecode(stdout);
-      if (decoded is! List) {
-        return const <_RegistryIconEntry>[];
-      }
-
-      final output = <_RegistryIconEntry>[];
-      for (final item in decoded) {
-        if (item is! Map<String, dynamic>) {
-          continue;
-        }
-        final displayName = '${item['displayName'] ?? ''}'.trim();
-        final iconPath = '${item['iconPath'] ?? ''}'.trim();
-        if (displayName.isEmpty || iconPath.isEmpty) {
-          continue;
-        }
-        output.add(
-          _RegistryIconEntry(
-            normalizedDisplayName: _normalizeName(displayName),
-            iconPath: iconPath,
-          ),
-        );
-      }
-      return output;
-    } catch (_) {
-      return const <_RegistryIconEntry>[];
-    }
-  }
-
   String _normalizeName(String value) {
     return value
         .toLowerCase()
@@ -324,75 +230,3 @@ class _RegistryIconEntry {
   final String normalizedDisplayName;
   final String iconPath;
 }
-
-const String _registryQueryScript = r'''
-$roots = @(
-  'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
-  'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
-  'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*'
-)
-$items = foreach ($root in $roots) {
-  Get-ItemProperty -Path $root -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -and $_.DisplayIcon } |
-    ForEach-Object {
-      $iconPath = [Environment]::ExpandEnvironmentVariables([string]$_.DisplayIcon).Trim()
-      if ($iconPath.StartsWith('"')) {
-        $iconPath = $iconPath.Trim('"')
-      }
-      if ($iconPath -match '^(.*?\.(?:exe|ico|png|svg|jpg|jpeg|webp))(?:,.*)?$') {
-        $iconPath = $matches[1]
-      }
-      if ([string]::IsNullOrWhiteSpace($iconPath) -or -not (Test-Path $iconPath)) {
-        return
-      }
-      [pscustomobject]@{
-        displayName = [string]$_.DisplayName
-        iconPath = $iconPath
-      }
-    }
-}
-$items | ConvertTo-Json -Depth 3 -Compress
-''';
-
-const String _startMenuShortcutQueryScript = r'''
-$shell = New-Object -ComObject WScript.Shell
-$roots = @(
-  "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
-  "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
-)
-$items = foreach ($root in $roots) {
-  if (-not (Test-Path $root)) {
-    continue
-  }
-  Get-ChildItem -Path $root -Filter *.lnk -Recurse -ErrorAction SilentlyContinue |
-    ForEach-Object {
-      try {
-        $shortcut = $shell.CreateShortcut($_.FullName)
-        $displayName = $_.BaseName
-        $iconPath = [string]$shortcut.IconLocation
-        if ([string]::IsNullOrWhiteSpace($iconPath)) {
-          $iconPath = [string]$shortcut.TargetPath
-        }
-        $iconPath = [Environment]::ExpandEnvironmentVariables($iconPath).Trim()
-        if ($iconPath.StartsWith('"')) {
-          $iconPath = $iconPath.Trim('"')
-        }
-        if ($iconPath -match '^(.*?\.(?:exe|ico|png|svg|jpg|jpeg|webp))(?:,.*)?$') {
-          $iconPath = $matches[1]
-        }
-        if ([string]::IsNullOrWhiteSpace($displayName) -or
-            [string]::IsNullOrWhiteSpace($iconPath) -or
-            -not (Test-Path $iconPath)) {
-          return
-        }
-        [pscustomobject]@{
-          displayName = $displayName
-          iconPath = $iconPath
-        }
-      } catch {
-        return
-      }
-    }
-}
-$items | ConvertTo-Json -Depth 3 -Compress
-''';

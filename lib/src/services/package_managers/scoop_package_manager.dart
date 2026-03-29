@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -29,7 +30,14 @@ class ScoopAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('scoop list');
+    if (!Platform.isWindows) {
+      throw PackageAdapterException(
+        definition.displayName,
+        'scoop 仅在 Windows 平台可用。',
+      );
+    }
+
+    final result = await shell.runPowerShell('scoop list');
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -43,11 +51,19 @@ class ScoopAdapter extends PackageManagerAdapter
         .toList();
 
     final headerLine = lines.cast<String?>().firstWhere(
-      (line) => line != null && line.trimLeft().startsWith('Name'),
+      (line) {
+        if (line == null) return false;
+        final trimmed = line.trim();
+        return trimmed.startsWith('Name') && trimmed.contains('Version');
+      },
       orElse: () => null,
     );
     if (headerLine == null) {
-      throw PackageAdapterException(definition.displayName, '无法解析 scoop 输出。');
+      final debugOutput = lines.take(10).map((l) => '"$l"').join('\n');
+      throw PackageAdapterException(
+        definition.displayName,
+        '无法解析 scoop 输出。前 10 行内容：\n$debugOutput\n\n完整输出：\n${result.stdout}',
+      );
     }
 
     final headerIndex = lines.indexOf(headerLine);
@@ -56,24 +72,35 @@ class ScoopAdapter extends PackageManagerAdapter
     final updatedStart = headerLine.indexOf('Updated');
     final infoStart = headerLine.indexOf('Info');
 
-    if (versionStart < 0 ||
-        sourceStart < 0 ||
-        updatedStart < 0 ||
-        infoStart < 0) {
+    if (versionStart < 0) {
       throw PackageAdapterException(definition.displayName, '无法识别 scoop 的列布局。');
     }
 
     final packages = <ManagedPackage>[];
     for (final line in lines.skip(headerIndex + 2)) {
+      if (line.trim().startsWith('-')) {
+        continue;
+      }
+
       final name = sliceColumn(line, 0, versionStart);
       if (name.isEmpty) {
         continue;
       }
 
-      final version = sliceColumn(line, versionStart, sourceStart);
-      final source = sliceColumn(line, sourceStart, updatedStart);
-      final updated = sliceColumn(line, updatedStart, infoStart);
-      final info = sliceColumn(line, infoStart, null);
+      final version = sourceStart > 0
+          ? sliceColumn(line, versionStart, sourceStart)
+          : sliceColumn(line, versionStart, null);
+      final source = sourceStart > 0 && updatedStart > 0
+          ? sliceColumn(line, sourceStart, updatedStart)
+          : sourceStart > 0
+              ? sliceColumn(line, sourceStart, null)
+              : '';
+      final updated = updatedStart > 0 && infoStart > 0
+          ? sliceColumn(line, updatedStart, infoStart)
+          : updatedStart > 0
+              ? sliceColumn(line, updatedStart, null)
+              : '';
+      final info = infoStart > 0 ? sliceColumn(line, infoStart, null) : '';
       final details = <String>[
         if (updated.isNotEmpty) '更新于: $updated',
         if (info.isNotEmpty) info,
@@ -100,7 +127,14 @@ class ScoopAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     String query,
   ) async {
-    final result = await shell.run(
+    if (!Platform.isWindows) {
+      throw PackageAdapterException(
+        definition.displayName,
+        'scoop 仅在 Windows 平台可用。',
+      );
+    }
+
+    final result = await shell.runPowerShell(
       'scoop search ${psQuote(query)}',
       timeout: const Duration(seconds: 45),
     );
@@ -109,7 +143,7 @@ class ScoopAdapter extends PackageManagerAdapter
 
   @override
   PackageCommand buildInstallCommand(SearchPackageInstallOption package) {
-    return buildPackageCommand(
+    return buildPowerShellCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
       command: 'scoop install ${psQuote(package.packageName)}',
@@ -120,12 +154,12 @@ class ScoopAdapter extends PackageManagerAdapter
   @override
   PackageCommand buildCommand(PackageAction action, ManagedPackage package) {
     return switch (action) {
-      PackageAction.update => buildPackageCommand(
+      PackageAction.update => buildPowerShellCommand(
         managerId: definition.id,
         label: '更新 ${package.name}',
         command: 'scoop update ${psQuote(package.name)}',
       ),
-      PackageAction.remove => buildPackageCommand(
+      PackageAction.remove => buildPowerShellCommand(
         managerId: definition.id,
         label: '卸载 ${package.name}',
         command: 'scoop uninstall ${psQuote(package.name)}',
@@ -135,7 +169,7 @@ class ScoopAdapter extends PackageManagerAdapter
 
   @override
   PackageCommand buildBatchUpdateCommand() {
-    return buildPackageCommand(
+    return buildPowerShellCommand(
       managerId: definition.id,
       label: '批量更新 scoop 应用',
       command: 'scoop update *',

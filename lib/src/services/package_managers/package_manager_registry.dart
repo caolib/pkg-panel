@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package_manager_adapter.dart';
 import 'bun_package_manager.dart';
 import 'cargo_package_manager.dart';
@@ -10,11 +12,11 @@ import 'uv_tool_package_manager.dart';
 import 'winget_package_manager.dart';
 
 class PackageManagerRegistry {
-  static final List<PackageManagerAdapter> defaultAdapters =
+  static List<PackageManagerAdapter> get defaultAdapters =>
       <PackageManagerAdapter>[
-        const WingetAdapter(),
-        const ChocolateyAdapter(),
-        const ScoopAdapter(),
+        if (Platform.isWindows) const WingetAdapter(),
+        if (Platform.isWindows) const ChocolateyAdapter(),
+        if (Platform.isWindows) const ScoopAdapter(),
         const NpmAdapter(),
         const PnpmAdapter(),
         const BunAdapter(),

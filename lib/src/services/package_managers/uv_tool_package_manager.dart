@@ -31,7 +31,11 @@ class UvToolAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('uv tool list');
+    final result = await shell.runExecutable(
+      'uv',
+      const <String>['tool', 'list'],
+      displayCommand: 'uv tool list',
+    );
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -94,6 +98,8 @@ class UvToolAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
+      executable: 'uv',
+      arguments: <String>['tool', 'install', target],
       command: 'uv tool install ${psQuote(target)}',
       timeout: const Duration(minutes: 10),
     );
@@ -105,9 +111,18 @@ class UvToolAdapter extends PackageManagerAdapter
     SearchPackageInstallOption package,
   ) async {
     final target = package.identifier ?? package.packageName;
-    final result = await shell.run(
-      'pip index versions ${psQuote(target)} --disable-pip-version-check --no-color',
+    final result = await shell.runExecutable(
+      'pip',
+      <String>[
+        'index',
+        'versions',
+        target,
+        '--disable-pip-version-check',
+        '--no-color',
+      ],
       timeout: const Duration(seconds: 45),
+      displayCommand:
+          'pip index versions ${psQuote(target)} --disable-pip-version-check --no-color',
     );
     return PackageVersionQueryResult(
       versions: parsePipVersionList(
@@ -127,6 +142,13 @@ class UvToolAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}==$normalizedVersion',
+      executable: 'uv',
+      arguments: <String>[
+        'tool',
+        'install',
+        '$target==$normalizedVersion',
+        '--reinstall',
+      ],
       command:
           'uv tool install ${psQuote('$target==$normalizedVersion')} --reinstall',
       timeout: const Duration(minutes: 10),
@@ -139,11 +161,15 @@ class UvToolAdapter extends PackageManagerAdapter
       PackageAction.update => buildPackageCommand(
         managerId: definition.id,
         label: '升级 ${package.name}',
+        executable: 'uv',
+        arguments: <String>['tool', 'upgrade', package.name],
         command: 'uv tool upgrade ${psQuote(package.name)}',
       ),
       PackageAction.remove => buildPackageCommand(
         managerId: definition.id,
         label: '卸载 ${package.name}',
+        executable: 'uv',
+        arguments: <String>['tool', 'uninstall', package.name],
         command: 'uv tool uninstall ${psQuote(package.name)}',
       ),
     };
@@ -154,6 +180,8 @@ class UvToolAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '批量升级 uv 工具',
+      executable: 'uv',
+      arguments: const <String>['tool', 'upgrade', '--all'],
       command: 'uv tool upgrade --all',
     );
   }
@@ -163,9 +191,11 @@ class UvToolAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'uv tool list',
+    final result = await shell.runExecutable(
+      'uv',
+      const <String>['tool', 'list'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'uv tool list',
     );
     return extractUvToolDetails(
       result,
@@ -179,9 +209,18 @@ class UvToolAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color',
+    final result = await shell.runExecutable(
+      'pip',
+      <String>[
+        'index',
+        'versions',
+        package.name,
+        '--disable-pip-version-check',
+        '--no-color',
+      ],
       timeout: const Duration(seconds: 45),
+      displayCommand:
+          'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color',
     );
     return parsePipLatestVersion(result, managerName: definition.displayName);
   }

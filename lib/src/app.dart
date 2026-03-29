@@ -294,6 +294,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                                   onBatchCheckLatest: widget
                                       .controller
                                       .batchCheckLatestVersionsForSelectedManager,
+                                  onShowLoadErrors: _showLoadErrorsDialog,
                                   onBatchUpdate: () async {
                                     final command = widget.controller
                                         .batchUpdateCommandForSelectedManager();
@@ -312,6 +313,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                                   child: _PackageListView(
                                     controller: widget.controller,
                                     onOpenSettings: _openSettings,
+                                    onShowLoadErrors: _showLoadErrorsDialog,
                                     onRunAction: _confirmAndRunCommand,
                                   ),
                                 ),
@@ -393,6 +395,19 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   Future<void> _openSettings() async {
     _tabController.animateTo(2);
   }
+
+  Future<void> _showLoadErrorsDialog() async {
+    final output = _buildLoadErrorOutput(widget.controller);
+    if (output == null || !mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) =>
+          _CommandOutputDialog(title: '加载错误详情', output: output),
+    );
+  }
 }
 
 class _RunningCommandToast extends StatelessWidget {
@@ -456,6 +471,7 @@ class _ActionBar extends StatelessWidget {
     required this.searchController,
     required this.onRefreshAll,
     required this.onBatchCheckLatest,
+    required this.onShowLoadErrors,
     required this.onBatchUpdate,
   });
 
@@ -463,6 +479,7 @@ class _ActionBar extends StatelessWidget {
   final TextEditingController searchController;
   final Future<void> Function() onRefreshAll;
   final Future<void> Function() onBatchCheckLatest;
+  final Future<void> Function() onShowLoadErrors;
   final Future<void> Function() onBatchUpdate;
 
   @override
@@ -472,6 +489,7 @@ class _ActionBar extends StatelessWidget {
         controller.canBatchCheckLatestForSelectedManager;
     final isBatchCheckingLatest =
         controller.isBatchCheckingLatestForSelectedManager;
+    final hasLoadErrors = controller.errorManagers > 0;
     final visibleCount = controller.visiblePackages.length;
     final showBatchUpdate =
         controller.selectedPackageCount > 1 && batchCommand != null;
@@ -516,6 +534,12 @@ class _ActionBar extends StatelessWidget {
                   : const Icon(Icons.sync),
               label: const Text('刷新'),
             ),
+            if (hasLoadErrors)
+              FilledButton.tonalIcon(
+                onPressed: onShowLoadErrors,
+                icon: const Icon(Icons.error_outline),
+                label: Text('查看加载错误 (${controller.errorManagers})'),
+              ),
             if (canBatchCheckLatest)
               FilledButton.tonalIcon(
                 onPressed: isBatchCheckingLatest ? null : onBatchCheckLatest,
@@ -596,11 +620,13 @@ class _PackageListView extends StatelessWidget {
     required this.controller,
     required this.onRunAction,
     required this.onOpenSettings,
+    required this.onShowLoadErrors,
   });
 
   final PackagePanelController controller;
   final Future<void> Function(PackageCommand command) onRunAction;
   final Future<void> Function() onOpenSettings;
+  final Future<void> Function() onShowLoadErrors;
 
   @override
   Widget build(BuildContext context) {
@@ -622,7 +648,9 @@ class _PackageListView extends StatelessWidget {
               ? _EmptyPackages(
                   hasManagersLoading: controller.isRefreshingAll,
                   hasVisibleManagers: controller.hasVisibleLocalManagers,
+                  errorManagerCount: controller.errorManagers,
                   onOpenSettings: onOpenSettings,
+                  onShowLoadErrors: onShowLoadErrors,
                   searchQuery: controller.searchQuery,
                 )
               : Column(
@@ -1393,7 +1421,7 @@ class _CommandDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text('将通过 PowerShell 执行下面的命令：'),
+          const Text('将执行下面的命令：'),
           const SizedBox(height: 12),
           _CommandPreview(command: command.command),
         ],
@@ -1424,6 +1452,24 @@ class _CommandOutputDialog extends StatelessWidget {
       title: Text(title),
       content: SizedBox(width: 720, child: _CommandPreview(command: output)),
       actions: <Widget>[
+        OutlinedButton.icon(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: output));
+            if (!context.mounted) {
+              return;
+            }
+            ScaffoldMessenger.of(context)
+              ..clearSnackBars()
+              ..showSnackBar(
+                const SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  content: Text('已复制到剪贴板。'),
+                ),
+              );
+          },
+          icon: const Icon(Icons.copy_all_outlined),
+          label: const Text('复制'),
+        ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('关闭'),
@@ -1431,6 +1477,24 @@ class _CommandOutputDialog extends StatelessWidget {
       ],
     );
   }
+}
+
+String? _buildLoadErrorOutput(PackagePanelController controller) {
+  final failedSnapshots = controller.visibleSnapshots
+      .where((snapshot) => snapshot.loadState == ManagerLoadState.error)
+      .toList(growable: false);
+  if (failedSnapshots.isEmpty) {
+    return null;
+  }
+
+  return failedSnapshots.map((snapshot) {
+    final managerName = controller.displayNameForManagerId(snapshot.manager.id);
+    final errorOutput = snapshot.errorMessage?.trim();
+    return [
+      '[$managerName]',
+      errorOutput == null || errorOutput.isEmpty ? '没有返回错误输出。' : errorOutput,
+    ].join('\n');
+  }).join('\n\n------------------------------------------------------------\n\n');
 }
 
 const int _maxVisibleInstallVersions = 200;
@@ -2056,13 +2120,17 @@ class _EmptyPackages extends StatelessWidget {
   const _EmptyPackages({
     required this.hasManagersLoading,
     required this.hasVisibleManagers,
+    required this.errorManagerCount,
     required this.onOpenSettings,
+    required this.onShowLoadErrors,
     required this.searchQuery,
   });
 
   final bool hasManagersLoading;
   final bool hasVisibleManagers;
+  final int errorManagerCount;
   final Future<void> Function() onOpenSettings;
+  final Future<void> Function() onShowLoadErrors;
   final String searchQuery;
 
   @override
@@ -2101,6 +2169,15 @@ class _EmptyPackages extends StatelessWidget {
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
+          if (!hasManagersLoading && errorManagerCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: FilledButton.tonalIcon(
+                onPressed: onShowLoadErrors,
+                icon: const Icon(Icons.terminal_outlined),
+                label: Text('查看加载错误 ($errorManagerCount)'),
+              ),
+            ),
           if (!hasManagersLoading && !hasVisibleManagers)
             Padding(
               padding: const EdgeInsets.only(top: 16),
@@ -2118,6 +2195,9 @@ class _EmptyPackages extends StatelessWidget {
   String get _description {
     if (!hasVisibleManagers) {
       return '当前没有启用任何包管理器，请先到设置中选择要展示的项。';
+    }
+    if (errorManagerCount > 0) {
+      return '有 $errorManagerCount 个包管理器加载失败，可以打开错误详情查看完整输出。';
     }
     return searchQuery.isEmpty ? '可以先点击“刷新”。' : '没有找到“$searchQuery”的结果。';
   }

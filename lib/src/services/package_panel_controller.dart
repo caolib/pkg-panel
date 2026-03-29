@@ -972,7 +972,10 @@ class PackagePanelController extends ChangeNotifier {
     );
     notifyListeners();
 
-    final result = await _shell.run(command.command, timeout: command.timeout);
+    final result = await _shell.runRequest(
+      command.request,
+      timeout: command.timeout,
+    );
     _runningCommands.remove(command.busyKey);
 
     _pushActivity(
@@ -1210,11 +1213,8 @@ class PackagePanelController extends ChangeNotifier {
     final entries = await Future.wait(
       _adapters.map((adapter) async {
         final executable = adapter.definition.executable;
-        final result = await _shell.run(
-          "if (Get-Command ${_psQuote(executable)} -ErrorAction SilentlyContinue) { '1' } else { '0' }",
-          timeout: const Duration(seconds: 10),
-        );
-        return MapEntry(adapter.definition.id, result.stdout.trim() == '1');
+        final isAvailable = await _shell.isExecutableAvailable(executable);
+        return MapEntry(adapter.definition.id, isAvailable);
       }),
     );
     return Map<String, bool>.fromEntries(entries);
@@ -1501,10 +1501,6 @@ class PackagePanelController extends ChangeNotifier {
       }
     }
     return null;
-  }
-
-  String _psQuote(String value) {
-    return "'${value.replaceAll("'", "''")}'";
   }
 
   ThemeMode _parseThemeModeName(String? value, {ThemeMode? fallback}) {

@@ -31,7 +31,11 @@ class PnpmAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('pnpm ls -g --depth=0 --json');
+    final result = await shell.runExecutable(
+      'pnpm',
+      const <String>['ls', '-g', '--depth=0', '--json'],
+      displayCommand: 'pnpm ls -g --depth=0 --json',
+    );
     final payload = decodeJson(result, managerName: definition.displayName);
     final packages = <ManagedPackage>[];
 
@@ -76,9 +80,11 @@ class PnpmAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     String query,
   ) async {
-    final result = await shell.run(
-      'npm search ${psQuote(query)} --json --searchlimit=20',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['search', query, '--json', '--searchlimit=20'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm search ${psQuote(query)} --json --searchlimit=20',
     );
     return parseNpmSearchResults(result, manager: definition);
   }
@@ -89,6 +95,8 @@ class PnpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
+      executable: 'pnpm',
+      arguments: <String>['add', '-g', target],
       command: 'pnpm add -g ${psQuote(target)}',
       timeout: const Duration(minutes: 10),
     );
@@ -100,9 +108,11 @@ class PnpmAdapter extends PackageManagerAdapter
     SearchPackageInstallOption package,
   ) async {
     final target = package.identifier ?? package.packageName;
-    final result = await shell.run(
-      'pnpm view ${psQuote(target)} versions --json',
+    final result = await shell.runExecutable(
+      'pnpm',
+      <String>['view', target, 'versions', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'pnpm view ${psQuote(target)} versions --json',
     );
     if (result.isSuccess) {
       return PackageVersionQueryResult(
@@ -114,9 +124,11 @@ class PnpmAdapter extends PackageManagerAdapter
       );
     }
 
-    final fallback = await shell.run(
-      'npm view ${psQuote(target)} versions --json',
+    final fallback = await shell.runExecutable(
+      'npm',
+      <String>['view', target, 'versions', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(target)} versions --json',
     );
     return PackageVersionQueryResult(
       versions: parseVersionListValue(
@@ -134,6 +146,8 @@ class PnpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@latest',
+      executable: 'pnpm',
+      arguments: <String>['add', '-g', spec],
       command: 'pnpm add -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
@@ -149,6 +163,8 @@ class PnpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@${version.trim()}',
+      executable: 'pnpm',
+      arguments: <String>['add', '-g', spec],
       command: 'pnpm add -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
@@ -160,11 +176,15 @@ class PnpmAdapter extends PackageManagerAdapter
       PackageAction.update => buildPackageCommand(
         managerId: definition.id,
         label: '更新 ${package.name}',
+        executable: 'pnpm',
+        arguments: <String>['update', '-g', '--latest', package.name],
         command: 'pnpm update -g --latest ${psQuote(package.name)}',
       ),
       PackageAction.remove => buildPackageCommand(
         managerId: definition.id,
         label: '删除 ${package.name}',
+        executable: 'pnpm',
+        arguments: <String>['remove', '-g', package.name],
         command: 'pnpm remove -g ${psQuote(package.name)}',
       ),
     };
@@ -175,6 +195,8 @@ class PnpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '批量更新 pnpm 包',
+      executable: 'pnpm',
+      arguments: const <String>['update', '-g', '--latest'],
       command: 'pnpm update -g --latest',
     );
   }
@@ -184,9 +206,11 @@ class PnpmAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'pnpm info ${psQuote(package.name)}',
+    final result = await shell.runExecutable(
+      'pnpm',
+      <String>['info', package.name],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'pnpm info ${psQuote(package.name)}',
     );
     return parseDetailOutput(result, managerName: definition.displayName);
   }
@@ -196,9 +220,11 @@ class PnpmAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'pnpm view ${psQuote(package.name)} version --json',
+    final result = await shell.runExecutable(
+      'pnpm',
+      <String>['view', package.name, 'version', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'pnpm view ${psQuote(package.name)} version --json',
     );
     if (result.isSuccess) {
       return parseSingleVersionValue(
@@ -207,9 +233,11 @@ class PnpmAdapter extends PackageManagerAdapter
       );
     }
 
-    final fallback = await shell.run(
-      'npm view ${psQuote(package.name)} version --json',
+    final fallback = await shell.runExecutable(
+      'npm',
+      <String>['view', package.name, 'version', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(package.name)} version --json',
     );
     return parseSingleVersionValue(
       fallback,

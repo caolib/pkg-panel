@@ -29,7 +29,11 @@ class CargoAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('cargo install --list');
+    final result = await shell.runExecutable(
+      'cargo',
+      const <String>['install', '--list'],
+      displayCommand: 'cargo install --list',
+    );
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -90,9 +94,12 @@ class CargoAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     String query,
   ) async {
-    final result = await shell.run(
-      'cargo search ${psQuote(query)} --registry crates-io --limit 20',
+    final result = await shell.runExecutable(
+      'cargo',
+      <String>['search', query, '--registry', 'crates-io', '--limit', '20'],
       timeout: const Duration(seconds: 45),
+      displayCommand:
+          'cargo search ${psQuote(query)} --registry crates-io --limit 20',
     );
     return parseCargoSearchResults(result, manager: definition);
   }
@@ -102,6 +109,8 @@ class CargoAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
+      executable: 'cargo',
+      arguments: <String>['install', package.packageName],
       command: 'cargo install ${psQuote(package.packageName)}',
       timeout: const Duration(minutes: 12),
     );
@@ -113,12 +122,16 @@ class CargoAdapter extends PackageManagerAdapter
       PackageAction.update => buildPackageCommand(
         managerId: definition.id,
         label: '重装 ${package.name}',
+        executable: 'cargo',
+        arguments: <String>['install', package.name, '--force'],
         command: 'cargo install ${psQuote(package.name)} --force',
         timeout: const Duration(minutes: 8),
       ),
       PackageAction.remove => buildPackageCommand(
         managerId: definition.id,
         label: '卸载 ${package.name}',
+        executable: 'cargo',
+        arguments: <String>['uninstall', package.name],
         command: 'cargo uninstall ${psQuote(package.name)}',
       ),
     };
@@ -129,9 +142,11 @@ class CargoAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'cargo install --list',
+    final result = await shell.runExecutable(
+      'cargo',
+      const <String>['install', '--list'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'cargo install --list',
     );
     return extractCargoInstalledDetails(
       result,
@@ -145,9 +160,11 @@ class CargoAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'cargo search ${psQuote(package.name)} --limit 5',
+    final result = await shell.runExecutable(
+      'cargo',
+      <String>['search', package.name, '--limit', '5'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'cargo search ${psQuote(package.name)} --limit 5',
     );
     return parseCargoLatestVersion(
       result,

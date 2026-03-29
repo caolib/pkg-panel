@@ -31,7 +31,11 @@ class NpmAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('npm ls -g --depth=0 --json');
+    final result = await shell.runExecutable(
+      'npm',
+      const <String>['ls', '-g', '--depth=0', '--json'],
+      displayCommand: 'npm ls -g --depth=0 --json',
+    );
     final payload = decodeJsonObject(
       result,
       managerName: definition.displayName,
@@ -59,9 +63,11 @@ class NpmAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     String query,
   ) async {
-    final result = await shell.run(
-      'npm search ${psQuote(query)} --json --searchlimit=20',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['search', query, '--json', '--searchlimit=20'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm search ${psQuote(query)} --json --searchlimit=20',
     );
     return parseNpmSearchResults(result, manager: definition);
   }
@@ -72,6 +78,8 @@ class NpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}',
+      executable: 'npm',
+      arguments: <String>['install', '-g', target],
       command: 'npm install -g ${psQuote(target)}',
       timeout: const Duration(minutes: 10),
     );
@@ -83,9 +91,11 @@ class NpmAdapter extends PackageManagerAdapter
     SearchPackageInstallOption package,
   ) async {
     final target = package.identifier ?? package.packageName;
-    final result = await shell.run(
-      'npm view ${psQuote(target)} versions --json',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['view', target, 'versions', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(target)} versions --json',
     );
     return PackageVersionQueryResult(
       versions: parseVersionListValue(
@@ -103,6 +113,8 @@ class NpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@latest',
+      executable: 'npm',
+      arguments: <String>['install', '-g', spec],
       command: 'npm install -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
@@ -118,6 +130,8 @@ class NpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}@${version.trim()}',
+      executable: 'npm',
+      arguments: <String>['install', '-g', spec],
       command: 'npm install -g ${psQuote(spec)}',
       timeout: const Duration(minutes: 10),
     );
@@ -129,11 +143,15 @@ class NpmAdapter extends PackageManagerAdapter
       PackageAction.update => buildPackageCommand(
         managerId: definition.id,
         label: '更新 ${package.name}',
+        executable: 'npm',
+        arguments: <String>['update', '-g', package.name],
         command: 'npm update -g ${psQuote(package.name)}',
       ),
       PackageAction.remove => buildPackageCommand(
         managerId: definition.id,
         label: '删除 ${package.name}',
+        executable: 'npm',
+        arguments: <String>['uninstall', '-g', package.name],
         command: 'npm uninstall -g ${psQuote(package.name)}',
       ),
     };
@@ -144,6 +162,8 @@ class NpmAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '批量更新 npm 包',
+      executable: 'npm',
+      arguments: const <String>['update', '-g'],
       command: 'npm update -g',
     );
   }
@@ -153,9 +173,11 @@ class NpmAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'npm view ${psQuote(package.name)}',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['view', package.name],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(package.name)}',
     );
     return parseDetailOutput(result, managerName: definition.displayName);
   }
@@ -165,9 +187,11 @@ class NpmAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'npm view ${psQuote(package.name)} version --json',
+    final result = await shell.runExecutable(
+      'npm',
+      <String>['view', package.name, 'version', '--json'],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'npm view ${psQuote(package.name)} version --json',
     );
     return parseSingleVersionValue(result, managerName: definition.displayName);
   }

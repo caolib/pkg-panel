@@ -16,6 +16,27 @@ class PackageAdapterException implements Exception {
 PackageCommand buildPackageCommand({
   required String managerId,
   required String label,
+  required String executable,
+  List<String> arguments = const <String>[],
+  String? command,
+  Duration timeout = const Duration(minutes: 5),
+}) {
+  return PackageCommand(
+    managerId: managerId,
+    busyKey: '$managerId::$label',
+    label: label,
+    request: ShellRequest.process(
+      executable: executable,
+      arguments: arguments,
+      displayCommand: command,
+    ),
+    timeout: timeout,
+  );
+}
+
+PackageCommand buildPowerShellCommand({
+  required String managerId,
+  required String label,
   required String command,
   Duration timeout = const Duration(minutes: 5),
 }) {
@@ -23,7 +44,17 @@ PackageCommand buildPackageCommand({
     managerId: managerId,
     busyKey: '$managerId::$label',
     label: label,
-    command: command,
+    request: ShellRequest.process(
+      executable: 'powershell.exe',
+      arguments: <String>[
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        command,
+      ],
+      displayCommand: command,
+    ),
     timeout: timeout,
   );
 }

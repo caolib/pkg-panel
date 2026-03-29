@@ -26,7 +26,11 @@ class PipAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.run('pip list --format=json');
+    final result = await shell.runExecutable(
+      'pip',
+      const <String>['list', '--format=json'],
+      displayCommand: 'pip list --format=json',
+    );
     final payload = decodeJsonArray(
       result,
       managerName: definition.displayName,
@@ -51,9 +55,18 @@ class PipAdapter extends PackageManagerAdapter
     SearchPackageInstallOption package,
   ) async {
     final target = package.identifier ?? package.packageName;
-    final result = await shell.run(
-      'pip index versions ${psQuote(target)} --disable-pip-version-check --no-color',
+    final result = await shell.runExecutable(
+      'pip',
+      <String>[
+        'index',
+        'versions',
+        target,
+        '--disable-pip-version-check',
+        '--no-color',
+      ],
       timeout: const Duration(seconds: 45),
+      displayCommand:
+          'pip index versions ${psQuote(target)} --disable-pip-version-check --no-color',
     );
     return PackageVersionQueryResult(
       versions: parsePipVersionList(
@@ -73,6 +86,8 @@ class PipAdapter extends PackageManagerAdapter
     return buildPackageCommand(
       managerId: definition.id,
       label: '安装 ${package.packageName}==$normalizedVersion',
+      executable: 'pip',
+      arguments: <String>['install', '$target==$normalizedVersion'],
       command: 'pip install ${psQuote('$target==$normalizedVersion')}',
     );
   }
@@ -83,11 +98,15 @@ class PipAdapter extends PackageManagerAdapter
       PackageAction.update => buildPackageCommand(
         managerId: definition.id,
         label: '升级 ${package.name}',
+        executable: 'pip',
+        arguments: <String>['install', '--upgrade', package.name],
         command: 'pip install --upgrade ${psQuote(package.name)}',
       ),
       PackageAction.remove => buildPackageCommand(
         managerId: definition.id,
         label: '卸载 ${package.name}',
+        executable: 'pip',
+        arguments: <String>['uninstall', '-y', package.name],
         command: 'pip uninstall -y ${psQuote(package.name)}',
       ),
     };
@@ -98,9 +117,11 @@ class PipAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'pip show ${psQuote(package.name)}',
+    final result = await shell.runExecutable(
+      'pip',
+      <String>['show', package.name],
       timeout: const Duration(seconds: 45),
+      displayCommand: 'pip show ${psQuote(package.name)}',
     );
     return parseDetailOutput(result, managerName: definition.displayName);
   }
@@ -110,9 +131,18 @@ class PipAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.run(
-      'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color',
+    final result = await shell.runExecutable(
+      'pip',
+      <String>[
+        'index',
+        'versions',
+        package.name,
+        '--disable-pip-version-check',
+        '--no-color',
+      ],
       timeout: const Duration(seconds: 45),
+      displayCommand:
+          'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color',
     );
     return parsePipLatestVersion(result, managerName: definition.displayName);
   }
