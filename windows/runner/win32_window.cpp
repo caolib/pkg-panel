@@ -144,7 +144,7 @@ bool Win32Window::Create(const std::wstring& title,
     return false;
   }
 
-  UpdateTheme(window);
+  UpdateTheme();
 
   return OnCreate();
 }
@@ -213,9 +213,11 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_SETTINGCHANGE:
+    case WM_THEMECHANGED:
     case WM_DWMCOLORIZATIONCOLORCHANGED:
-      UpdateTheme(hwnd);
-      return 0;
+      UpdateTheme();
+      break;
   }
 
   return DefWindowProc(window_handle_, message, wparam, lparam);
@@ -263,6 +265,11 @@ void Win32Window::SetQuitOnClose(bool quit_on_close) {
   quit_on_close_ = quit_on_close;
 }
 
+void Win32Window::SetThemeMode(std::optional<bool> prefers_dark_mode) {
+  prefers_dark_mode_ = prefers_dark_mode;
+  UpdateTheme();
+}
+
 bool Win32Window::OnCreate() {
   // No-op; provided for subclasses.
   return true;
@@ -272,17 +279,35 @@ void Win32Window::OnDestroy() {
   // No-op; provided for subclasses.
 }
 
-void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode;
+bool Win32Window::IsSystemDarkModeEnabled() {
+  DWORD light_mode = 1;
   DWORD light_mode_size = sizeof(light_mode);
   LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
                                kGetPreferredBrightnessRegValue,
                                RRF_RT_REG_DWORD, nullptr, &light_mode,
                                &light_mode_size);
 
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
+  return result == ERROR_SUCCESS && light_mode == 0;
+}
+
+void Win32Window::ApplyTheme(HWND window, bool enable_dark_mode) {
+  BOOL use_dark_mode = enable_dark_mode ? TRUE : FALSE;
+  if (SUCCEEDED(DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                      &use_dark_mode,
+                                      sizeof(use_dark_mode)))) {
+    SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                     SWP_FRAMECHANGED);
   }
+}
+
+void Win32Window::UpdateTheme() {
+  if (!window_handle_) {
+    return;
+  }
+
+  ApplyTheme(
+      window_handle_,
+      prefers_dark_mode_.has_value() ? *prefers_dark_mode_
+                                     : IsSystemDarkModeEnabled());
 }

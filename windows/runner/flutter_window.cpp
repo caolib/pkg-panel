@@ -3,6 +3,15 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include <flutter/standard_method_codec.h>
+
+namespace {
+
+constexpr auto kWindowThemeChannelName = "pkg_panel/window_theme";
+constexpr auto kSetWindowThemeModeMethod = "setWindowThemeMode";
+constexpr auto kThemeModeArgumentKey = "themeMode";
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +34,59 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  window_theme_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kWindowThemeChannelName,
+          &flutter::StandardMethodCodec::GetInstance());
+  window_theme_channel_->SetMethodCallHandler(
+      [this](
+          const flutter::MethodCall<flutter::EncodableValue>& call,
+          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+              result) {
+        if (call.method_name() != kSetWindowThemeModeMethod) {
+          result->NotImplemented();
+          return;
+        }
+
+        const auto* arguments =
+            std::get_if<flutter::EncodableMap>(call.arguments());
+        if (arguments == nullptr) {
+          result->Error("bad_arguments", "Expected a themeMode map.");
+          return;
+        }
+
+        const auto theme_mode_it =
+            arguments->find(flutter::EncodableValue(kThemeModeArgumentKey));
+        if (theme_mode_it == arguments->end()) {
+          result->Error("bad_arguments", "Missing themeMode.");
+          return;
+        }
+
+        const auto* theme_mode =
+            std::get_if<std::string>(&theme_mode_it->second);
+        if (theme_mode == nullptr) {
+          result->Error("bad_arguments", "themeMode must be a string.");
+          return;
+        }
+
+        if (*theme_mode == "system") {
+          SetThemeMode(std::nullopt);
+          result->Success();
+          return;
+        }
+        if (*theme_mode == "dark") {
+          SetThemeMode(true);
+          result->Success();
+          return;
+        }
+        if (*theme_mode == "light") {
+          SetThemeMode(false);
+          result->Success();
+          return;
+        }
+
+        result->Error("bad_arguments", "Unsupported themeMode.");
+      });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,6 +102,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  window_theme_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

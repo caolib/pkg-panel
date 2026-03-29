@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'models/package_models.dart';
 import 'services/package_panel_controller.dart';
 import 'services/external_link_opener.dart';
+import 'services/window_theme_sync.dart';
 import 'widgets/local_icon_image.dart';
 
 void runPkgPanel(PackagePanelController controller) {
@@ -27,20 +28,59 @@ class PkgPanelApp extends StatefulWidget {
     super.key,
     required this.controller,
     this.autoLoad = true,
+    this.windowThemeSync = const PlatformWindowThemeSync(),
   });
 
   final PackagePanelController controller;
   final bool autoLoad;
+  final WindowThemeSync windowThemeSync;
 
   @override
   State<PkgPanelApp> createState() => _PkgPanelAppState();
 }
 
 class _PkgPanelAppState extends State<PkgPanelApp> {
+  ThemeMode? _lastSyncedWindowThemeMode;
+  ThemeMode? _pendingWindowThemeMode;
+  bool _windowThemeSyncScheduled = false;
+
+  @override
+  void didUpdateWidget(covariant PkgPanelApp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.windowThemeSync != widget.windowThemeSync) {
+      _lastSyncedWindowThemeMode = null;
+    }
+  }
+
   @override
   void dispose() {
     widget.controller.dispose();
     super.dispose();
+  }
+
+  void _scheduleWindowThemeSync(ThemeMode themeMode) {
+    _pendingWindowThemeMode = themeMode;
+    if (_windowThemeSyncScheduled) {
+      return;
+    }
+
+    _windowThemeSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _windowThemeSyncScheduled = false;
+      if (!mounted) {
+        return;
+      }
+
+      final themeModeToSync = _pendingWindowThemeMode;
+      _pendingWindowThemeMode = null;
+      if (themeModeToSync == null ||
+          themeModeToSync == _lastSyncedWindowThemeMode) {
+        return;
+      }
+
+      _lastSyncedWindowThemeMode = themeModeToSync;
+      unawaited(widget.windowThemeSync.sync(themeModeToSync));
+    });
   }
 
   @override
@@ -48,10 +88,12 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
+        final themeMode = widget.controller.themeMode;
+        _scheduleWindowThemeSync(themeMode);
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: '包管理面板',
-          themeMode: widget.controller.themeMode,
+          themeMode: themeMode,
           theme: _buildTheme(
             brightness: Brightness.light,
             customFontFamily: widget.controller.customFontFamily,
@@ -331,9 +373,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                   Positioned(
                     right: 24,
                     bottom: 24,
-                    child: _RunningCommandToast(
-                      commands: runningCommands,
-                    ),
+                    child: _RunningCommandToast(commands: runningCommands),
                   ),
               ],
             ),
@@ -382,8 +422,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   }
 
   Future<void> _handleBatchCheckLatestForSelectedManager() async {
-    final prerequisiteCommand = await widget
-        .controller
+    final prerequisiteCommand = await widget.controller
         .batchLatestVersionPrerequisiteCommandForSelectedManager();
     if (!mounted) {
       return;
@@ -391,7 +430,8 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
 
     if (prerequisiteCommand != null) {
       final prompt =
-          widget.controller.batchLatestVersionPrerequisitePromptForSelectedManager() ??
+          widget.controller
+              .batchLatestVersionPrerequisitePromptForSelectedManager() ??
           '批量检查更新前需要先安装依赖命令，是否现在安装？';
       final shouldInstall =
           await showDialog<bool>(
@@ -530,10 +570,8 @@ class _RunningCommandToast extends StatelessWidget {
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                             fontFamily: 'Cascadia Code',
-                            fontFamilyFallback: theme
-                                .textTheme
-                                .bodyMedium
-                                ?.fontFamilyFallback,
+                            fontFamilyFallback:
+                                theme.textTheme.bodyMedium?.fontFamilyFallback,
                           ),
                         ),
                       ),
@@ -598,7 +636,7 @@ class _ActionBar extends StatelessWidget {
               child: SearchBar(
                 controller: searchController,
                 constraints: const BoxConstraints(minHeight: 44, maxHeight: 44),
-                hintText: '搜索包名、来源、附加信息',
+                hintText: '搜索本地包',
                 leading: const Icon(Icons.search),
                 onChanged: controller.setSearchQuery,
                 trailing: <Widget>[
@@ -1411,10 +1449,7 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
                           SingleChildScrollView(
                             child: SelectableText(
                               details,
-                              style: _monospaceTextStyle(
-                                context,
-                                height: 1.5,
-                              ),
+                              style: _monospaceTextStyle(context, height: 1.5),
                             ),
                           ),
                         _ => Center(
@@ -2227,11 +2262,7 @@ class _CommandPreview extends StatelessWidget {
       ),
       child: SelectableText(
         command,
-        style: _monospaceTextStyle(
-          context,
-          color: Colors.white,
-          height: 1.45,
-        ),
+        style: _monospaceTextStyle(context, color: Colors.white, height: 1.45),
       ),
     );
   }
@@ -2931,11 +2962,7 @@ class PackageSettingsPage extends StatelessWidget {
                                                 ),
                                                 const SizedBox(height: 2),
                                                 Text(
-                                                  state.isAvailable
-                                                      ? state
-                                                            .manager
-                                                            .description
-                                                      : '可手动开启，但刷新时可能失败',
+                                                  state.manager.description,
                                                   style: theme
                                                       .textTheme
                                                       .bodySmall
@@ -3512,9 +3539,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
           Positioned(
             right: 24,
             bottom: 24,
-            child: _RunningCommandToast(
-              commands: runningCommands,
-            ),
+            child: _RunningCommandToast(commands: runningCommands),
           ),
       ],
     );
