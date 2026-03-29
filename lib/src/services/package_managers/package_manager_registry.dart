@@ -10,6 +10,7 @@ import 'pnpm_package_manager.dart';
 import 'scoop_package_manager.dart';
 import 'uv_tool_package_manager.dart';
 import 'winget_package_manager.dart';
+import 'yarn_package_manager.dart';
 
 class PackageManagerRegistry {
   static List<PackageManagerAdapter> get defaultAdapters =>
@@ -19,6 +20,7 @@ class PackageManagerRegistry {
         if (Platform.isWindows) const ScoopAdapter(),
         const NpmAdapter(),
         const PnpmAdapter(),
+        const YarnAdapter(),
         const BunAdapter(),
         const PipAdapter(),
         const UvToolAdapter(),

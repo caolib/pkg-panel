@@ -2638,6 +2638,43 @@ class PackageSettingsPage extends StatelessWidget {
                     ListView(
                       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                       children: <Widget>[
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  '刷新后未安装的包管理器会被禁用✨ feat: 添加 yarn',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            FilledButton.tonalIcon(
+                              onPressed:
+                                  controller.isRefreshingManagerAvailability
+                                  ? null
+                                  : () async {
+                                      await controller
+                                          .refreshManagerAvailability();
+                                    },
+                              icon: controller.isRefreshingManagerAvailability
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh_outlined),
+                              label: const Text('刷新状态'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
                         Container(
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surface,
@@ -2685,7 +2722,7 @@ class PackageSettingsPage extends StatelessWidget {
                                     Expanded(
                                       flex: 2,
                                       child: Text(
-                                        '显示',
+                                        '启用',
                                         textAlign: TextAlign.right,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
@@ -3132,8 +3169,9 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
 
     final managerId = widget.state.manager.id;
     final originalDisplayName = widget.state.manager.displayName.trim();
-    final currentCustomDisplayName =
-        widget.controller.customManagerDisplayName(managerId)?.trim();
+    final currentCustomDisplayName = widget.controller
+        .customManagerDisplayName(managerId)
+        ?.trim();
     final currentIconPath = widget.controller.customManagerIconPath(managerId);
     final normalizedDisplayName = _nameController.text.trim();
     final nextIconPath = _selectedIconPath?.trim();
@@ -3165,7 +3203,10 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
           changedParts.add('图标');
         }
       } else if (nextIconPath != currentIconPath) {
-        await widget.controller.setCustomManagerIconPath(managerId, nextIconPath);
+        await widget.controller.setCustomManagerIconPath(
+          managerId,
+          nextIconPath,
+        );
         changedParts.add('图标');
       }
 
@@ -3511,173 +3552,155 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final runningCommands = widget.controller.runningCommandTexts;
-    return Stack(
-      children: <Widget>[
-        AnimatedBuilder(
-          animation: widget.controller,
-          builder: (context, _) {
-            final filterIds = widget.controller.installSearchFilterIds;
-            final results = widget.controller.searchResults
-                .where(
-                  (item) => widget.controller.searchResultMatchesFilter(
-                    item,
-                    _selectedSearchFilterId,
-                  ),
-                )
-                .toList(growable: false);
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-              child: Column(
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        final filterIds = widget.controller.installSearchFilterIds;
+        final results = widget.controller.searchResults
+            .where(
+              (item) => widget.controller.searchResultMatchesFilter(
+                item,
+                _selectedSearchFilterId,
+              ),
+            )
+            .toList(growable: false);
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            children: <Widget>[
+              Row(
                 children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      Flexible(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 420),
-                          child: SearchBar(
-                            controller: _searchController,
-                            constraints: const BoxConstraints(
-                              minHeight: 44,
-                              maxHeight: 44,
-                            ),
-                            hintText: '搜索可安装的包',
-                            leading: const Icon(Icons.search),
-                            onSubmitted: (_) => _runSearch(),
-                          ),
+                  Flexible(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: SearchBar(
+                        controller: _searchController,
+                        constraints: const BoxConstraints(
+                          minHeight: 44,
+                          maxHeight: 44,
                         ),
+                        hintText: '搜索可安装的包',
+                        leading: const Icon(Icons.search),
+                        onSubmitted: (_) => _runSearch(),
                       ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: widget.controller.isSearchingPackages
-                            ? null
-                            : _runSearch,
-                        icon: widget.controller.isSearchingPackages
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.travel_explore_outlined),
-                        label: const Text('搜索'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: <Widget>[
-                        FilterChip(
-                          selected: _selectedSearchFilterId == null,
-                          showCheckmark: false,
-                          label: const Text('全部'),
-                          onSelected: (_) {
-                            setState(() => _selectedSearchFilterId = null);
-                          },
-                        ),
-                        ...filterIds.map((filterId) {
-                          final representativeManagerId = widget.controller
-                              .installSearchFilterRepresentativeManagerId(
-                                filterId,
-                              );
-                          return FilterChip(
-                            selected: _selectedSearchFilterId == filterId,
-                            showCheckmark: false,
-                            avatar: representativeManagerId == null
-                                ? null
-                                : _ManagerIcon(
-                                    managerId: representativeManagerId,
-                                    customIconPath: widget.controller
-                                        .customManagerIconPath(
-                                          representativeManagerId,
-                                        ),
-                                    fallbackIcon: _managerIcon(
-                                      representativeManagerId,
-                                    ),
-                                    fallbackColor: _managerAccent(
-                                      representativeManagerId,
-                                    ),
-                                  ),
-                            label: Text(
-                              widget.controller.installSearchFilterLabel(
-                                filterId,
-                              ),
-                            ),
-                            onSelected: (_) {
-                              setState(() {
-                                _selectedSearchFilterId = filterId;
-                              });
-                            },
-                          );
-                        }),
-                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final compact = constraints.maxWidth < 900;
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.zero,
-                            side: BorderSide(
-                              color: theme.colorScheme.outlineVariant,
-                            ),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: results.isEmpty
-                              ? _InstallSearchEmpty(
-                                  isSearching:
-                                      widget.controller.isSearchingPackages,
-                                )
-                              : Column(
-                                  children: <Widget>[
-                                    _SearchPackageHeaderRow(
-                                      compact: compact,
-                                      count: results.length,
-                                    ),
-                                    Expanded(
-                                      child: ListView.separated(
-                                        itemCount: results.length,
-                                        separatorBuilder: (_, _) => Divider(
-                                          height: 1,
-                                          color:
-                                              theme.colorScheme.outlineVariant,
-                                        ),
-                                        itemBuilder: (context, index) {
-                                          return _SearchPackageListTile(
-                                            package: results[index],
-                                            controller: widget.controller,
-                                            compact: compact,
-                                            onInstall: _runCommandWithFeedback,
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                        );
-                      },
-                    ),
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: widget.controller.isSearchingPackages
+                        ? null
+                        : _runSearch,
+                    icon: widget.controller.isSearchingPackages
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.travel_explore_outlined),
+                    label: const Text('搜索'),
                   ),
                 ],
               ),
-            );
-          },
-        ),
-        if (runningCommands.isNotEmpty)
-          Positioned(
-            right: 24,
-            bottom: 24,
-            child: _RunningCommandToast(commands: runningCommands),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: <Widget>[
+                    FilterChip(
+                      selected: _selectedSearchFilterId == null,
+                      showCheckmark: false,
+                      label: const Text('全部'),
+                      onSelected: (_) {
+                        setState(() => _selectedSearchFilterId = null);
+                      },
+                    ),
+                    ...filterIds.map((filterId) {
+                      final representativeManagerId = widget.controller
+                          .installSearchFilterRepresentativeManagerId(filterId);
+                      return FilterChip(
+                        selected: _selectedSearchFilterId == filterId,
+                        showCheckmark: false,
+                        avatar: representativeManagerId == null
+                            ? null
+                            : _ManagerIcon(
+                                managerId: representativeManagerId,
+                                customIconPath: widget.controller
+                                    .customManagerIconPath(
+                                      representativeManagerId,
+                                    ),
+                                fallbackIcon: _managerIcon(
+                                  representativeManagerId,
+                                ),
+                                fallbackColor: _managerAccent(
+                                  representativeManagerId,
+                                ),
+                              ),
+                        label: Text(
+                          widget.controller.installSearchFilterLabel(filterId),
+                        ),
+                        onSelected: (_) {
+                          setState(() {
+                            _selectedSearchFilterId = filterId;
+                          });
+                        },
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 900;
+                    return Card(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
+                        side: BorderSide(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: results.isEmpty
+                          ? _InstallSearchEmpty(
+                              isSearching:
+                                  widget.controller.isSearchingPackages,
+                            )
+                          : Column(
+                              children: <Widget>[
+                                _SearchPackageHeaderRow(
+                                  compact: compact,
+                                  count: results.length,
+                                ),
+                                Expanded(
+                                  child: ListView.separated(
+                                    itemCount: results.length,
+                                    separatorBuilder: (_, _) => Divider(
+                                      height: 1,
+                                      color: theme.colorScheme.outlineVariant,
+                                    ),
+                                    itemBuilder: (context, index) {
+                                      return _SearchPackageListTile(
+                                        package: results[index],
+                                        controller: widget.controller,
+                                        compact: compact,
+                                        onInstall: _runCommandWithFeedback,
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-      ],
+        );
+      },
     );
   }
 }
@@ -4070,6 +4093,7 @@ Color _managerAccent(String managerId) {
     'scoop' => const Color(0xFF16A34A),
     'npm' => const Color(0xFFE4572E),
     'pnpm' => const Color(0xFFF59E0B),
+    'yarn' => const Color(0xFF2C8EBB),
     'bun' => const Color(0xFFEAB308),
     'pip' => const Color(0xFF4B7BEC),
     'uv' => const Color(0xFF14B8A6),
@@ -4085,6 +4109,7 @@ IconData _managerIcon(String managerId) {
     'scoop' => Icons.inventory_2_outlined,
     'npm' => Icons.hub_outlined,
     'pnpm' => Icons.account_tree_outlined,
+    'yarn' => Icons.change_history_outlined,
     'bun' => Icons.bubble_chart_outlined,
     'pip' => Icons.science_outlined,
     'uv' => Icons.flash_on_outlined,
@@ -4106,4 +4131,5 @@ const Map<String, String> _managerIconAssets = <String, String>{
   'pnpm': 'assets/package_icons/pnpm.svg',
   'uv': 'assets/package_icons/uv.svg',
   'winget': 'assets/package_icons/winget.ico',
+  'yarn': 'assets/package_icons/yarn.png',
 };

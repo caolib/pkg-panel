@@ -1,13 +1,4 @@
 <svg width="256" height="256" title="Chocolatey" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" id="chocolatey">
-<style>
-#chocolatey {
-    rect {fill: #15191C}
-
-    @media (prefers-color-scheme: light) {
-        rect {fill: #F4F2ED}
-    }
-}
-</style>
 <rect width="256" height="256" rx="40" fill="#15191C"/>
 <path d="M198.366 201.158H77.4669V56.5205H198.366V89.0915V201.158Z" fill="#924716"/>
 <path d="M198.366 201.158H187.877V65.3533L198.366 56.5205V201.158Z" fill="#793812"/>

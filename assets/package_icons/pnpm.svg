@@ -1,13 +1,4 @@
 <svg width="256" height="256" title="pnpm" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" id="pnpm">
-<style>
-#pnpm {
-    rect {fill: #15191C}
-
-    @media (prefers-color-scheme: light) {
-        rect {fill: #F4F2ED}
-    }
-}
-</style>
 <rect width="256" height="256" rx="40" fill="#15191C"/>
 <path d="M203 99.8721H156.128V53H203V99.8721Z" fill="#F9AD00"/>
 <path d="M151.431 99.8721H104.559V53H151.431V99.8721Z" fill="#F9AD00"/>

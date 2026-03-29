@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -189,6 +191,113 @@ void main() {
     );
   });
 
+  test('missing cached manager snapshots are synthesized for registered adapters', () async {
+    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'npm',
+    );
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm', 'yarn'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'yarn': true,
+      },
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: npmAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    expect(
+      controller.snapshots.map((snapshot) => snapshot.manager.id),
+      contains('yarn'),
+    );
+
+    await controller.setManagerVisibility('yarn', false);
+
+    expect(controller.isManagerVisible('yarn'), isFalse);
+  });
+
+  test('refreshing manager availability disables missing visible managers', () async {
+    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'npm',
+    );
+    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'pip',
+    );
+    final settingsStore = _PersistingVisibilitySettingsStore(
+      visibleManagerIds: const <String>{'npm', 'pip'},
+    );
+    final controller = PackagePanelController(
+      shell: const _ExecutableAvailabilityShellExecutor(<String, bool>{
+        'npm': true,
+        'python': false,
+      }),
+      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+      settingsStore: settingsStore,
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm', 'pip'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pip': true,
+      },
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: npmAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+            ),
+          ],
+        ),
+        ManagerSnapshot(
+          manager: pipAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'ruff',
+              managerId: 'pip',
+              managerName: 'pip',
+              version: '0.8.6',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await controller.refreshManagerAvailability();
+
+    expect(controller.isManagerAvailable('npm'), isTrue);
+    expect(controller.isManagerAvailable('pip'), isFalse);
+    expect(controller.isManagerVisible('npm'), isTrue);
+    expect(controller.isManagerVisible('pip'), isFalse);
+    expect(settingsStore.visibleManagerIds, <String>{'npm'});
+
+    final pipSnapshot = controller.snapshots.firstWhere(
+      (snapshot) => snapshot.manager.id == 'pip',
+    );
+    expect(pipSnapshot.loadState, ManagerLoadState.idle);
+    expect(pipSnapshot.packages, isEmpty);
+  });
+
   testWidgets('opens dedicated settings page', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -224,6 +333,7 @@ void main() {
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('npm'), findsWidgets);
     expect(find.text('choco'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, '刷新状态'), findsOneWidget);
     expect(find.text('重命名'), findsNothing);
     expect(find.text('自定义图标'), findsNothing);
     expect(find.widgetWithText(OutlinedButton, '编辑'), findsWidgets);
@@ -466,7 +576,7 @@ void main() {
     await tester.tap(find.text('安装'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('npm/pnpm/bun'));
+    await tester.tap(find.text('npm/pnpm/yarn/bun'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(SearchBar), 'eslint');
@@ -518,6 +628,7 @@ void main() {
       initialManagerAvailability: const <String, bool>{
         'npm': true,
         'pnpm': true,
+        'yarn': true,
         'bun': true,
       },
     );
@@ -553,8 +664,58 @@ void main() {
     expect(result.name, 'eslint');
     expect(
       result.installOptions.map((option) => option.managerId).toList(),
-      <String>['npm', 'pnpm', 'bun'],
+      <String>['npm', 'pnpm', 'yarn', 'bun'],
     );
+  });
+
+  test('yarn list packages reads dependencies from global dir manifest', () async {
+    final tempDir = await Directory.systemTemp.createTemp('pkg-panel-yarn-');
+    addTearDown(() async {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    final globalDir = Directory(
+      '${tempDir.path}${Platform.pathSeparator}global',
+    );
+    final scopedPackageDir = Directory(
+      '${globalDir.path}${Platform.pathSeparator}node_modules'
+      '${Platform.pathSeparator}@scope${Platform.pathSeparator}demo',
+    );
+    await scopedPackageDir.create(recursive: true);
+    await File(
+      '${globalDir.path}${Platform.pathSeparator}package.json',
+    ).writeAsString(
+      jsonEncode(<String, Object>{
+        'dependencies': <String, String>{'@scope/demo': '^1.2.3'},
+      }),
+    );
+    await File(
+      '${scopedPackageDir.path}${Platform.pathSeparator}package.json',
+    ).writeAsString(
+      jsonEncode(<String, Object>{
+        'name': '@scope/demo',
+        'version': '1.2.3',
+        'bin': <String, String>{'demo': 'bin/demo.js'},
+      }),
+    );
+
+    final packages = await const YarnAdapter().listPackages(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        'yarn global dir': ShellResult(
+          exitCode: 0,
+          stdout: globalDir.path,
+          stderr: '',
+        ),
+      }),
+    );
+
+    expect(packages, hasLength(1));
+    expect(packages.single.name, '@scope/demo');
+    expect(packages.single.version, '1.2.3');
+    expect(packages.single.executables, <String>['demo']);
+    expect(packages.single.managerId, 'yarn');
   });
 
   testWidgets('local package menu installs a selected npm version', (
@@ -1193,6 +1354,101 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
     );
   });
 
+  test(
+    'detected yarn auto-enables by default and stays hidden after manual disable',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'pkg-panel-yarn-visibility-',
+      );
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+
+      final yarnGlobalDir = Directory(
+        '${tempDir.path}${Platform.pathSeparator}global',
+      );
+      await yarnGlobalDir.create(recursive: true);
+      await File(
+        '${yarnGlobalDir.path}${Platform.pathSeparator}package.json',
+      ).writeAsString(
+        jsonEncode(<String, Object>{
+          'dependencies': <String, String>{},
+        }),
+      );
+
+      final settingsStore = _PersistingVisibilitySettingsStore(
+        visibleManagerIds: <String>{'npm'},
+      );
+      final shell = _MappedShellExecutor(<Pattern, ShellResult>{
+        RegExp(r"Get-Command 'npm'", caseSensitive: false): const ShellResult(
+          exitCode: 0,
+          stdout: '1',
+          stderr: '',
+        ),
+        RegExp(r"Get-Command 'yarn'", caseSensitive: false): const ShellResult(
+          exitCode: 0,
+          stdout: '1',
+          stderr: '',
+        ),
+        RegExp(r"Get-Command '", caseSensitive: false): const ShellResult(
+          exitCode: 0,
+          stdout: '0',
+          stderr: '',
+        ),
+        'npm ls -g --depth=0 --json': const ShellResult(
+          exitCode: 0,
+          stdout: '{"dependencies":{"eslint":{"version":"9.0.0"}}}',
+          stderr: '',
+        ),
+        'yarn global dir': ShellResult(
+          exitCode: 0,
+          stdout: yarnGlobalDir.path,
+          stderr: '',
+        ),
+      });
+
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: PackageManagerRegistry.defaultAdapters,
+        settingsStore: settingsStore,
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+      );
+
+      await controller.ensureLoaded();
+
+      expect(controller.isManagerVisible('yarn'), isTrue);
+      expect(
+        controller.visibleSnapshots.map((snapshot) => snapshot.manager.id),
+        contains('yarn'),
+      );
+      expect(settingsStore.visibleManagerIds, contains('yarn'));
+
+      await controller.setManagerVisibility('yarn', false);
+
+      expect(controller.isManagerVisible('yarn'), isFalse);
+      expect(settingsStore.manuallyHiddenManagerIds, contains('yarn'));
+
+      final reloadedController = PackagePanelController(
+        shell: shell,
+        adapters: PackageManagerRegistry.defaultAdapters,
+        settingsStore: settingsStore,
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+      );
+
+      await reloadedController.ensureLoaded();
+
+      expect(reloadedController.isManagerVisible('yarn'), isFalse);
+      expect(
+        reloadedController.visibleSnapshots.map((snapshot) => snapshot.manager.id),
+        isNot(contains('yarn')),
+      );
+    },
+  );
+
   test('winget packages can use resolved app icon path', () async {
     final controller = PackagePanelController(
       shell: _MappedShellExecutor(<Pattern, ShellResult>{
@@ -1335,6 +1591,60 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     await tester.pump();
 
     expect(find.text("npm view 'eslint' version --json"), findsNothing);
+  });
+
+  testWidgets('install page shows a single running command toast', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const commandText = 'npm install -g eslint';
+    final shell = _DelayedShellExecutor(
+      const <Pattern, ShellResult>{},
+      delayedCommand: commandText,
+      delayedResult: const ShellResult(exitCode: 0, stdout: '', stderr: ''),
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装'));
+    await tester.pumpAndSettle();
+
+    final commandFuture = controller.runCommand(
+      PackageCommand(
+        managerId: 'npm',
+        busyKey: 'test-install-toast',
+        label: '安装 eslint',
+        request: ShellRequest.process(
+          executable: 'npm',
+          arguments: const <String>['install', '-g', 'eslint'],
+          displayCommand: commandText,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('正在执行命令'), findsOneWidget);
+    expect(find.text(commandText), findsOneWidget);
+
+    shell.completeDelayed();
+    await commandFuture;
+    await tester.pump();
+
+    expect(find.text(commandText), findsNothing);
   });
 
   test('controller tracks scoop batch latest command while lookup runs', () async {
@@ -1778,6 +2088,17 @@ class _FakeShellExecutor extends ShellExecutor {
   }
 }
 
+class _ExecutableAvailabilityShellExecutor extends ShellExecutor {
+  const _ExecutableAvailabilityShellExecutor(this.availabilityByExecutable);
+
+  final Map<String, bool> availabilityByExecutable;
+
+  @override
+  Future<bool> isExecutableAvailable(String executable) async {
+    return availabilityByExecutable[executable] ?? false;
+  }
+}
+
 class _MappedShellExecutor extends ShellExecutor {
   const _MappedShellExecutor(this.results);
 
@@ -1879,6 +2200,75 @@ class _MemorySettingsStore extends PackageManagerSettingsStore {
 
   @override
   Future<void> saveVisibleManagerIds(Set<String> managerIds) async {}
+
+  @override
+  Future<Set<String>?> loadManuallyHiddenManagerIds() async => null;
+
+  @override
+  Future<void> saveManuallyHiddenManagerIds(Set<String> managerIds) async {}
+
+  @override
+  Future<List<String>> loadManagerOrderIds() async => const <String>[];
+
+  @override
+  Future<void> saveManagerOrderIds(List<String> managerIds) async {}
+
+  @override
+  Future<Map<String, String>> loadCustomManagerIconPaths() async {
+    return const <String, String>{};
+  }
+
+  @override
+  Future<void> saveCustomManagerIconPaths(
+    Map<String, String> iconPaths,
+  ) async {}
+
+  @override
+  Future<Map<String, String>> loadCustomManagerDisplayNames() async {
+    return const <String, String>{};
+  }
+
+  @override
+  Future<void> saveCustomManagerDisplayNames(
+    Map<String, String> displayNames,
+  ) async {}
+}
+
+class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
+  _PersistingVisibilitySettingsStore({
+    Set<String>? visibleManagerIds,
+    Set<String>? manuallyHiddenManagerIds,
+  }) : visibleManagerIds =
+           visibleManagerIds == null ? null : Set<String>.from(visibleManagerIds),
+       manuallyHiddenManagerIds =
+           manuallyHiddenManagerIds == null
+               ? null
+               : Set<String>.from(manuallyHiddenManagerIds);
+
+  Set<String>? visibleManagerIds;
+  Set<String>? manuallyHiddenManagerIds;
+
+  @override
+  Future<Set<String>?> loadVisibleManagerIds() async {
+    final ids = visibleManagerIds;
+    return ids == null ? null : Set<String>.from(ids);
+  }
+
+  @override
+  Future<void> saveVisibleManagerIds(Set<String> managerIds) async {
+    visibleManagerIds = Set<String>.from(managerIds);
+  }
+
+  @override
+  Future<Set<String>?> loadManuallyHiddenManagerIds() async {
+    final ids = manuallyHiddenManagerIds;
+    return ids == null ? null : Set<String>.from(ids);
+  }
+
+  @override
+  Future<void> saveManuallyHiddenManagerIds(Set<String> managerIds) async {
+    manuallyHiddenManagerIds = Set<String>.from(managerIds);
+  }
 
   @override
   Future<List<String>> loadManagerOrderIds() async => const <String>[];

@@ -15,6 +15,7 @@ const List<String> _nodeRegistrySearchPriority = <String>['npm', 'pnpm'];
 const List<String> _nodeRegistryInstallPriority = <String>[
   'npm',
   'pnpm',
+  'yarn',
   'bun',
 ];
 
@@ -30,6 +31,7 @@ class PackagePanelController extends ChangeNotifier {
     Set<String>? initialVisibleManagerIds,
     List<String>? initialManagerOrderIds,
     Map<String, bool>? initialManagerAvailability,
+    Set<String>? initialManuallyHiddenManagerIds,
     Map<String, String>? initialCustomManagerIconPaths,
     Map<String, String>? initialCustomManagerDisplayNames,
     ThemeMode? initialThemeMode,
@@ -46,15 +48,13 @@ class PackagePanelController extends ChangeNotifier {
          initialLatestInfo ?? const <String, PersistedPackageLatestInfo>{},
        ),
        _adapters = List<PackageManagerAdapter>.from(adapters),
-       _snapshots = List<ManagerSnapshot>.from(
-         initialSnapshots ??
-             adapters
-                 .map((adapter) => ManagerSnapshot(manager: adapter.definition))
-                 .toList(growable: false),
-       ),
+       _snapshots = _normalizeSnapshots(adapters, initialSnapshots),
        _visibleManagerIds = Set<String>.from(
          initialVisibleManagerIds ??
              adapters.map((adapter) => adapter.definition.id).toSet(),
+       ),
+       _manuallyHiddenManagerIds = Set<String>.from(
+         initialManuallyHiddenManagerIds ?? const <String>{},
        ),
        _managerAvailability = Map<String, bool>.from(
          initialManagerAvailability ?? const <String, bool>{},
@@ -71,7 +71,9 @@ class PackagePanelController extends ChangeNotifier {
          initialCustomFallbackFontFamilies ?? const <String>[],
        ),
        _hasCachedSnapshots = initialSnapshots != null,
-       _hasInitializedManagerVisibility = initialVisibleManagerIds != null {
+       _hasInitializedManagerVisibility =
+           initialVisibleManagerIds != null ||
+           initialManuallyHiddenManagerIds != null {
     _applyManagerOrder(initialManagerOrderIds ?? const <String>[]);
   }
 
@@ -88,6 +90,7 @@ class PackagePanelController extends ChangeNotifier {
   final Map<String, String> _runningCommandTexts = <String, String>{};
   final Set<String> _selectedPackageKeys = <String>{};
   final Set<String> _visibleManagerIds;
+  final Set<String> _manuallyHiddenManagerIds;
   final Map<String, bool> _managerAvailability;
   final Map<String, String> _customManagerIconPaths;
   final Map<String, String> _customManagerDisplayNames;
@@ -103,6 +106,7 @@ class PackagePanelController extends ChangeNotifier {
   ManagedPackage? _selectedPackage;
   String? _selectionAnchorKey;
   bool _isRefreshingAll = false;
+  bool _isRefreshingManagerAvailability = false;
   bool _isSearchingPackages = false;
   bool _hasCachedSnapshots;
   bool _hasTriggeredInitialRefresh = false;
@@ -137,6 +141,8 @@ class PackagePanelController extends ChangeNotifier {
   int get selectedPackageCount => _selectedPackageKeys.length;
 
   bool get isRefreshingAll => _isRefreshingAll;
+
+  bool get isRefreshingManagerAvailability => _isRefreshingManagerAvailability;
 
   bool get isRefreshingCurrentSelection {
     final managerId = _selectedManagerId;
@@ -459,7 +465,7 @@ class PackagePanelController extends ChangeNotifier {
 
   String installSearchFilterLabel(String filterId) {
     return filterId == _nodeRegistrySearchGroupId
-        ? 'npm/pnpm/bun'
+        ? 'npm/pnpm/yarn/bun'
         : displayNameForManagerId(filterId);
   }
 
@@ -822,8 +828,10 @@ class PackagePanelController extends ChangeNotifier {
   Future<void> setManagerVisibility(String managerId, bool isVisible) async {
     if (isVisible) {
       _visibleManagerIds.add(managerId);
+      _manuallyHiddenManagerIds.remove(managerId);
     } else {
       _visibleManagerIds.remove(managerId);
+      _manuallyHiddenManagerIds.add(managerId);
       final snapshot = _snapshotFor(managerId);
       _setSnapshot(
         managerId,
@@ -837,6 +845,7 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     await _settingsStore.saveVisibleManagerIds(_visibleManagerIds);
+    await _settingsStore.saveManuallyHiddenManagerIds(_manuallyHiddenManagerIds);
 
     if (_selectedManagerId != null && !isManagerVisible(_selectedManagerId!)) {
       _selectedManagerId = null;
@@ -847,6 +856,50 @@ class PackagePanelController extends ChangeNotifier {
 
     if (isVisible && _hasTriggeredInitialRefresh) {
       await refreshManager(managerId);
+    }
+  }
+
+  Future<void> refreshManagerAvailability() async {
+    if (_isRefreshingManagerAvailability) {
+      return;
+    }
+
+    _isRefreshingManagerAvailability = true;
+    notifyListeners();
+
+    try {
+      final availability = await _detectManagerAvailability();
+      final managersToDisable = _visibleManagerIds
+          .where((managerId) => !(availability[managerId] ?? false))
+          .toList(growable: false);
+
+      _managerAvailability
+        ..clear()
+        ..addAll(availability);
+
+      for (final managerId in managersToDisable) {
+        _visibleManagerIds.remove(managerId);
+        final snapshot = _snapshotFor(managerId);
+        _setSnapshot(
+          managerId,
+          snapshot.copyWith(
+            packages: const <ManagedPackage>[],
+            loadState: ManagerLoadState.idle,
+            clearError: true,
+          ),
+        );
+        _clearPackageIconsForManager(managerId);
+      }
+
+      if (_selectedManagerId != null && !isManagerVisible(_selectedManagerId!)) {
+        _selectedManagerId = null;
+      }
+
+      _realignSelection();
+      await _settingsStore.saveVisibleManagerIds(_visibleManagerIds);
+    } finally {
+      _isRefreshingManagerAvailability = false;
+      notifyListeners();
     }
   }
 
@@ -1265,6 +1318,12 @@ class PackagePanelController extends ChangeNotifier {
       if (_managerAvailability.isEmpty) {
         _managerAvailability.addAll(await _detectManagerAvailability());
       }
+      if (_manuallyHiddenManagerIds.isEmpty) {
+        _manuallyHiddenManagerIds.addAll(
+          await _settingsStore.loadManuallyHiddenManagerIds() ??
+              const <String>{},
+        );
+      }
       if (_customManagerIconPaths.isEmpty) {
         _customManagerIconPaths.addAll(
           await _settingsStore.loadCustomManagerIconPaths(),
@@ -1295,6 +1354,8 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     final savedVisibleManagerIds = await _settingsStore.loadVisibleManagerIds();
+    final savedManuallyHiddenManagerIds = await _settingsStore
+        .loadManuallyHiddenManagerIds();
     final savedCustomManagerIconPaths = await _settingsStore
         .loadCustomManagerIconPaths();
     final savedCustomManagerDisplayNames = await _settingsStore
@@ -1309,14 +1370,23 @@ class PackagePanelController extends ChangeNotifier {
       ..clear()
       ..addAll(availability);
 
+    final manuallyHiddenManagerIds =
+        savedManuallyHiddenManagerIds ??
+        _inferLegacyManuallyHiddenManagerIds(
+          savedVisibleManagerIds: savedVisibleManagerIds,
+          savedManagerOrderIds: savedManagerOrderIds,
+        );
+    _manuallyHiddenManagerIds
+      ..clear()
+      ..addAll(manuallyHiddenManagerIds);
+
     _visibleManagerIds
       ..clear()
-      ..addAll(
-        savedVisibleManagerIds ??
-            availability.entries
-                .where((entry) => entry.value)
-                .map((entry) => entry.key),
-      );
+      ..addAll(_resolveVisibleManagerIds(
+        baseVisibleManagerIds: savedVisibleManagerIds,
+        availability: availability,
+        manuallyHiddenManagerIds: _manuallyHiddenManagerIds,
+      ));
 
     _customManagerIconPaths
       ..clear()
@@ -1337,8 +1407,18 @@ class PackagePanelController extends ChangeNotifier {
 
     _hasInitializedManagerVisibility = true;
 
-    if (savedVisibleManagerIds == null) {
+    if (savedVisibleManagerIds == null ||
+        !_sameStringSet(savedVisibleManagerIds, _visibleManagerIds)) {
       await _settingsStore.saveVisibleManagerIds(_visibleManagerIds);
+    }
+    if (savedManuallyHiddenManagerIds == null ||
+        !_sameStringSet(
+          savedManuallyHiddenManagerIds,
+          _manuallyHiddenManagerIds,
+        )) {
+      await _settingsStore.saveManuallyHiddenManagerIds(
+        _manuallyHiddenManagerIds,
+      );
     }
   }
 
@@ -1351,6 +1431,33 @@ class PackagePanelController extends ChangeNotifier {
       }),
     );
     return Map<String, bool>.fromEntries(entries);
+  }
+
+  Set<String> _resolveVisibleManagerIds({
+    required Set<String>? baseVisibleManagerIds,
+    required Map<String, bool> availability,
+    required Set<String> manuallyHiddenManagerIds,
+  }) {
+    final visibleManagerIds = <String>{
+      ...?baseVisibleManagerIds,
+    };
+    for (final entry in availability.entries) {
+      if (entry.value && !manuallyHiddenManagerIds.contains(entry.key)) {
+        visibleManagerIds.add(entry.key);
+      }
+    }
+    visibleManagerIds.removeWhere(manuallyHiddenManagerIds.contains);
+    return visibleManagerIds;
+  }
+
+  Set<String> _inferLegacyManuallyHiddenManagerIds({
+    required Set<String>? savedVisibleManagerIds,
+    required List<String> savedManagerOrderIds,
+  }) {
+    if (savedVisibleManagerIds == null || savedManagerOrderIds.isEmpty) {
+      return const <String>{};
+    }
+    return savedManagerOrderIds.toSet().difference(savedVisibleManagerIds);
   }
 
   void _replacePackage(ManagedPackage nextPackage) {
@@ -1806,4 +1913,43 @@ class PackagePanelController extends ChangeNotifier {
       return 0;
     });
   }
+
+  static List<ManagerSnapshot> _normalizeSnapshots(
+    List<PackageManagerAdapter> adapters,
+    List<ManagerSnapshot>? initialSnapshots,
+  ) {
+    final initialById = <String, ManagerSnapshot>{
+      for (final snapshot in initialSnapshots ?? const <ManagerSnapshot>[])
+        snapshot.manager.id: snapshot,
+    };
+
+    return adapters
+        .map((adapter) {
+          final manager = adapter.definition;
+          final snapshot = initialById[manager.id];
+          if (snapshot == null) {
+            return ManagerSnapshot(manager: manager);
+          }
+          return ManagerSnapshot(
+            manager: manager,
+            packages: snapshot.packages,
+            loadState: snapshot.loadState,
+            errorMessage: snapshot.errorMessage,
+            lastRefreshedAt: snapshot.lastRefreshedAt,
+          );
+        })
+        .toList(growable: true);
+  }
+}
+
+bool _sameStringSet(Set<String> left, Set<String> right) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (final value in left) {
+    if (!right.contains(value)) {
+      return false;
+    }
+  }
+  return true;
 }

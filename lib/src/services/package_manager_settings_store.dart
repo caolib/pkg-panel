@@ -35,6 +35,37 @@ class PackageManagerSettingsStore {
     }
   }
 
+  Future<Set<String>?> loadManuallyHiddenManagerIds() async {
+    try {
+      final decoded = await _loadSettings();
+      if (decoded == null || !decoded.containsKey('manuallyHiddenManagerIds')) {
+        return null;
+      }
+
+      final values = decoded['manuallyHiddenManagerIds'];
+      if (values is! List) {
+        return null;
+      }
+
+      return values
+          .map((value) => '$value'.trim())
+          .where((value) => value.isNotEmpty)
+          .toSet();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveManuallyHiddenManagerIds(Set<String> managerIds) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['manuallyHiddenManagerIds'] = managerIds.toList()..sort();
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
   Future<List<String>> loadManagerOrderIds() async {
     try {
       final decoded = await _loadSettings();

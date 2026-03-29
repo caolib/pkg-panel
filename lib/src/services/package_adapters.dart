@@ -9,3 +9,4 @@ export 'package_managers/pnpm_package_manager.dart';
 export 'package_managers/scoop_package_manager.dart';
 export 'package_managers/uv_tool_package_manager.dart';
 export 'package_managers/winget_package_manager.dart';
+export 'package_managers/yarn_package_manager.dart';
