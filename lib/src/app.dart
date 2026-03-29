@@ -2645,7 +2645,7 @@ class PackageSettingsPage extends StatelessWidget {
                               child: Padding(
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(
-                                  '刷新后未安装的包管理器会被禁用✨ feat: 添加 yarn',
+                                  '刷新后未安装的包管理器会被禁用',
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),

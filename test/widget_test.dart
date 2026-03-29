@@ -191,6 +191,60 @@ void main() {
     );
   });
 
+  test('shell executor refreshes Windows PATH for command resolution and child processes', () async {
+    if (!Platform.isWindows) {
+      return;
+    }
+
+    final toolDir = await Directory.systemTemp.createTemp('pkg_panel_tool_');
+    final runtimeDir = await Directory.systemTemp.createTemp(
+      'pkg_panel_runtime_',
+    );
+    addTearDown(() async {
+      if (await toolDir.exists()) {
+        await toolDir.delete(recursive: true);
+      }
+      if (await runtimeDir.exists()) {
+        await runtimeDir.delete(recursive: true);
+      }
+    });
+
+    final pnpmScript = File(
+      '${toolDir.path}${Platform.pathSeparator}pnpm.cmd',
+    );
+    await pnpmScript.writeAsString(
+      '@echo off\r\n'
+      'node >nul 2>nul\r\n'
+      'if errorlevel 1 (\r\n'
+      '  echo node missing\r\n'
+      '  exit /b 1\r\n'
+      ')\r\n'
+      'echo ok\r\n',
+    );
+
+    final nodeScript = File(
+      '${runtimeDir.path}${Platform.pathSeparator}node.cmd',
+    );
+    await nodeScript.writeAsString('@echo off\r\nexit /b 0\r\n');
+
+    final shell = ShellExecutor(
+      processEnvironment: <String, String>{
+        'PATH': toolDir.path,
+        'PATHEXT': '.CMD;.EXE',
+        'SystemRoot': Platform.environment['SystemRoot'] ?? r'C:\Windows',
+      },
+      windowsEnvironmentProvider: () async => <String, String>{
+        'PATH': '${toolDir.path};${runtimeDir.path}',
+        'PATHEXT': '.CMD;.EXE',
+      },
+    );
+
+    final result = await shell.runExecutable('pnpm', const <String>[]);
+
+    expect(result.isSuccess, isTrue);
+    expect(result.stdout.trim(), 'ok');
+  });
+
   test('missing cached manager snapshots are synthesized for registered adapters', () async {
     final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
       (adapter) => adapter.definition.id == 'npm',
