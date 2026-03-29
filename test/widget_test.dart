@@ -224,6 +224,15 @@ void main() {
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('npm'), findsWidgets);
     expect(find.text('choco'), findsWidgets);
+    expect(find.text('重命名'), findsNothing);
+    expect(find.text('自定义图标'), findsNothing);
+    expect(find.widgetWithText(OutlinedButton, '编辑'), findsWidgets);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '编辑').first);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('编辑 '), findsOneWidget);
+    expect(find.text('选择图标'), findsOneWidget);
   });
 
   testWidgets('install page uses a single menu item and defaults npm to latest', (

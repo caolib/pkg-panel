@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'models/package_models.dart';
 import 'services/package_panel_controller.dart';
 import 'services/external_link_opener.dart';
+import 'services/local_file_picker.dart';
 import 'services/window_theme_sync.dart';
 import 'widgets/local_icon_image.dart';
 
@@ -2378,9 +2379,14 @@ class _EmptyPackages extends StatelessWidget {
 }
 
 class PackageSettingsPage extends StatelessWidget {
-  const PackageSettingsPage({super.key, required this.controller});
+  const PackageSettingsPage({
+    super.key,
+    required this.controller,
+    this.filePicker = const LocalFilePicker(),
+  });
 
   final PackagePanelController controller;
+  final LocalFilePicker filePicker;
 
   static const List<String> _fontSuggestions = <String>[
     'Cascadia Code',
@@ -2397,59 +2403,36 @@ class PackageSettingsPage extends StatelessWidget {
     'JetBrains Mono',
   ];
 
-  Future<void> _editManagerIconPath(
+  String? _managerCustomizationSummary(PackageManagerVisibilityState state) {
+    final parts = <String>[];
+    final customName = controller.customManagerDisplayName(state.manager.id);
+    if (customName != null &&
+        customName.trim() != state.manager.displayName.trim()) {
+      parts.add('原名: ${state.manager.displayName}');
+    }
+    if (controller.customManagerIconPath(state.manager.id) != null) {
+      parts.add('已设置自定义图标');
+    }
+    if (parts.isEmpty) {
+      return null;
+    }
+    return parts.join(' · ');
+  }
+
+  Future<void> _editManager(
     BuildContext context,
     PackageManagerVisibilityState state,
   ) async {
-    final managerName = controller.displayNameForManagerId(state.manager.id);
-    final textController = TextEditingController(
-      text: controller.customManagerIconPath(state.manager.id) ?? '',
-    );
-
-    final value = await showDialog<String>(
+    final result = await showDialog<_ManagerEditOutcome>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('自定义 $managerName 图标'),
-          content: SizedBox(
-            width: 560,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Text('输入本地图标文件路径，支持 svg、png、jpg、webp、ico。'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: textController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: r'C:\icons\my-manager.svg',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(textController.text),
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
+      builder: (dialogContext) => _ManagerEditDialog(
+        controller: controller,
+        state: state,
+        filePicker: filePicker,
+      ),
     );
 
-    if (value == null || !context.mounted) {
-      return;
-    }
-
-    await controller.setCustomManagerIconPath(state.manager.id, value);
-    if (!context.mounted) {
+    if (result == null || !context.mounted || result.changedParts.isEmpty) {
       return;
     }
 
@@ -2459,64 +2442,10 @@ class PackageSettingsPage extends StatelessWidget {
         SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text(
-            value.trim().isEmpty
-                ? '$managerName 已恢复默认图标。'
-                : '$managerName 图标已更新。',
+            '${result.managerName} 已更新${result.changedParts.join('、')}。',
           ),
         ),
       );
-  }
-
-  Future<void> _editManagerDisplayName(
-    BuildContext context,
-    PackageManagerVisibilityState state,
-  ) async {
-    final textController = TextEditingController(
-      text:
-          controller.customManagerDisplayName(state.manager.id) ??
-          state.manager.displayName,
-    );
-
-    final value = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('修改 ${state.manager.displayName} 显示名称'),
-          content: SizedBox(
-            width: 420,
-            child: TextField(
-              controller: textController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: '输入新的显示名称',
-              ),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(textController.text),
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (value == null) {
-      return;
-    }
-
-    if (value.trim() == state.manager.displayName.trim()) {
-      await controller.clearCustomManagerDisplayName(state.manager.id);
-      return;
-    }
-
-    await controller.setCustomManagerDisplayName(state.manager.id, value);
   }
 
   Future<void> _editFontFamily(BuildContext context) async {
@@ -2855,20 +2784,14 @@ class PackageSettingsPage extends StatelessWidget {
                                                             ),
                                                       ),
                                                       const SizedBox(height: 2),
-                                                      if (controller
-                                                              .customManagerIconPath(
-                                                                state
-                                                                    .manager
-                                                                    .id,
-                                                              ) !=
+                                                      if (_managerCustomizationSummary(
+                                                            state,
+                                                          ) !=
                                                           null) ...<Widget>[
                                                         Text(
-                                                          controller
-                                                              .customManagerIconPath(
-                                                                state
-                                                                    .manager
-                                                                    .id,
-                                                              )!,
+                                                          _managerCustomizationSummary(
+                                                            state,
+                                                          )!,
                                                           maxLines: 1,
                                                           overflow: TextOverflow
                                                               .ellipsis,
@@ -2885,50 +2808,6 @@ class PackageSettingsPage extends StatelessWidget {
                                                           height: 2,
                                                         ),
                                                       ],
-                                                      Wrap(
-                                                        spacing: 8,
-                                                        children: <Widget>[
-                                                          TextButton(
-                                                            onPressed: () =>
-                                                                _editManagerDisplayName(
-                                                                  context,
-                                                                  state,
-                                                                ),
-                                                            child: const Text(
-                                                              '重命名',
-                                                            ),
-                                                          ),
-                                                          TextButton(
-                                                            onPressed: () =>
-                                                                _editManagerIconPath(
-                                                                  context,
-                                                                  state,
-                                                                ),
-                                                            child: const Text(
-                                                              '自定义图标',
-                                                            ),
-                                                          ),
-                                                          if (controller
-                                                                  .customManagerIconPath(
-                                                                    state
-                                                                        .manager
-                                                                        .id,
-                                                                  ) !=
-                                                              null)
-                                                            TextButton(
-                                                              onPressed: () =>
-                                                                  controller
-                                                                      .clearCustomManagerIconPath(
-                                                                        state
-                                                                            .manager
-                                                                            .id,
-                                                                      ),
-                                                              child: const Text(
-                                                                '恢复默认',
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      ),
                                                     ],
                                                   ),
                                                 ),
@@ -2979,13 +2858,33 @@ class PackageSettingsPage extends StatelessWidget {
                                             flex: 2,
                                             child: Align(
                                               alignment: Alignment.centerRight,
-                                              child: Switch(
-                                                value: state.isVisible,
-                                                onChanged: (value) => controller
-                                                    .setManagerVisibility(
-                                                      state.manager.id,
-                                                      value,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.end,
+                                                children: <Widget>[
+                                                  OutlinedButton.icon(
+                                                    onPressed: () =>
+                                                        _editManager(
+                                                          context,
+                                                          state,
+                                                        ),
+                                                    icon: const Icon(
+                                                      Icons.edit_outlined,
+                                                      size: 18,
                                                     ),
+                                                    label: const Text('编辑'),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Switch(
+                                                    value: state.isVisible,
+                                                    onChanged: (value) =>
+                                                        controller
+                                                            .setManagerVisibility(
+                                                              state.manager.id,
+                                                              value,
+                                                            ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ),
@@ -3175,6 +3074,233 @@ class PackageSettingsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ManagerEditDialog extends StatefulWidget {
+  const _ManagerEditDialog({
+    required this.controller,
+    required this.state,
+    required this.filePicker,
+  });
+
+  final PackagePanelController controller;
+  final PackageManagerVisibilityState state;
+  final LocalFilePicker filePicker;
+
+  @override
+  State<_ManagerEditDialog> createState() => _ManagerEditDialogState();
+}
+
+class _ManagerEditDialogState extends State<_ManagerEditDialog> {
+  late final TextEditingController _nameController;
+  late String? _selectedIconPath;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text:
+          widget.controller.customManagerDisplayName(widget.state.manager.id) ??
+          widget.state.manager.displayName,
+    );
+    _selectedIconPath = widget.controller.customManagerIconPath(
+      widget.state.manager.id,
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickIcon() async {
+    final pickedPath = await widget.filePicker.pickManagerIconFile();
+    if (!mounted || pickedPath == null) {
+      return;
+    }
+    setState(() {
+      _selectedIconPath = pickedPath;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) {
+      return;
+    }
+
+    final managerId = widget.state.manager.id;
+    final originalDisplayName = widget.state.manager.displayName.trim();
+    final currentCustomDisplayName =
+        widget.controller.customManagerDisplayName(managerId)?.trim();
+    final currentIconPath = widget.controller.customManagerIconPath(managerId);
+    final normalizedDisplayName = _nameController.text.trim();
+    final nextIconPath = _selectedIconPath?.trim();
+    final changedParts = <String>[];
+    var shouldResetSaving = true;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      if (normalizedDisplayName.isEmpty ||
+          normalizedDisplayName == originalDisplayName) {
+        if (currentCustomDisplayName != null) {
+          await widget.controller.clearCustomManagerDisplayName(managerId);
+          changedParts.add('显示名称');
+        }
+      } else if (normalizedDisplayName != currentCustomDisplayName) {
+        await widget.controller.setCustomManagerDisplayName(
+          managerId,
+          normalizedDisplayName,
+        );
+        changedParts.add('显示名称');
+      }
+
+      if (nextIconPath == null || nextIconPath.isEmpty) {
+        if (currentIconPath != null) {
+          await widget.controller.clearCustomManagerIconPath(managerId);
+          changedParts.add('图标');
+        }
+      } else if (nextIconPath != currentIconPath) {
+        await widget.controller.setCustomManagerIconPath(managerId, nextIconPath);
+        changedParts.add('图标');
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      shouldResetSaving = false;
+      Navigator.of(context).pop(
+        _ManagerEditOutcome(
+          managerName: widget.controller.displayNameForManagerId(managerId),
+          changedParts: changedParts,
+        ),
+      );
+    } finally {
+      if (mounted && shouldResetSaving) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final managerId = widget.state.manager.id;
+    return AlertDialog(
+      title: Text('编辑 ${widget.controller.displayNameForManagerId(managerId)}'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              TextField(
+                controller: _nameController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '显示名称',
+                  border: OutlineInputBorder(),
+                  hintText: '输入新的显示名称',
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '图标',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLowest,
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    _ManagerIcon(
+                      managerId: managerId,
+                      customIconPath: _selectedIconPath,
+                      fallbackIcon: widget.state.manager.icon,
+                      fallbackColor: widget.state.manager.color,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _selectedIconPath ?? '使用默认图标',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text('支持 svg、png、jpg、jpeg、webp、ico。'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  FilledButton.tonalIcon(
+                    onPressed: _isSaving ? null : _pickIcon,
+                    icon: const Icon(Icons.folder_open_outlined),
+                    label: Text(_selectedIconPath == null ? '选择图标' : '更换图标'),
+                  ),
+                  if (_selectedIconPath != null)
+                    TextButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () {
+                              setState(() {
+                                _selectedIconPath = null;
+                              });
+                            },
+                      child: const Text('恢复默认图标'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _isSaving ? null : _save,
+          child: Text(_isSaving ? '保存中...' : '保存'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ManagerEditOutcome {
+  const _ManagerEditOutcome({
+    required this.managerName,
+    required this.changedParts,
+  });
+
+  final String managerName;
+  final List<String> changedParts;
 }
 
 class _AboutAppCard extends StatelessWidget {
