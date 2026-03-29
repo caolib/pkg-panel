@@ -81,10 +81,10 @@ class PnpmAdapter extends PackageManagerAdapter
     String query,
   ) async {
     final result = await shell.runExecutable(
-      'npm',
+      'pnpm',
       <String>['search', query, '--json', '--searchlimit=20'],
       timeout: const Duration(seconds: 45),
-      displayCommand: 'npm search ${psQuote(query)} --json --searchlimit=20',
+      displayCommand: 'pnpm search ${psQuote(query)} --json --searchlimit=20',
     );
     return parseNpmSearchResults(result, manager: definition);
   }

@@ -10,6 +10,14 @@ import 'package_snapshot_store.dart';
 import 'shell_executor.dart';
 import 'winget_package_icon_resolver.dart';
 
+const String _nodeRegistrySearchGroupId = 'node_registry';
+const List<String> _nodeRegistrySearchPriority = <String>['npm', 'pnpm'];
+const List<String> _nodeRegistryInstallPriority = <String>[
+  'npm',
+  'pnpm',
+  'bun',
+];
+
 class PackagePanelController extends ChangeNotifier {
   PackagePanelController({
     required ShellExecutor shell,
@@ -430,13 +438,50 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
   }
 
-  List<PackageManagerAdapter> get searchableAdapters => _adapters
-      .where(
-        (adapter) =>
-            adapter is PackageSearchCapability &&
-            isManagerAvailable(adapter.definition.id),
-      )
-      .toList(growable: false);
+  List<PackageManagerAdapter> get searchableAdapters =>
+      _searchAdaptersForScope(null);
+
+  List<String> get installSearchFilterIds {
+    final filterIds = <String>[];
+    if (_preferredNodeRegistrySearchAdapter() != null &&
+        _availableNodeRegistryInstallManagerIds().isNotEmpty) {
+      filterIds.add(_nodeRegistrySearchGroupId);
+    }
+    for (final adapter in _adapters) {
+      if (!_supportsSearchFilter(adapter) ||
+          _isNodeRegistryManagerId(adapter.definition.id)) {
+        continue;
+      }
+      filterIds.add(adapter.definition.id);
+    }
+    return filterIds;
+  }
+
+  String installSearchFilterLabel(String filterId) {
+    return filterId == _nodeRegistrySearchGroupId
+        ? 'npm/pnpm/bun'
+        : displayNameForManagerId(filterId);
+  }
+
+  String? installSearchFilterRepresentativeManagerId(String filterId) {
+    if (filterId == _nodeRegistrySearchGroupId) {
+      final managerIds = _availableNodeRegistryInstallManagerIds();
+      return managerIds.isEmpty ? null : managerIds.first;
+    }
+    return filterId;
+  }
+
+  bool searchResultMatchesFilter(SearchPackage package, String? filterId) {
+    if (filterId == null) {
+      return true;
+    }
+    if (filterId == _nodeRegistrySearchGroupId) {
+      return package.installOptions.any(
+        (option) => _isNodeRegistryManagerId(option.managerId),
+      );
+    }
+    return package.installOptions.any((option) => option.managerId == filterId);
+  }
 
   Future<void> searchPackages({
     String? managerId,
@@ -452,15 +497,7 @@ class PackagePanelController extends ChangeNotifier {
       return;
     }
 
-    final adapters = managerId == null
-        ? searchableAdapters
-        : _adapters
-              .where(
-                (adapter) =>
-                    adapter.definition.id == managerId &&
-                    adapter is PackageSearchCapability,
-              )
-              .toList(growable: false);
+    final adapters = _searchAdaptersForScope(managerId);
 
     _isSearchingPackages = true;
     _searchResults.clear();
@@ -501,6 +538,11 @@ class PackagePanelController extends ChangeNotifier {
         try {
           final capability = adapter as PackageSearchCapability;
           items = await capability.searchPackages(_shell, trimmed);
+          if (_isNodeRegistryManagerId(adapter.definition.id)) {
+            items = items
+                .map(_expandNodeRegistrySearchPackage)
+                .toList(growable: false);
+          }
         } catch (_) {
           items = const <SearchPackage>[];
         }
@@ -1612,7 +1654,99 @@ class PackagePanelController extends ChangeNotifier {
     if (identifier == null || identifier.isEmpty) {
       return null;
     }
-    return identifier;
+    final groupId =
+        package.installOptions.any(
+          (option) => _isNodeRegistryManagerId(option.managerId),
+        )
+        ? _nodeRegistrySearchGroupId
+        : package.managerId;
+    return '$groupId::$identifier';
+  }
+
+  List<PackageManagerAdapter> _searchAdaptersForScope(String? managerId) {
+    if (managerId == null) {
+      final adapters = <PackageManagerAdapter>[];
+      final nodeAdapter = _preferredNodeRegistrySearchAdapter();
+      if (nodeAdapter != null &&
+          _availableNodeRegistryInstallManagerIds().isNotEmpty) {
+        adapters.add(nodeAdapter);
+      }
+      for (final adapter in _adapters) {
+        if (!_supportsSearchFilter(adapter) ||
+            _isNodeRegistryManagerId(adapter.definition.id)) {
+          continue;
+        }
+        adapters.add(adapter);
+      }
+      return adapters;
+    }
+
+    if (managerId == _nodeRegistrySearchGroupId) {
+      final nodeAdapter = _preferredNodeRegistrySearchAdapter();
+      if (nodeAdapter == null ||
+          _availableNodeRegistryInstallManagerIds().isEmpty) {
+        return const <PackageManagerAdapter>[];
+      }
+      return <PackageManagerAdapter>[nodeAdapter];
+    }
+
+    return _adapters
+        .where(
+          (adapter) =>
+              adapter.definition.id == managerId && _supportsSearchFilter(adapter),
+        )
+        .toList(growable: false);
+  }
+
+  bool _supportsSearchFilter(PackageManagerAdapter adapter) {
+    return adapter is PackageSearchCapability &&
+        isManagerAvailable(adapter.definition.id);
+  }
+
+  bool _isNodeRegistryManagerId(String managerId) {
+    return _nodeRegistryInstallPriority.contains(managerId);
+  }
+
+  PackageManagerAdapter? _preferredNodeRegistrySearchAdapter() {
+    for (final managerId in _nodeRegistrySearchPriority) {
+      final adapter = _adapterFor(managerId);
+      if (adapter == null || !_supportsSearchFilter(adapter)) {
+        continue;
+      }
+      return adapter;
+    }
+    return null;
+  }
+
+  List<String> _availableNodeRegistryInstallManagerIds() {
+    final available = <String>[];
+    for (final managerId in _nodeRegistryInstallPriority) {
+      final adapter = _adapterFor(managerId);
+      if (adapter == null || !isManagerAvailable(managerId)) {
+        continue;
+      }
+      if (_capabilityOf<PackageInstallCapability>(adapter) == null) {
+        continue;
+      }
+      available.add(managerId);
+    }
+    return available;
+  }
+
+  SearchPackage _expandNodeRegistrySearchPackage(SearchPackage package) {
+    final installOptions = _availableNodeRegistryInstallManagerIds()
+        .map(
+          (managerId) => SearchPackageInstallOption(
+            managerId: managerId,
+            managerName: displayNameForManagerId(managerId),
+            packageName: package.name,
+            identifier: package.identifier,
+            version: package.version,
+            source: package.source,
+          ),
+        )
+        .toList(growable: false);
+    return package.copyWith(installOptions: installOptions);
   }
 
   int _indexOfPackage(List<ManagedPackage> packages, String key) {

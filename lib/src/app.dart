@@ -3331,7 +3331,7 @@ class PackageInstallPage extends StatefulWidget {
 
 class _PackageInstallPageState extends State<PackageInstallPage> {
   late final TextEditingController _searchController;
-  String? _selectedManagerId;
+  String? _selectedSearchFilterId;
 
   @override
   void initState() {
@@ -3349,7 +3349,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
 
   Future<void> _runSearch() async {
     await widget.controller.searchPackages(
-      managerId: _selectedManagerId,
+      managerId: _selectedSearchFilterId,
       query: _searchController.text,
     );
   }
@@ -3391,14 +3391,13 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
         AnimatedBuilder(
           animation: widget.controller,
           builder: (context, _) {
-            final adapters = widget.controller.searchableAdapters;
+            final filterIds = widget.controller.installSearchFilterIds;
             final results = widget.controller.searchResults
                 .where(
-                  (item) =>
-                      _selectedManagerId == null ||
-                      item.installOptions.any(
-                        (option) => option.managerId == _selectedManagerId,
-                      ),
+                  (item) => widget.controller.searchResultMatchesFilter(
+                    item,
+                    _selectedSearchFilterId,
+                  ),
                 )
                 .toList(growable: false);
             return Padding(
@@ -3448,37 +3447,48 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                       runSpacing: 10,
                       children: <Widget>[
                         FilterChip(
-                          selected: _selectedManagerId == null,
+                          selected: _selectedSearchFilterId == null,
                           showCheckmark: false,
                           label: const Text('全部'),
                           onSelected: (_) {
-                            setState(() => _selectedManagerId = null);
+                            setState(() => _selectedSearchFilterId = null);
                           },
                         ),
-                        ...adapters.map(
-                          (adapter) => FilterChip(
-                            selected:
-                                _selectedManagerId == adapter.definition.id,
+                        ...filterIds.map((filterId) {
+                          final representativeManagerId = widget.controller
+                              .installSearchFilterRepresentativeManagerId(
+                                filterId,
+                              );
+                          return FilterChip(
+                            selected: _selectedSearchFilterId == filterId,
                             showCheckmark: false,
-                            avatar: _ManagerIcon(
-                              managerId: adapter.definition.id,
-                              customIconPath: widget.controller
-                                  .customManagerIconPath(adapter.definition.id),
-                              fallbackIcon: adapter.definition.icon,
-                              fallbackColor: adapter.definition.color,
-                            ),
+                            avatar: representativeManagerId == null
+                                ? null
+                                : _ManagerIcon(
+                                    managerId: representativeManagerId,
+                                    customIconPath: widget.controller
+                                        .customManagerIconPath(
+                                          representativeManagerId,
+                                        ),
+                                    fallbackIcon: _managerIcon(
+                                      representativeManagerId,
+                                    ),
+                                    fallbackColor: _managerAccent(
+                                      representativeManagerId,
+                                    ),
+                                  ),
                             label: Text(
-                              widget.controller.displayNameForManagerId(
-                                adapter.definition.id,
+                              widget.controller.installSearchFilterLabel(
+                                filterId,
                               ),
                             ),
                             onSelected: (_) {
                               setState(() {
-                                _selectedManagerId = adapter.definition.id;
+                                _selectedSearchFilterId = filterId;
                               });
                             },
-                          ),
-                        ),
+                          );
+                        }),
                       ],
                     ),
                   ),

@@ -108,7 +108,22 @@ class ShellExecutor {
   }
 
   Future<bool> isExecutableAvailable(String executable) async {
-    return (await locateExecutable(executable)) != null;
+    final trimmed = executable.trim();
+    if (trimmed.isEmpty) {
+      return false;
+    }
+
+    if (Platform.isWindows && !_looksLikePath(trimmed)) {
+      final result = await runPowerShell(
+        "if (Get-Command '${_escapePowerShellSingleQuoted(trimmed)}' "
+        "-ErrorAction SilentlyContinue) { '1' } else { '0' }",
+      );
+      if (result.isSuccess) {
+        return result.stdout.trim() == '1';
+      }
+    }
+
+    return (await locateExecutable(trimmed)) != null;
   }
 
   Future<String?> locateExecutable(String executable) async {
@@ -337,6 +352,10 @@ class ShellExecutor {
     } catch (_) {
       return systemEncoding.decode(output);
     }
+  }
+
+  String _escapePowerShellSingleQuoted(String value) {
+    return value.replaceAll("'", "''");
   }
 
   Future<String> _resolveWorkingDirectory() async {

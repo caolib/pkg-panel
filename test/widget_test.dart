@@ -307,6 +307,27 @@ void main() {
     expect(shell.commands, contains("npm install -g 'eslint@latest'"));
   });
 
+  testWidgets('install page shows winget when it is searchable', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialManagerAvailability: const <String, bool>{'winget': true},
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('winget'), findsOneWidget);
+  });
+
   testWidgets('install options dialog loads versions in the same panel', (
     tester,
   ) async {
@@ -393,7 +414,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
-      "npm search 'eslint' --json --searchlimit=20": const ShellResult(
+      "pnpm search 'eslint' --json --searchlimit=20": const ShellResult(
         exitCode: 0,
         stdout:
             '[{"name":"eslint","version":"9.0.0","description":"Lint tool","publisher":{"username":"npm"}}]',
@@ -436,7 +457,7 @@ void main() {
     await tester.tap(find.text('安装'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('pnpm'));
+    await tester.tap(find.text('npm/pnpm/bun'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(SearchBar), 'eslint');
@@ -458,6 +479,10 @@ void main() {
     await tester.pumpAndSettle();
 
     final dialogFinder = find.byType(AlertDialog);
+    expect(
+      shell.commands,
+      contains("pnpm search 'eslint' --json --searchlimit=20"),
+    );
     expect(shell.commands, contains("pnpm view 'eslint' versions --json"));
     expect(
       find.descendant(of: dialogFinder, matching: find.byType(TextField)),
@@ -466,6 +491,60 @@ void main() {
     expect(
       tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
       isFalse,
+    );
+  });
+
+  test('node ecosystem search uses one provider and expands install options', () async {
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      "npm search 'eslint' --json --searchlimit=20": const ShellResult(
+        exitCode: 0,
+        stdout:
+            '[{"name":"eslint","version":"9.0.0","description":"Lint tool","publisher":{"username":"npm"}}]',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pnpm': true,
+        'bun': true,
+      },
+    );
+
+    await controller.searchPackages(query: 'eslint');
+    for (var i = 0; i < 3; i++) {
+      await Future<void>.delayed(Duration.zero);
+      if (!controller.isSearchingPackages) {
+        break;
+      }
+    }
+
+    expect(
+      shell.commands.where(
+        (command) => command == "npm search 'eslint' --json --searchlimit=20",
+      ),
+      hasLength(1),
+    );
+    expect(
+      shell.commands.where(
+        (command) => command.startsWith("pnpm search 'eslint'"),
+      ),
+      isEmpty,
+    );
+    expect(
+      shell.commands.where(
+        (command) => command.startsWith("bun search 'eslint'"),
+      ),
+      isEmpty,
+    );
+
+    final result = controller.searchResults.single;
+    expect(result.name, 'eslint');
+    expect(
+      result.installOptions.map((option) => option.managerId).toList(),
+      <String>['npm', 'pnpm', 'bun'],
     );
   });
 
