@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -35,6 +36,55 @@ const List<String> _defaultFallbackFontFamilies = <String>[
   'Microsoft YaHei',
   'Segoe UI',
 ];
+
+void _showCompactSnackBar(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.of(context);
+  final theme = Theme.of(context);
+  final mediaWidth = MediaQuery.sizeOf(context).width;
+  const horizontalInset = 24.0;
+  const bottomInset = 24.0;
+  final availableWidth = math.max(160.0, mediaWidth - horizontalInset * 2);
+  final targetMaxWidth = math.min(520.0, availableWidth);
+  final textStyle =
+      theme.snackBarTheme.contentTextStyle ??
+      theme.textTheme.bodyMedium ??
+      const TextStyle();
+  final contentTextStyle = textStyle.copyWith(color: Colors.white);
+  final textPainter = TextPainter(
+    text: TextSpan(text: message, style: contentTextStyle),
+    textDirection: Directionality.of(context),
+    maxLines: 3,
+  )..layout(maxWidth: targetMaxWidth - 72);
+  final width = math.min(
+    targetMaxWidth,
+    math.max(160.0, textPainter.width + 72),
+  );
+  final leftInset = math.max(
+    horizontalInset,
+    mediaWidth - width - horizontalInset,
+  );
+
+  messenger
+    ..clearSnackBars()
+    ..showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.only(
+          left: leftInset,
+          right: horizontalInset,
+          bottom: bottomInset,
+        ),
+        backgroundColor: Colors.black,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        content: Text(
+          message,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: contentTextStyle,
+        ),
+      ),
+    );
+}
 
 class PkgPanelApp extends StatefulWidget {
   const PkgPanelApp({
@@ -307,7 +357,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
-        final runningCommands = widget.controller.runningCommandTexts;
+        final runningCommands = widget.controller.runningCommands;
         return Scaffold(
           body: SafeArea(
             child: Stack(
@@ -377,7 +427,11 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                   Positioned(
                     right: 24,
                     bottom: 24,
-                    child: _RunningCommandToast(commands: runningCommands),
+                    child: _RunningCommandToast(
+                      commands: runningCommands,
+                      onCancelCommand: (command) =>
+                          unawaited(_cancelRunningCommand(command)),
+                    ),
                   ),
               ],
             ),
@@ -385,6 +439,17 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
         );
       },
     );
+  }
+
+  Future<void> _cancelRunningCommand(RunningCommandInfo command) async {
+    final cancelled = await widget.controller.cancelRunningCommand(
+      command.busyKey,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    _showCompactSnackBar(context, cancelled ? '已发送取消请求。' : '当前命令无法取消。');
   }
 
   Future<void> _confirmAndRunCommand(PackageCommand command) async {
@@ -403,16 +468,12 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
       return;
     }
 
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(command.command),
-      ),
+    _showCompactSnackBar(
+      context,
+      result.wasCancelled ? '已取消：${command.command}' : command.command,
     );
 
-    if (!result.isSuccess) {
+    if (!result.isSuccess && !result.wasCancelled) {
       await showDialog<void>(
         context: context,
         builder: (context) => _CommandOutputDialog(
@@ -472,15 +533,13 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
       if (!mounted) {
         return;
       }
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.clearSnackBars();
-      messenger.showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(prerequisiteCommand.command),
-        ),
+      _showCompactSnackBar(
+        context,
+        result.wasCancelled
+            ? '已取消：${prerequisiteCommand.command}'
+            : prerequisiteCommand.command,
       );
-      if (!result.isSuccess) {
+      if (!result.isSuccess && !result.wasCancelled) {
         await showDialog<void>(
           context: context,
           builder: (context) => _CommandOutputDialog(
@@ -516,82 +575,134 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
 }
 
 class _RunningCommandToast extends StatelessWidget {
-  const _RunningCommandToast({required this.commands});
+  const _RunningCommandToast({required this.commands, this.onCancelCommand});
 
-  final List<String> commands;
+  final List<RunningCommandInfo> commands;
+  final void Function(RunningCommandInfo command)? onCancelCommand;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final previewCommands = commands.take(3).toList(growable: false);
-    final extraCount = commands.length - previewCommands.length;
-    return IgnorePointer(
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 520),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: Colors.black.withAlpha(38),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2.6),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 360),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withAlpha(38),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              mainAxisSize: MainAxisSize.max,
+              children: <Widget>[
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.6),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '正在执行命令 (${commands.length})',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Flexible(
+              child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      '正在执行命令',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    ...previewCommands.map(
-                      (command) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          command,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontFamily: 'Cascadia Code',
-                            fontFamilyFallback:
-                                theme.textTheme.bodyMedium?.fontFamilyFallback,
+                    for (final command in commands)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
                           ),
-                        ),
-                      ),
-                    ),
-                    if (extraCount > 0)
-                      Text(
-                        '另外 $extraCount 个命令正在运行',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainer,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Expanded(
+                                child: Text(
+                                  command.command,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    fontFamily: 'Cascadia Code',
+                                    fontFamilyFallback: theme
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.fontFamilyFallback,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              if (command.canCancel)
+                                command.isCancelling
+                                    ? Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                        ),
+                                      )
+                                    : IconButton(
+                                        tooltip: '取消此命令',
+                                        onPressed: () =>
+                                            onCancelCommand?.call(command),
+                                        icon: const Icon(
+                                          Icons.stop_circle_outlined,
+                                        ),
+                                      )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    command.isCancelling ? '正在取消...' : '不可取消',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1108,19 +1219,13 @@ class _PackageListTile extends StatelessWidget {
             if (!context.mounted) {
               return;
             }
-            final messenger = ScaffoldMessenger.of(context);
-            messenger.clearSnackBars();
             if (latestVersion != null) {
               final isLatest = latestVersion.trim() == package.version.trim();
-              messenger.showSnackBar(
-                SnackBar(
-                  behavior: SnackBarBehavior.floating,
-                  content: Text(
-                    isLatest
-                        ? '${package.name} 已经是最新版本。'
-                        : '${package.name} 有新版本：$latestVersion',
-                  ),
-                ),
+              _showCompactSnackBar(
+                context,
+                isLatest
+                    ? '${package.name} 已经是最新版本。'
+                    : '${package.name} 有新版本：$latestVersion',
               );
             } else {
               final recentError = controller.activity
@@ -1133,15 +1238,11 @@ class _PackageListTile extends StatelessWidget {
                         entry.title.contains('失败'),
                     orElse: () => null,
                   );
-              messenger.showSnackBar(
-                SnackBar(
-                  behavior: SnackBarBehavior.floating,
-                  content: Text(
-                    recentError != null
-                        ? '检查 ${package.name} 失败：${recentError.message}'
-                        : '检查 ${package.name} 失败，请查看活动日志。',
-                  ),
-                ),
+              _showCompactSnackBar(
+                context,
+                recentError != null
+                    ? '检查 ${package.name} 失败：${recentError.message}'
+                    : '检查 ${package.name} 失败，请查看活动日志。',
               );
             }
           },
@@ -1632,14 +1733,7 @@ class _CommandOutputDialog extends StatelessWidget {
             if (!context.mounted) {
               return;
             }
-            ScaffoldMessenger.of(context)
-              ..clearSnackBars()
-              ..showSnackBar(
-                const SnackBar(
-                  behavior: SnackBarBehavior.floating,
-                  content: Text('已复制到剪贴板。'),
-                ),
-              );
+            _showCompactSnackBar(context, '已复制到剪贴板。');
           },
           icon: const Icon(Icons.copy_all_outlined),
           label: const Text('复制'),
@@ -2473,16 +2567,10 @@ class PackageSettingsPage extends StatelessWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text(
-            '${result.managerName} 已更新${result.changedParts.join('、')}。',
-          ),
-        ),
-      );
+    _showCompactSnackBar(
+      context,
+      '${result.managerName} 已更新${result.changedParts.join('、')}。',
+    );
   }
 
   Future<void> _addHomeFilterGroup(BuildContext context) async {
@@ -2508,14 +2596,7 @@ class PackageSettingsPage extends StatelessWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text('${draft.displayName} 已添加。'),
-        ),
-      );
+    _showCompactSnackBar(context, '${draft.displayName} 已添加。');
   }
 
   Future<void> _editHomeFilterGroup(
@@ -2539,14 +2620,7 @@ class PackageSettingsPage extends StatelessWidget {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context)
-        ..clearSnackBars()
-        ..showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            content: Text('${group.displayName} 已删除。'),
-          ),
-        );
+      _showCompactSnackBar(context, '${group.displayName} 已删除。');
       return;
     }
 
@@ -2563,14 +2637,7 @@ class PackageSettingsPage extends StatelessWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          content: Text('${result.displayName} 已更新。'),
-        ),
-      );
+    _showCompactSnackBar(context, '${result.displayName} 已更新。');
   }
 
   List<String> _currentFontFamilyStack() {
@@ -4131,14 +4198,7 @@ Future<void> _openExternalLink(BuildContext context, String url) async {
       return;
     }
   }
-  ScaffoldMessenger.of(context)
-    ..clearSnackBars()
-    ..showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text('无法打开链接：$url'),
-      ),
-    );
+  _showCompactSnackBar(context, '无法打开链接：$url');
 }
 
 class PackageInstallPage extends StatefulWidget {
@@ -4181,16 +4241,12 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
       return;
     }
 
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text(command.command),
-      ),
+    _showCompactSnackBar(
+      context,
+      result.wasCancelled ? '已取消：${command.command}' : command.command,
     );
 
-    if (!result.isSuccess) {
+    if (!result.isSuccess && !result.wasCancelled) {
       await showDialog<void>(
         context: context,
         builder: (context) => _CommandOutputDialog(

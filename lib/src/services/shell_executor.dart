@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class ShellRequest {
   factory ShellRequest.process({
@@ -32,11 +33,15 @@ class ShellResult {
     required this.exitCode,
     required this.stdout,
     required this.stderr,
+    this.wasCancelled = false,
+    this.didTimeout = false,
   });
 
   final int exitCode;
   final String stdout;
   final String stderr;
+  final bool wasCancelled;
+  final bool didTimeout;
 
   bool get isSuccess => exitCode == 0;
 
@@ -54,9 +59,12 @@ class ShellExecutor {
     Future<Map<String, String>> Function()? windowsEnvironmentProvider,
   }) : _processEnvironment = processEnvironment,
        _windowsEnvironmentProvider = windowsEnvironmentProvider;
+
   static const Utf8Codec _utf8 = Utf8Codec();
   static final Map<String, String?> _resolvedExecutableCache =
       <String, String?>{};
+  static final Expando<_ShellExecutorState> _stateByInstance =
+      Expando<_ShellExecutorState>('shell_executor_state');
   static Map<String, String>? _cachedWindowsEnvironmentOverrides;
   static DateTime? _cachedWindowsEnvironmentOverridesAt;
   static const Duration _windowsEnvironmentCacheTtl = Duration(seconds: 5);
@@ -64,14 +72,27 @@ class ShellExecutor {
   final Map<String, String>? _processEnvironment;
   final Future<Map<String, String>> Function()? _windowsEnvironmentProvider;
 
+  _ShellExecutorState get _state {
+    final existing = _stateByInstance[this];
+    if (existing != null) {
+      return existing;
+    }
+
+    final created = _ShellExecutorState();
+    _stateByInstance[this] = created;
+    return created;
+  }
+
   Future<ShellResult> runRequest(
     ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     return _runProcess(
       request.executable,
       request.arguments,
       timeout: timeout,
+      executionKey: executionKey,
     );
   }
 
@@ -80,6 +101,7 @@ class ShellExecutor {
     List<String> arguments, {
     Duration timeout = const Duration(seconds: 30),
     String? displayCommand,
+    String? executionKey,
   }) async {
     return runRequest(
       ShellRequest.process(
@@ -88,12 +110,14 @@ class ShellExecutor {
         displayCommand: displayCommand,
       ),
       timeout: timeout,
+      executionKey: executionKey,
     );
   }
 
   Future<ShellResult> runPowerShell(
     String command, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     final wrappedCommand = [
       r'$utf8NoBom = [System.Text.UTF8Encoding]::new($false)',
@@ -114,7 +138,21 @@ class ShellExecutor {
       ],
       timeout: timeout,
       displayCommand: command,
+      executionKey: executionKey,
     );
+  }
+
+  Future<bool> cancelExecution(String executionKey) async {
+    final execution = _state.activeExecutions[executionKey];
+    if (execution == null || execution.cancellationRequested) {
+      return false;
+    }
+
+    final cancelled = await _terminateProcess(execution.process);
+    if (cancelled) {
+      execution.cancellationRequested = true;
+    }
+    return cancelled;
   }
 
   Future<bool> isExecutableAvailable(String executable) async {
@@ -171,34 +209,60 @@ class ShellExecutor {
     String executable,
     List<String> arguments, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     final workingDirectory = await _resolveWorkingDirectory();
     final searchEnvironment = await _executableSearchEnvironment();
     final resolvedExecutable =
         await locateExecutable(executable) ?? executable.trim();
+    _ActiveShellExecution? activeExecution;
 
     try {
-      final result = await Process.run(
+      final process = await Process.start(
         resolvedExecutable,
         arguments,
-        stdoutEncoding: null,
-        stderrEncoding: null,
         workingDirectory: workingDirectory,
         environment: searchEnvironment.processOverrides,
         includeParentEnvironment: true,
-      ).timeout(timeout);
+      );
+      final stdoutFuture = _collectProcessOutput(process.stdout);
+      final stderrFuture = _collectProcessOutput(process.stderr);
+      activeExecution = _ActiveShellExecution(process);
+      if (executionKey != null) {
+        _state.activeExecutions[executionKey] = activeExecution;
+      }
 
-      return ShellResult(
-        exitCode: result.exitCode,
-        stdout: _decodeProcessOutput(result.stdout),
-        stderr: _decodeProcessOutput(result.stderr),
+      var didTimeout = false;
+      final exitCode = await process.exitCode.timeout(
+        timeout,
+        onTimeout: () async {
+          didTimeout = true;
+          await _terminateProcess(process);
+          return process.exitCode;
+        },
       );
-    } on TimeoutException {
-      return const ShellResult(
-        exitCode: 124,
-        stdout: '',
-        stderr: '命令执行超时，未能在限定时间内完成。',
-      );
+      final stdout = _decodeProcessOutput(await stdoutFuture);
+      final stderr = _decodeProcessOutput(await stderrFuture);
+
+      if (activeExecution.cancellationRequested) {
+        return ShellResult(
+          exitCode: 130,
+          stdout: stdout,
+          stderr: _appendProcessMessage(stderr, '命令已取消。'),
+          wasCancelled: true,
+        );
+      }
+
+      if (didTimeout) {
+        return ShellResult(
+          exitCode: 124,
+          stdout: stdout,
+          stderr: _appendProcessMessage(stderr, '命令执行超时，未能在限定时间内完成。'),
+          didTimeout: true,
+        );
+      }
+
+      return ShellResult(exitCode: exitCode, stdout: stdout, stderr: stderr);
     } on ProcessException catch (error) {
       return ShellResult(
         exitCode: error.errorCode,
@@ -207,6 +271,10 @@ class ShellExecutor {
       );
     } catch (error) {
       return ShellResult(exitCode: 1, stdout: '', stderr: '$error');
+    } finally {
+      if (executionKey != null) {
+        _state.activeExecutions.remove(executionKey);
+      }
     }
   }
 
@@ -384,6 +452,76 @@ class ShellExecutor {
     }
   }
 
+  Future<List<int>> _collectProcessOutput(Stream<List<int>> stream) async {
+    final builder = BytesBuilder(copy: false);
+    await for (final chunk in stream) {
+      builder.add(chunk);
+    }
+    return builder.takeBytes();
+  }
+
+  Future<bool> _terminateProcess(Process process) async {
+    if (Platform.isWindows) {
+      final terminatedGracefully = await _terminateWindowsProcessTree(
+        process.pid,
+      );
+      if (terminatedGracefully) {
+        return true;
+      }
+    }
+
+    if (_tryKillProcess(process, ProcessSignal.sigint)) {
+      return true;
+    }
+    if (_tryKillProcess(process)) {
+      return true;
+    }
+
+    if (Platform.isWindows) {
+      return _terminateWindowsProcessTree(process.pid, force: true);
+    }
+    return false;
+  }
+
+  bool _tryKillProcess(
+    Process process, [
+    ProcessSignal signal = ProcessSignal.sigterm,
+  ]) {
+    try {
+      return process.kill(signal);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _terminateWindowsProcessTree(
+    int pid, {
+    bool force = false,
+  }) async {
+    try {
+      final result = await Process.run(
+        _windowsSystemExecutablePath('taskkill.exe'),
+        <String>['/PID', '$pid', '/T', if (force) '/F'],
+        stdoutEncoding: null,
+        stderrEncoding: null,
+      ).timeout(const Duration(seconds: 5));
+      return result.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _appendProcessMessage(String output, String message) {
+    final trimmedOutput = output.trim();
+    if (trimmedOutput.isEmpty) {
+      return message;
+    }
+    if (trimmedOutput.contains(message)) {
+      return output;
+    }
+    return '$output\n\n$message';
+  }
+
   String _escapePowerShellSingleQuoted(String value) {
     return value.replaceAll("'", "''");
   }
@@ -400,12 +538,14 @@ class ShellExecutor {
     }
 
     final windowsOverrides = await _windowsEnvironmentOverrides();
-    final mergedPath = _mergeEnvironmentSegments(
-      <String>[processPath, windowsOverrides['PATH'] ?? ''],
-    );
-    final mergedPathExt = _mergeEnvironmentSegments(
-      <String>[processPathExt, windowsOverrides['PATHEXT'] ?? ''],
-    );
+    final mergedPath = _mergeEnvironmentSegments(<String>[
+      processPath,
+      windowsOverrides['PATH'] ?? '',
+    ]);
+    final mergedPathExt = _mergeEnvironmentSegments(<String>[
+      processPathExt,
+      windowsOverrides['PATHEXT'] ?? '',
+    ]);
 
     return _ExecutableSearchEnvironment(
       path: mergedPath,
@@ -496,10 +636,14 @@ class ShellExecutor {
     }
   }
 
-  Map<String, String> _normalizeEnvironmentOverrides(Map<String, String> values) {
+  Map<String, String> _normalizeEnvironmentOverrides(
+    Map<String, String> values,
+  ) {
     final normalized = <String, String>{};
     final path = _mergeEnvironmentSegments(<String>[values['PATH'] ?? '']);
-    final pathExt = _mergeEnvironmentSegments(<String>[values['PATHEXT'] ?? '']);
+    final pathExt = _mergeEnvironmentSegments(<String>[
+      values['PATHEXT'] ?? '',
+    ]);
     if (path.isNotEmpty) {
       normalized['PATH'] = path;
     }
@@ -544,13 +688,22 @@ class ShellExecutor {
   String _windowsPowerShellExecutablePath() {
     final systemRoot = _environmentValue('SystemRoot');
     final base = systemRoot.trim().isEmpty ? r'C:\Windows' : systemRoot.trim();
-    return [
-      base,
+    return _joinWindowsSystemPath(base, const <String>[
       'System32',
       'WindowsPowerShell',
       'v1.0',
       'powershell.exe',
-    ].join(Platform.pathSeparator);
+    ]);
+  }
+
+  String _windowsSystemExecutablePath(String executable) {
+    final systemRoot = _environmentValue('SystemRoot');
+    final base = systemRoot.trim().isEmpty ? r'C:\Windows' : systemRoot.trim();
+    return _joinWindowsSystemPath(base, <String>['System32', executable]);
+  }
+
+  String _joinWindowsSystemPath(String base, List<String> segments) {
+    return <String>[base, ...segments].join(Platform.pathSeparator);
   }
 
   Future<String> _resolveWorkingDirectory() async {
@@ -601,7 +754,9 @@ String _formatShellDisplayArgument(String value) {
   }
 
   final isFlag = trimmed.startsWith('-');
-  final needsQuotes = RegExp(r'''[\s'"`$&|<>*?()\[\]{};=,]''').hasMatch(trimmed);
+  final needsQuotes = RegExp(
+    r'''[\s'"`$&|<>*?()\[\]{};=,]''',
+  ).hasMatch(trimmed);
   if (isFlag || !needsQuotes) {
     return trimmed;
   }
@@ -620,4 +775,16 @@ class _ExecutableSearchEnvironment {
   final Map<String, String> processOverrides;
 
   String get cacheSignature => '$path::$pathExt';
+}
+
+class _ShellExecutorState {
+  final Map<String, _ActiveShellExecution> activeExecutions =
+      <String, _ActiveShellExecution>{};
+}
+
+class _ActiveShellExecution {
+  _ActiveShellExecution(this.process);
+
+  final Process process;
+  bool cancellationRequested = false;
 }

@@ -92,7 +92,8 @@ class PackagePanelController extends ChangeNotifier {
   final List<ManagerSnapshot> _snapshots;
   final List<ActivityEntry> _activity = <ActivityEntry>[];
   final Set<String> _runningCommands = <String>{};
-  final Map<String, String> _runningCommandTexts = <String, String>{};
+  final Map<String, RunningCommandInfo> _runningCommandInfo =
+      <String, RunningCommandInfo>{};
   final Set<String> _selectedPackageKeys = <String>{};
   final Set<String> _visibleManagerIds;
   final Set<String> _manuallyHiddenManagerIds;
@@ -211,10 +212,8 @@ class PackagePanelController extends ChangeNotifier {
     final packages = selectedSnapshots
         .expand((snapshot) => snapshot.packages)
         .where((package) {
-          if (selectedGroup != null && !_homeFilterGroupMatchesPackage(
-            selectedGroup,
-            package,
-          )) {
+          if (selectedGroup != null &&
+              !_homeFilterGroupMatchesPackage(selectedGroup, package)) {
             return false;
           }
           if (query.isEmpty) {
@@ -306,8 +305,48 @@ class PackagePanelController extends ChangeNotifier {
 
   bool isBusy(String busyKey) => _runningCommands.contains(busyKey);
 
-  List<String> get runningCommandTexts =>
-      List<String>.unmodifiable(_runningCommandTexts.values);
+  List<RunningCommandInfo> get runningCommands =>
+      List<RunningCommandInfo>.unmodifiable(_runningCommandInfo.values);
+
+  Future<bool> cancelRunningCommand(String busyKey) async {
+    final command = _runningCommandInfo[busyKey];
+    if (command == null || !command.canCancel || command.isCancelling) {
+      return false;
+    }
+
+    _runningCommandInfo[busyKey] = command.copyWith(isCancelling: true);
+    notifyListeners();
+
+    final cancelled = await _shell.cancelExecution(busyKey);
+    if (!cancelled) {
+      final current = _runningCommandInfo[busyKey];
+      if (current != null) {
+        _runningCommandInfo[busyKey] = current.copyWith(isCancelling: false);
+        notifyListeners();
+      }
+      return false;
+    }
+
+    _pushActivity(
+      ActivityEntry(
+        timestamp: DateTime.now(),
+        title: '正在取消命令',
+        message: command.command,
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> cancelAllRunningCommands() async {
+    final busyKeys = _runningCommandInfo.values
+        .where((command) => command.canCancel && !command.isCancelling)
+        .map((command) => command.busyKey)
+        .toList(growable: false);
+    for (final busyKey in busyKeys) {
+      await cancelRunningCommand(busyKey);
+    }
+  }
 
   bool canCheckLatestVersion(ManagedPackage package) {
     final capability = _capabilityOf<LatestVersionLookupCapability>(
@@ -316,8 +355,8 @@ class PackagePanelController extends ChangeNotifier {
     return capability?.supportsLatestVersionLookup(package) ?? false;
   }
 
-  Future<PackageCommand?> batchLatestVersionPrerequisiteCommandForSelectedManager()
-  async {
+  Future<PackageCommand?>
+  batchLatestVersionPrerequisiteCommandForSelectedManager() async {
     final snapshot = selectedManagerSnapshot;
     final capability = _capabilityOf<LatestVersionLookupCapability>(
       selectedAdapter,
@@ -352,7 +391,8 @@ class PackagePanelController extends ChangeNotifier {
     final packages = snapshot.packages
         .where(capability.supportsLatestVersionLookup)
         .toList(growable: false);
-    if (packages.isEmpty || !capability.supportsBatchLatestVersionLookup(packages)) {
+    if (packages.isEmpty ||
+        !capability.supportsBatchLatestVersionLookup(packages)) {
       return null;
     }
     return capability.batchLatestVersionPrerequisitePrompt(packages);
@@ -437,9 +477,9 @@ class PackagePanelController extends ChangeNotifier {
   String displayNameForManagerId(String managerId) {
     return customManagerDisplayName(managerId) ??
         _adapters
-        .firstWhere((adapter) => adapter.definition.id == managerId)
-        .definition
-        .displayName;
+            .firstWhere((adapter) => adapter.definition.id == managerId)
+            .definition
+            .displayName;
   }
 
   String displayNameForHomeFilterGroup(String groupId) {
@@ -497,9 +537,7 @@ class PackagePanelController extends ChangeNotifier {
     _customFallbackFontFamilies
       ..clear()
       ..addAll(
-        normalized.length <= 1
-            ? const <String>[]
-            : normalized.sublist(1),
+        normalized.length <= 1 ? const <String>[] : normalized.sublist(1),
       );
 
     await _settingsStore.saveCustomFontFamily(_customFontFamily);
@@ -907,7 +945,8 @@ class PackagePanelController extends ChangeNotifier {
       return;
     }
 
-    if (!isManagerVisible(managerId) || !_supportsInstalledPackagesById(managerId)) {
+    if (!isManagerVisible(managerId) ||
+        !_supportsInstalledPackagesById(managerId)) {
       return;
     }
 
@@ -938,7 +977,9 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     await _settingsStore.saveVisibleManagerIds(_visibleManagerIds);
-    await _settingsStore.saveManuallyHiddenManagerIds(_manuallyHiddenManagerIds);
+    await _settingsStore.saveManuallyHiddenManagerIds(
+      _manuallyHiddenManagerIds,
+    );
 
     if (_selectedManagerId != null &&
         !isHomeFilterGroupId(_selectedManagerId!) &&
@@ -956,7 +997,10 @@ class PackagePanelController extends ChangeNotifier {
     }
   }
 
-  Future<void> setHomeFilterGroupVisibility(String groupId, bool isVisible) async {
+  Future<void> setHomeFilterGroupVisibility(
+    String groupId,
+    bool isVisible,
+  ) async {
     final index = _indexOfHomeFilterGroup(groupId);
     if (index < 0) {
       return;
@@ -1289,7 +1333,8 @@ class PackagePanelController extends ChangeNotifier {
     final packages = snapshot.packages
         .where(capability.supportsLatestVersionLookup)
         .toList(growable: false);
-    if (packages.isEmpty || !capability.supportsBatchLatestVersionLookup(packages)) {
+    if (packages.isEmpty ||
+        !capability.supportsBatchLatestVersionLookup(packages)) {
       return;
     }
 
@@ -1302,8 +1347,10 @@ class PackagePanelController extends ChangeNotifier {
 
     _runningCommands.add(busyKey);
     if (batchCapability != null) {
-      _runningCommandTexts[busyKey] = batchCapability
-          .batchLatestVersionLookupCommand(packages);
+      _runningCommandInfo[busyKey] = RunningCommandInfo(
+        busyKey: busyKey,
+        command: batchCapability.batchLatestVersionLookupCommand(packages),
+      );
     }
     _runningCommands.addAll(packageBusyKeys);
     _pushActivity(
@@ -1341,7 +1388,7 @@ class PackagePanelController extends ChangeNotifier {
       );
     } finally {
       _runningCommands.remove(busyKey);
-      _runningCommandTexts.remove(busyKey);
+      _runningCommandInfo.remove(busyKey);
       _runningCommands.removeAll(packageBusyKeys);
       notifyListeners();
     }
@@ -1349,7 +1396,11 @@ class PackagePanelController extends ChangeNotifier {
 
   Future<ShellResult> runCommand(PackageCommand command) async {
     _runningCommands.add(command.busyKey);
-    _runningCommandTexts[command.busyKey] = command.command;
+    _runningCommandInfo[command.busyKey] = RunningCommandInfo(
+      busyKey: command.busyKey,
+      command: command.command,
+      canCancel: true,
+    );
     _pushActivity(
       ActivityEntry(
         timestamp: DateTime.now(),
@@ -1362,20 +1413,25 @@ class PackagePanelController extends ChangeNotifier {
     final result = await _shell.runRequest(
       command.request,
       timeout: command.timeout,
+      executionKey: command.busyKey,
     );
     _runningCommands.remove(command.busyKey);
-    _runningCommandTexts.remove(command.busyKey);
+    _runningCommandInfo.remove(command.busyKey);
 
     _pushActivity(
       ActivityEntry(
         timestamp: DateTime.now(),
         title: result.isSuccess
             ? '${command.label} 已完成'
+            : result.wasCancelled
+            ? '${command.label} 已取消'
             : '${command.label} 失败',
-        message: result.combinedOutput.isEmpty
+        message: result.wasCancelled
+            ? (result.combinedOutput.isEmpty ? '命令已取消。' : result.combinedOutput)
+            : result.combinedOutput.isEmpty
             ? '命令执行完成，但没有控制台输出。'
             : result.combinedOutput,
-        isError: !result.isSuccess,
+        isError: !result.isSuccess && !result.wasCancelled,
       ),
     );
 
@@ -1403,8 +1459,9 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     _runningCommands.add(busyKey);
-    _runningCommandTexts[busyKey] = capability.latestVersionLookupCommand(
-      package,
+    _runningCommandInfo[busyKey] = RunningCommandInfo(
+      busyKey: busyKey,
+      command: capability.latestVersionLookupCommand(package),
     );
     _pushActivity(
       ActivityEntry(
@@ -1445,7 +1502,7 @@ class PackagePanelController extends ChangeNotifier {
       return null;
     } finally {
       _runningCommands.remove(busyKey);
-      _runningCommandTexts.remove(busyKey);
+      _runningCommandInfo.remove(busyKey);
       notifyListeners();
     }
   }
@@ -1577,11 +1634,13 @@ class PackagePanelController extends ChangeNotifier {
 
     _visibleManagerIds
       ..clear()
-      ..addAll(_resolveVisibleManagerIds(
-        baseVisibleManagerIds: savedVisibleManagerIds,
-        availability: availability,
-        manuallyHiddenManagerIds: _manuallyHiddenManagerIds,
-      ));
+      ..addAll(
+        _resolveVisibleManagerIds(
+          baseVisibleManagerIds: savedVisibleManagerIds,
+          availability: availability,
+          manuallyHiddenManagerIds: _manuallyHiddenManagerIds,
+        ),
+      );
 
     _customManagerIconPaths
       ..clear()
@@ -1633,9 +1692,7 @@ class PackagePanelController extends ChangeNotifier {
     required Map<String, bool> availability,
     required Set<String> manuallyHiddenManagerIds,
   }) {
-    final visibleManagerIds = <String>{
-      ...?baseVisibleManagerIds,
-    };
+    final visibleManagerIds = <String>{...?baseVisibleManagerIds};
     for (final entry in availability.entries) {
       if (entry.value && !manuallyHiddenManagerIds.contains(entry.key)) {
         visibleManagerIds.add(entry.key);
@@ -1800,7 +1857,10 @@ class PackagePanelController extends ChangeNotifier {
     BatchLatestVersionLookupCapability capability,
   ) async {
     final checkedAt = DateTime.now();
-    final latestVersions = await capability.lookupLatestVersions(_shell, packages);
+    final latestVersions = await capability.lookupLatestVersions(
+      _shell,
+      packages,
+    );
     for (final package in packages) {
       final latestVersion = latestVersions[package.key]?.trim();
       _applyLatestVersionResult(
@@ -2001,7 +2061,8 @@ class PackagePanelController extends ChangeNotifier {
     return _adapters
         .where(
           (adapter) =>
-              adapter.definition.id == managerId && _supportsSearchFilter(adapter),
+              adapter.definition.id == managerId &&
+              _supportsSearchFilter(adapter),
         )
         .toList(growable: false);
   }
@@ -2179,7 +2240,7 @@ class PackagePanelController extends ChangeNotifier {
       HomeFilterGroupKind.updates => package.hasUpdate,
       HomeFilterGroupKind.custom =>
         group.managerIds.contains(package.managerId) ||
-        group.packageKeys.contains(package.key),
+            group.packageKeys.contains(package.key),
     };
   }
 
@@ -2218,15 +2279,17 @@ class PackagePanelController extends ChangeNotifier {
     for (final builtinId in <String>[allFilterId, updateFilterId]) {
       if (!orderedIds.contains(builtinId)) {
         orderedIds.insert(
-          builtinId == allFilterId ? 0 : orderedIds.contains(allFilterId) ? 1 : 0,
+          builtinId == allFilterId
+              ? 0
+              : orderedIds.contains(allFilterId)
+              ? 1
+              : 0,
           builtinId,
         );
       }
     }
 
-    return orderedIds
-        .map((id) => groupsById[id]!)
-        .toList(growable: true);
+    return orderedIds.map((id) => groupsById[id]!).toList(growable: true);
   }
 
   static String? _normalizeOptionalText(String? value) {

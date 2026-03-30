@@ -73,53 +73,54 @@ void main() {
     expect(find.text('删除'), findsOneWidget);
   });
 
-  testWidgets('pip manager hides batch check button but keeps single-package lookup', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'pip manager hides batch check button but keeps single-package lookup',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final controller = PackagePanelController(
-      shell: const ShellExecutor(),
-      adapters: PackageManagerRegistry.defaultAdapters,
-      initialVisibleManagerIds: const <String>{'pip'},
-      initialManagerAvailability: const <String, bool>{'pip': true},
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: PackageManagerRegistry.defaultAdapters
-              .firstWhere((adapter) => adapter.definition.id == 'pip')
-              .definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'ruff',
-              managerId: 'pip',
-              managerName: 'pip',
-              version: '0.8.6',
-            ),
-          ],
-        ),
-      ],
-    );
-    controller.selectManager('pip');
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: PackageManagerRegistry.defaultAdapters,
+        initialVisibleManagerIds: const <String>{'pip'},
+        initialManagerAvailability: const <String, bool>{'pip': true},
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: PackageManagerRegistry.defaultAdapters
+                .firstWhere((adapter) => adapter.definition.id == 'pip')
+                .definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'ruff',
+                managerId: 'pip',
+                managerName: 'pip',
+                version: '0.8.6',
+              ),
+            ],
+          ),
+        ],
+      );
+      controller.selectManager('pip');
 
-    await tester.pumpWidget(
-      PkgPanelApp(controller: controller, autoLoad: false),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(FilledButton, '检查更新'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '检查更新'), findsNothing);
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.text('ruff').last),
-      kind: PointerDeviceKind.mouse,
-      buttons: kSecondaryMouseButton,
-    );
-    await gesture.up();
-    await tester.pumpAndSettle();
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('ruff').last),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
 
-    expect(find.text('检查更新'), findsOneWidget);
-  });
+      expect(find.text('检查更新'), findsOneWidget);
+    },
+  );
 
   testWidgets('linkified selectable text opens detected links', (tester) async {
     String? openedUrl;
@@ -206,7 +207,9 @@ void main() {
     await controller.refreshCurrentSelection();
 
     expect(
-      shell.commands.where((command) => command == 'npm ls -g --depth=0 --json'),
+      shell.commands.where(
+        (command) => command == 'npm ls -g --depth=0 --json',
+      ),
       hasLength(1),
     );
     expect(
@@ -215,364 +218,384 @@ void main() {
     );
   });
 
-  test('update filter shows only packages with updates and survives realignment', () async {
-    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'npm',
-    );
-    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'pip',
-    );
-    final controller = PackagePanelController(
-      shell: const ShellExecutor(),
-      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'npm', 'pip'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pip': true,
-      },
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: npmAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'eslint',
-              managerId: 'npm',
-              managerName: 'npm',
-              version: '9.0.0',
-              latestVersion: '9.1.0',
-            ),
-          ],
+  test(
+    'update filter shows only packages with updates and survives realignment',
+    () async {
+      final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'npm',
+      );
+      final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'pip',
+      );
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm', 'pip'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pip': true,
+        },
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: npmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+                latestVersion: '9.1.0',
+              ),
+            ],
+          ),
+          ManagerSnapshot(
+            manager: pipAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'ruff',
+                managerId: 'pip',
+                managerName: 'pip',
+                version: '0.8.6',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      controller.selectManager(updateFilterId);
+
+      expect(controller.selectedManagerId, updateFilterId);
+      expect(
+        controller.visiblePackages.map((package) => package.name).toList(),
+        <String>['eslint'],
+      );
+
+      await controller.setManagerVisibility('pip', false);
+
+      expect(controller.selectedManagerId, updateFilterId);
+      expect(
+        controller.visiblePackages.map((package) => package.name).toList(),
+        <String>['eslint'],
+      );
+    },
+  );
+
+  test(
+    'custom home filter group combines manager and package membership',
+    () async {
+      final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'npm',
+      );
+      final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'pip',
+      );
+      final pipPackage = ManagedPackage(
+        name: 'ruff',
+        managerId: 'pip',
+        managerName: 'pip',
+        version: '0.8.6',
+      );
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm', 'pip'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pip': true,
+        },
+        initialHomeFilterGroups: <HomeFilterGroup>[
+          HomeFilterGroup(
+            id: 'dev_tools',
+            kind: HomeFilterGroupKind.custom,
+            displayName: '开发工具',
+            managerIds: <String>['npm'],
+            packageKeys: <String>[pipPackage.key],
+          ),
+        ],
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: npmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+              ),
+            ],
+          ),
+          ManagerSnapshot(
+            manager: pipAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: <ManagedPackage>[pipPackage],
+          ),
+        ],
+      );
+
+      controller.selectManager('dev_tools');
+
+      expect(
+        controller.visiblePackages.map((package) => package.name).toList(),
+        <String>['eslint', 'ruff'],
+      );
+    },
+  );
+
+  test(
+    'refresh current selection reloads all managers for update filter',
+    () async {
+      final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+        'npm ls -g --depth=0 --json': const ShellResult(
+          exitCode: 0,
+          stdout: '{"dependencies":{"eslint":{"version":"9.1.0"}}}',
+          stderr: '',
         ),
-        ManagerSnapshot(
-          manager: pipAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'ruff',
-              managerId: 'pip',
-              managerName: 'pip',
-              version: '0.8.6',
-            ),
-          ],
+        'pip list --format=json': const ShellResult(
+          exitCode: 0,
+          stdout: '[{"name":"ruff","version":"0.8.6"}]',
+          stderr: '',
         ),
-      ],
-    );
+      });
+      final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'npm',
+      );
+      final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'pip',
+      );
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm', 'pip'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pip': true,
+        },
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: npmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+                latestVersion: '9.1.0',
+              ),
+            ],
+          ),
+          ManagerSnapshot(
+            manager: pipAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'ruff',
+                managerId: 'pip',
+                managerName: 'pip',
+                version: '0.8.5',
+              ),
+            ],
+          ),
+        ],
+      );
 
-    controller.selectManager(updateFilterId);
+      controller.selectManager(updateFilterId);
+      await controller.refreshCurrentSelection();
 
-    expect(controller.selectedManagerId, updateFilterId);
-    expect(
-      controller.visiblePackages.map((package) => package.name).toList(),
-      <String>['eslint'],
-    );
-
-    await controller.setManagerVisibility('pip', false);
-
-    expect(controller.selectedManagerId, updateFilterId);
-    expect(
-      controller.visiblePackages.map((package) => package.name).toList(),
-      <String>['eslint'],
-    );
-  });
-
-  test('custom home filter group combines manager and package membership', () async {
-    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'npm',
-    );
-    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'pip',
-    );
-    final pipPackage = ManagedPackage(
-      name: 'ruff',
-      managerId: 'pip',
-      managerName: 'pip',
-      version: '0.8.6',
-    );
-    final controller = PackagePanelController(
-      shell: const ShellExecutor(),
-      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'npm', 'pip'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pip': true,
-      },
-      initialHomeFilterGroups: <HomeFilterGroup>[
-        HomeFilterGroup(
-          id: 'dev_tools',
-          kind: HomeFilterGroupKind.custom,
-          displayName: '开发工具',
-          managerIds: <String>['npm'],
-          packageKeys: <String>[pipPackage.key],
+      expect(
+        shell.commands.where(
+          (command) => command == 'npm ls -g --depth=0 --json',
         ),
-      ],
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: npmAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'eslint',
-              managerId: 'npm',
-              managerName: 'npm',
-              version: '9.0.0',
-            ),
-          ],
-        ),
-        ManagerSnapshot(
-          manager: pipAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: <ManagedPackage>[pipPackage],
-        ),
-      ],
-    );
+        hasLength(1),
+      );
+      expect(
+        shell.commands.where((command) => command == 'pip list --format=json'),
+        hasLength(1),
+      );
+    },
+  );
 
-    controller.selectManager('dev_tools');
-
-    expect(
-      controller.visiblePackages.map((package) => package.name).toList(),
-      <String>['eslint', 'ruff'],
-    );
-  });
-
-  test('refresh current selection reloads all managers for update filter', () async {
-    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
-      'npm ls -g --depth=0 --json': const ShellResult(
-        exitCode: 0,
-        stdout: '{"dependencies":{"eslint":{"version":"9.1.0"}}}',
-        stderr: '',
-      ),
-      'pip list --format=json': const ShellResult(
-        exitCode: 0,
-        stdout: '[{"name":"ruff","version":"0.8.6"}]',
-        stderr: '',
-      ),
-    });
-    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'npm',
-    );
-    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'pip',
-    );
-    final controller = PackagePanelController(
-      shell: shell,
-      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'npm', 'pip'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pip': true,
-      },
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: npmAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'eslint',
-              managerId: 'npm',
-              managerName: 'npm',
-              version: '9.0.0',
-              latestVersion: '9.1.0',
-            ),
-          ],
-        ),
-        ManagerSnapshot(
-          manager: pipAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'ruff',
-              managerId: 'pip',
-              managerName: 'pip',
-              version: '0.8.5',
-            ),
-          ],
-        ),
-      ],
-    );
-
-    controller.selectManager(updateFilterId);
-    await controller.refreshCurrentSelection();
-
-    expect(
-      shell.commands.where((command) => command == 'npm ls -g --depth=0 --json'),
-      hasLength(1),
-    );
-    expect(
-      shell.commands.where((command) => command == 'pip list --format=json'),
-      hasLength(1),
-    );
-  });
-
-  test('shell executor refreshes Windows PATH for command resolution and child processes', () async {
-    if (!Platform.isWindows) {
-      return;
-    }
-
-    final toolDir = await Directory.systemTemp.createTemp('pkg_panel_tool_');
-    final runtimeDir = await Directory.systemTemp.createTemp(
-      'pkg_panel_runtime_',
-    );
-    addTearDown(() async {
-      if (await toolDir.exists()) {
-        await toolDir.delete(recursive: true);
+  test(
+    'shell executor refreshes Windows PATH for command resolution and child processes',
+    () async {
+      if (!Platform.isWindows) {
+        return;
       }
-      if (await runtimeDir.exists()) {
-        await runtimeDir.delete(recursive: true);
-      }
-    });
 
-    final pnpmScript = File(
-      '${toolDir.path}${Platform.pathSeparator}pnpm.cmd',
-    );
-    await pnpmScript.writeAsString(
-      '@echo off\r\n'
-      'node >nul 2>nul\r\n'
-      'if errorlevel 1 (\r\n'
-      '  echo node missing\r\n'
-      '  exit /b 1\r\n'
-      ')\r\n'
-      'echo ok\r\n',
-    );
+      final toolDir = await Directory.systemTemp.createTemp('pkg_panel_tool_');
+      final runtimeDir = await Directory.systemTemp.createTemp(
+        'pkg_panel_runtime_',
+      );
+      addTearDown(() async {
+        if (await toolDir.exists()) {
+          await toolDir.delete(recursive: true);
+        }
+        if (await runtimeDir.exists()) {
+          await runtimeDir.delete(recursive: true);
+        }
+      });
 
-    final nodeScript = File(
-      '${runtimeDir.path}${Platform.pathSeparator}node.cmd',
-    );
-    await nodeScript.writeAsString('@echo off\r\nexit /b 0\r\n');
+      final pnpmScript = File(
+        '${toolDir.path}${Platform.pathSeparator}pnpm.cmd',
+      );
+      await pnpmScript.writeAsString(
+        '@echo off\r\n'
+        'node >nul 2>nul\r\n'
+        'if errorlevel 1 (\r\n'
+        '  echo node missing\r\n'
+        '  exit /b 1\r\n'
+        ')\r\n'
+        'echo ok\r\n',
+      );
 
-    final shell = ShellExecutor(
-      processEnvironment: <String, String>{
-        'PATH': toolDir.path,
-        'PATHEXT': '.CMD;.EXE',
-        'SystemRoot': Platform.environment['SystemRoot'] ?? r'C:\Windows',
-      },
-      windowsEnvironmentProvider: () async => <String, String>{
-        'PATH': '${toolDir.path};${runtimeDir.path}',
-        'PATHEXT': '.CMD;.EXE',
-      },
-    );
+      final nodeScript = File(
+        '${runtimeDir.path}${Platform.pathSeparator}node.cmd',
+      );
+      await nodeScript.writeAsString('@echo off\r\nexit /b 0\r\n');
 
-    final result = await shell.runExecutable('pnpm', const <String>[]);
+      final shell = ShellExecutor(
+        processEnvironment: <String, String>{
+          'PATH': toolDir.path,
+          'PATHEXT': '.CMD;.EXE',
+          'SystemRoot': Platform.environment['SystemRoot'] ?? r'C:\Windows',
+        },
+        windowsEnvironmentProvider: () async => <String, String>{
+          'PATH': '${toolDir.path};${runtimeDir.path}',
+          'PATHEXT': '.CMD;.EXE',
+        },
+      );
 
-    expect(result.isSuccess, isTrue);
-    expect(result.stdout.trim(), 'ok');
-  });
+      final result = await shell.runExecutable('pnpm', const <String>[]);
 
-  test('missing cached manager snapshots are synthesized for registered adapters', () async {
-    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'npm',
-    );
-    final controller = PackagePanelController(
-      shell: const ShellExecutor(),
-      adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'npm', 'yarn'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'yarn': true,
-      },
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: npmAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'eslint',
-              managerId: 'npm',
-              managerName: 'npm',
-              version: '9.0.0',
-            ),
-          ],
-        ),
-      ],
-    );
+      expect(result.isSuccess, isTrue);
+      expect(result.stdout.trim(), 'ok');
+    },
+  );
 
-    expect(
-      controller.snapshots.map((snapshot) => snapshot.manager.id),
-      contains('yarn'),
-    );
+  test(
+    'missing cached manager snapshots are synthesized for registered adapters',
+    () async {
+      final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'npm',
+      );
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: PackageManagerRegistry.defaultAdapters,
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm', 'yarn'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'yarn': true,
+        },
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: npmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+              ),
+            ],
+          ),
+        ],
+      );
 
-    await controller.setManagerVisibility('yarn', false);
+      expect(
+        controller.snapshots.map((snapshot) => snapshot.manager.id),
+        contains('yarn'),
+      );
 
-    expect(controller.isManagerVisible('yarn'), isFalse);
-  });
+      await controller.setManagerVisibility('yarn', false);
 
-  test('refreshing manager availability disables missing visible managers', () async {
-    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'npm',
-    );
-    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
-      (adapter) => adapter.definition.id == 'pip',
-    );
-    final settingsStore = _PersistingVisibilitySettingsStore(
-      visibleManagerIds: const <String>{'npm', 'pip'},
-    );
-    final controller = PackagePanelController(
-      shell: const _ExecutableAvailabilityShellExecutor(<String, bool>{
-        'npm': true,
-        'python': false,
-      }),
-      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-      settingsStore: settingsStore,
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'npm', 'pip'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pip': true,
-      },
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: npmAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'eslint',
-              managerId: 'npm',
-              managerName: 'npm',
-              version: '9.0.0',
-            ),
-          ],
-        ),
-        ManagerSnapshot(
-          manager: pipAdapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'ruff',
-              managerId: 'pip',
-              managerName: 'pip',
-              version: '0.8.6',
-            ),
-          ],
-        ),
-      ],
-    );
+      expect(controller.isManagerVisible('yarn'), isFalse);
+    },
+  );
 
-    await controller.refreshManagerAvailability();
+  test(
+    'refreshing manager availability disables missing visible managers',
+    () async {
+      final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'npm',
+      );
+      final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'pip',
+      );
+      final settingsStore = _PersistingVisibilitySettingsStore(
+        visibleManagerIds: const <String>{'npm', 'pip'},
+      );
+      final controller = PackagePanelController(
+        shell: const _ExecutableAvailabilityShellExecutor(<String, bool>{
+          'npm': true,
+          'python': false,
+        }),
+        adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+        settingsStore: settingsStore,
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm', 'pip'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pip': true,
+        },
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: npmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+              ),
+            ],
+          ),
+          ManagerSnapshot(
+            manager: pipAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'ruff',
+                managerId: 'pip',
+                managerName: 'pip',
+                version: '0.8.6',
+              ),
+            ],
+          ),
+        ],
+      );
 
-    expect(controller.isManagerAvailable('npm'), isTrue);
-    expect(controller.isManagerAvailable('pip'), isFalse);
-    expect(controller.isManagerVisible('npm'), isTrue);
-    expect(controller.isManagerVisible('pip'), isFalse);
-    expect(settingsStore.visibleManagerIds, <String>{'npm'});
+      await controller.refreshManagerAvailability();
 
-    final pipSnapshot = controller.snapshots.firstWhere(
-      (snapshot) => snapshot.manager.id == 'pip',
-    );
-    expect(pipSnapshot.loadState, ManagerLoadState.idle);
-    expect(pipSnapshot.packages, isEmpty);
-  });
+      expect(controller.isManagerAvailable('npm'), isTrue);
+      expect(controller.isManagerAvailable('pip'), isFalse);
+      expect(controller.isManagerVisible('npm'), isTrue);
+      expect(controller.isManagerVisible('pip'), isFalse);
+      expect(settingsStore.visibleManagerIds, <String>{'npm'});
+
+      final pipSnapshot = controller.snapshots.firstWhere(
+        (snapshot) => snapshot.manager.id == 'pip',
+      );
+      expect(pipSnapshot.loadState, ManagerLoadState.idle);
+      expect(pipSnapshot.packages, isEmpty);
+    },
+  );
 
   testWidgets('opens dedicated settings page', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1100));
@@ -622,69 +645,70 @@ void main() {
     expect(find.text('选择图标'), findsOneWidget);
   });
 
-  testWidgets('manager filter bar includes updates chip and filters package list', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'manager filter bar includes updates chip and filters package list',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final controller = PackagePanelController(
-      shell: const ShellExecutor(),
-      adapters: PackageManagerRegistry.defaultAdapters,
-      initialVisibleManagerIds: const <String>{'npm', 'pip'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pip': true,
-      },
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: PackageManagerRegistry.defaultAdapters
-              .firstWhere((adapter) => adapter.definition.id == 'npm')
-              .definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'eslint',
-              managerId: 'npm',
-              managerName: 'npm',
-              version: '9.0.0',
-              latestVersion: '9.1.0',
-            ),
-          ],
-        ),
-        ManagerSnapshot(
-          manager: PackageManagerRegistry.defaultAdapters
-              .firstWhere((adapter) => adapter.definition.id == 'pip')
-              .definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'ruff',
-              managerId: 'pip',
-              managerName: 'pip',
-              version: '0.8.6',
-            ),
-          ],
-        ),
-      ],
-    );
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: PackageManagerRegistry.defaultAdapters,
+        initialVisibleManagerIds: const <String>{'npm', 'pip'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pip': true,
+        },
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: PackageManagerRegistry.defaultAdapters
+                .firstWhere((adapter) => adapter.definition.id == 'npm')
+                .definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+                latestVersion: '9.1.0',
+              ),
+            ],
+          ),
+          ManagerSnapshot(
+            manager: PackageManagerRegistry.defaultAdapters
+                .firstWhere((adapter) => adapter.definition.id == 'pip')
+                .definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'ruff',
+                managerId: 'pip',
+                managerName: 'pip',
+                version: '0.8.6',
+              ),
+            ],
+          ),
+        ],
+      );
 
-    await tester.pumpWidget(
-      PkgPanelApp(controller: controller, autoLoad: false),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('更新'), findsOneWidget);
-    expect(find.text('eslint'), findsOneWidget);
-    expect(find.text('ruff'), findsOneWidget);
+      expect(find.text('更新'), findsOneWidget);
+      expect(find.text('eslint'), findsOneWidget);
+      expect(find.text('ruff'), findsOneWidget);
 
-    await tester.tap(find.text('更新'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('更新'));
+      await tester.pumpAndSettle();
 
-    expect(controller.selectedManagerId, updateFilterId);
-    expect(find.text('eslint'), findsOneWidget);
-    expect(find.text('ruff'), findsNothing);
-  });
+      expect(controller.selectedManagerId, updateFilterId);
+      expect(find.text('eslint'), findsOneWidget);
+      expect(find.text('ruff'), findsNothing);
+    },
+  );
 
   testWidgets('install page uses a single menu item and defaults npm to latest', (
     tester,
@@ -767,7 +791,9 @@ void main() {
     expect(shell.commands, contains("npm install -g 'eslint@latest'"));
   });
 
-  testWidgets('install page shows winget when it is searchable', (tester) async {
+  testWidgets('install page shows winget when it is searchable', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -954,171 +980,179 @@ void main() {
     );
   });
 
-  testWidgets('node install filter shows npm label with multiple manager icons', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'node install filter shows npm label with multiple manager icons',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final controller = PackagePanelController(
-      shell: const ShellExecutor(),
-      adapters: PackageManagerRegistry.defaultAdapters,
-      initialVisibleManagerIds: const <String>{'npm', 'pnpm', 'bun'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pnpm': true,
-        'yarn': true,
-        'bun': true,
-      },
-    );
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: PackageManagerRegistry.defaultAdapters,
+        initialVisibleManagerIds: const <String>{'npm', 'pnpm', 'bun'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pnpm': true,
+          'yarn': true,
+          'bun': true,
+        },
+      );
 
-    await tester.pumpWidget(
-      PkgPanelApp(controller: controller, autoLoad: false),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('安装'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('安装'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('npm'), findsOneWidget);
-    expect(find.text('npm/pnpm/bun'), findsNothing);
-    expect(find.text('npm/pnpm/yarn/bun'), findsNothing);
-  });
+      expect(find.text('npm'), findsOneWidget);
+      expect(find.text('npm/pnpm/bun'), findsNothing);
+      expect(find.text('npm/pnpm/yarn/bun'), findsNothing);
+    },
+  );
 
-  testWidgets('node install filter shows name when only one manager is enabled', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets(
+    'node install filter shows name when only one manager is enabled',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final controller = PackagePanelController(
-      shell: const ShellExecutor(),
-      adapters: PackageManagerRegistry.defaultAdapters,
-      initialVisibleManagerIds: const <String>{'npm'},
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pnpm': true,
-        'yarn': true,
-        'bun': true,
-      },
-    );
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: PackageManagerRegistry.defaultAdapters,
+        initialVisibleManagerIds: const <String>{'npm'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pnpm': true,
+          'yarn': true,
+          'bun': true,
+        },
+      );
 
-    await tester.pumpWidget(
-      PkgPanelApp(controller: controller, autoLoad: false),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('安装'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('安装'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('npm'), findsOneWidget);
-    expect(find.text('npm/pnpm'), findsNothing);
-  });
+      expect(find.text('npm'), findsOneWidget);
+      expect(find.text('npm/pnpm'), findsNothing);
+    },
+  );
 
-  test('node ecosystem search uses one provider and expands install options', () async {
-    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
-      "npm search 'eslint' --json --searchlimit=20": const ShellResult(
-        exitCode: 0,
-        stdout:
-            '[{"name":"eslint","version":"9.0.0","description":"Lint tool","publisher":{"username":"npm"}}]',
-        stderr: '',
-      ),
-    });
-    final controller = PackagePanelController(
-      shell: shell,
-      adapters: PackageManagerRegistry.defaultAdapters,
-      initialManagerAvailability: const <String, bool>{
-        'npm': true,
-        'pnpm': true,
-        'yarn': true,
-        'bun': true,
-      },
-    );
-
-    await controller.searchPackages(query: 'eslint');
-    for (var i = 0; i < 3; i++) {
-      await Future<void>.delayed(Duration.zero);
-      if (!controller.isSearchingPackages) {
-        break;
-      }
-    }
-
-    expect(
-      shell.commands.where(
-        (command) => command == "npm search 'eslint' --json --searchlimit=20",
-      ),
-      hasLength(1),
-    );
-    expect(
-      shell.commands.where(
-        (command) => command.startsWith("pnpm search 'eslint'"),
-      ),
-      isEmpty,
-    );
-    expect(
-      shell.commands.where(
-        (command) => command.startsWith("bun search 'eslint'"),
-      ),
-      isEmpty,
-    );
-
-    final result = controller.searchResults.single;
-    expect(result.name, 'eslint');
-    expect(
-      result.installOptions.map((option) => option.managerId).toList(),
-      <String>['npm', 'pnpm', 'yarn', 'bun'],
-    );
-  });
-
-  test('yarn list packages reads dependencies from global dir manifest', () async {
-    final tempDir = await Directory.systemTemp.createTemp('pkg-panel-yarn-');
-    addTearDown(() async {
-      if (await tempDir.exists()) {
-        await tempDir.delete(recursive: true);
-      }
-    });
-
-    final globalDir = Directory(
-      '${tempDir.path}${Platform.pathSeparator}global',
-    );
-    final scopedPackageDir = Directory(
-      '${globalDir.path}${Platform.pathSeparator}node_modules'
-      '${Platform.pathSeparator}@scope${Platform.pathSeparator}demo',
-    );
-    await scopedPackageDir.create(recursive: true);
-    await File(
-      '${globalDir.path}${Platform.pathSeparator}package.json',
-    ).writeAsString(
-      jsonEncode(<String, Object>{
-        'dependencies': <String, String>{'@scope/demo': '^1.2.3'},
-      }),
-    );
-    await File(
-      '${scopedPackageDir.path}${Platform.pathSeparator}package.json',
-    ).writeAsString(
-      jsonEncode(<String, Object>{
-        'name': '@scope/demo',
-        'version': '1.2.3',
-        'bin': <String, String>{'demo': 'bin/demo.js'},
-      }),
-    );
-
-    final packages = await const YarnAdapter().listPackages(
-      _MappedShellExecutor(<Pattern, ShellResult>{
-        'yarn global dir': ShellResult(
+  test(
+    'node ecosystem search uses one provider and expands install options',
+    () async {
+      final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+        "npm search 'eslint' --json --searchlimit=20": const ShellResult(
           exitCode: 0,
-          stdout: globalDir.path,
+          stdout:
+              '[{"name":"eslint","version":"9.0.0","description":"Lint tool","publisher":{"username":"npm"}}]',
           stderr: '',
         ),
-      }),
-    );
+      });
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: PackageManagerRegistry.defaultAdapters,
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pnpm': true,
+          'yarn': true,
+          'bun': true,
+        },
+      );
 
-    expect(packages, hasLength(1));
-    expect(packages.single.name, '@scope/demo');
-    expect(packages.single.version, '1.2.3');
-    expect(packages.single.executables, <String>['demo']);
-    expect(packages.single.managerId, 'yarn');
-  });
+      await controller.searchPackages(query: 'eslint');
+      for (var i = 0; i < 3; i++) {
+        await Future<void>.delayed(Duration.zero);
+        if (!controller.isSearchingPackages) {
+          break;
+        }
+      }
+
+      expect(
+        shell.commands.where(
+          (command) => command == "npm search 'eslint' --json --searchlimit=20",
+        ),
+        hasLength(1),
+      );
+      expect(
+        shell.commands.where(
+          (command) => command.startsWith("pnpm search 'eslint'"),
+        ),
+        isEmpty,
+      );
+      expect(
+        shell.commands.where(
+          (command) => command.startsWith("bun search 'eslint'"),
+        ),
+        isEmpty,
+      );
+
+      final result = controller.searchResults.single;
+      expect(result.name, 'eslint');
+      expect(
+        result.installOptions.map((option) => option.managerId).toList(),
+        <String>['npm', 'pnpm', 'yarn', 'bun'],
+      );
+    },
+  );
+
+  test(
+    'yarn list packages reads dependencies from global dir manifest',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp('pkg-panel-yarn-');
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+
+      final globalDir = Directory(
+        '${tempDir.path}${Platform.pathSeparator}global',
+      );
+      final scopedPackageDir = Directory(
+        '${globalDir.path}${Platform.pathSeparator}node_modules'
+        '${Platform.pathSeparator}@scope${Platform.pathSeparator}demo',
+      );
+      await scopedPackageDir.create(recursive: true);
+      await File(
+        '${globalDir.path}${Platform.pathSeparator}package.json',
+      ).writeAsString(
+        jsonEncode(<String, Object>{
+          'dependencies': <String, String>{'@scope/demo': '^1.2.3'},
+        }),
+      );
+      await File(
+        '${scopedPackageDir.path}${Platform.pathSeparator}package.json',
+      ).writeAsString(
+        jsonEncode(<String, Object>{
+          'name': '@scope/demo',
+          'version': '1.2.3',
+          'bin': <String, String>{'demo': 'bin/demo.js'},
+        }),
+      );
+
+      final packages = await const YarnAdapter().listPackages(
+        _MappedShellExecutor(<Pattern, ShellResult>{
+          'yarn global dir': ShellResult(
+            exitCode: 0,
+            stdout: globalDir.path,
+            stderr: '',
+          ),
+        }),
+      );
+
+      expect(packages, hasLength(1));
+      expect(packages.single.name, '@scope/demo');
+      expect(packages.single.version, '1.2.3');
+      expect(packages.single.executables, <String>['demo']);
+      expect(packages.single.managerId, 'yarn');
+    },
+  );
 
   testWidgets('local package menu installs a selected npm version', (
     tester,
@@ -1498,7 +1532,9 @@ Chocolatey has determined 2 package(s) are outdated.
     );
     final packages = controller.selectedManagerSnapshot!.packages;
     expect(
-      packages.firstWhere((package) => package.name == 'dart-sdk').latestVersion,
+      packages
+          .firstWhere((package) => package.name == 'dart-sdk')
+          .latestVersion,
       '3.11.4',
     );
     expect(
@@ -1532,12 +1568,14 @@ git|2.48.1
     expect(result.versions, <String>['2.49.0', '2.48.1']);
   });
 
-  test('cargo batch latest check uses cargo install-update list output', () async {
-    const adapter = CargoAdapter();
-    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
-      'cargo install-update --list': const ShellResult(
-        exitCode: 0,
-        stdout: '''
+  test(
+    'cargo batch latest check uses cargo install-update list output',
+    () async {
+      const adapter = CargoAdapter();
+      final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+        'cargo install-update --list': const ShellResult(
+          exitCode: 0,
+          stdout: '''
     Polling registry 'https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/'.....
 
 Package         Installed  Latest   Needs update
@@ -1549,149 +1587,158 @@ cargo-update    v18.2.0    v18.2.0  No
 
 cargo-binstall contains removed executables (cargo-binstall), which will be re-installed on update
 ''',
-        stderr: '',
-      ),
-    });
-    final controller = PackagePanelController(
-      shell: shell,
-      adapters: <PackageManagerAdapter>[adapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'cargo'},
-      initialManagerAvailability: const <String, bool>{'cargo': true},
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: adapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'cargo-binstall',
-              managerId: 'cargo',
-              managerName: 'cargo',
-              version: '1.17.7',
-            ),
-            ManagedPackage(
-              name: 'cargo-sweep',
-              managerId: 'cargo',
-              managerName: 'cargo',
-              version: '0.8.0',
-            ),
-          ],
+          stderr: '',
         ),
-      ],
-    );
+      });
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: <PackageManagerAdapter>[adapter],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'cargo'},
+        initialManagerAvailability: const <String, bool>{'cargo': true},
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: adapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'cargo-binstall',
+                managerId: 'cargo',
+                managerName: 'cargo',
+                version: '1.17.7',
+              ),
+              ManagedPackage(
+                name: 'cargo-sweep',
+                managerId: 'cargo',
+                managerName: 'cargo',
+                version: '0.8.0',
+              ),
+            ],
+          ),
+        ],
+      );
 
-    controller.selectManager('cargo');
-    await controller.batchCheckLatestVersionsForSelectedManager();
+      controller.selectManager('cargo');
+      await controller.batchCheckLatestVersionsForSelectedManager();
 
-    expect(
-      shell.commands.where((command) => command == 'cargo install-update --list'),
-      hasLength(1),
-    );
-    final packages = controller.selectedManagerSnapshot!.packages;
-    expect(
-      packages
-          .firstWhere((package) => package.name == 'cargo-binstall')
-          .latestVersion,
-      '1.17.8',
-    );
-    expect(
-      packages.firstWhere((package) => package.name == 'cargo-sweep').latestVersion,
-      '0.8.0',
-    );
-  });
-
-  test('cargo batch latest prerequisite command installs cargo-update when missing', () async {
-    const adapter = CargoAdapter();
-    final shell = _MappedShellExecutor(<Pattern, ShellResult>{
-      'cargo install-update --version': const ShellResult(
-        exitCode: 1,
-        stdout: '',
-        stderr: 'error: no such command: `install-update`',
-      ),
-    });
-    final controller = PackagePanelController(
-      shell: shell,
-      adapters: <PackageManagerAdapter>[adapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'cargo'},
-      initialManagerAvailability: const <String, bool>{'cargo': true},
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: adapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'tauri-cli',
-              managerId: 'cargo',
-              managerName: 'cargo',
-              version: '2.6.2',
-            ),
-          ],
+      expect(
+        shell.commands.where(
+          (command) => command == 'cargo install-update --list',
         ),
-      ],
-    );
+        hasLength(1),
+      );
+      final packages = controller.selectedManagerSnapshot!.packages;
+      expect(
+        packages
+            .firstWhere((package) => package.name == 'cargo-binstall')
+            .latestVersion,
+        '1.17.8',
+      );
+      expect(
+        packages
+            .firstWhere((package) => package.name == 'cargo-sweep')
+            .latestVersion,
+        '0.8.0',
+      );
+    },
+  );
 
-    controller.selectManager('cargo');
-    final command =
-        await controller.batchLatestVersionPrerequisiteCommandForSelectedManager();
-
-    expect(command, isNotNull);
-    expect(command!.command, 'cargo install cargo-update');
-  });
-
-  testWidgets('cargo batch check prompts to install cargo-update when missing', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final controller = PackagePanelController(
-      shell: _MappedShellExecutor(<Pattern, ShellResult>{
+  test(
+    'cargo batch latest prerequisite command installs cargo-update when missing',
+    () async {
+      const adapter = CargoAdapter();
+      final shell = _MappedShellExecutor(<Pattern, ShellResult>{
         'cargo install-update --version': const ShellResult(
           exitCode: 1,
           stdout: '',
           stderr: 'error: no such command: `install-update`',
         ),
-      }),
-      adapters: <PackageManagerAdapter>[const CargoAdapter()],
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'cargo'},
-      initialManagerAvailability: const <String, bool>{'cargo': true},
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: const CargoAdapter().definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'tauri-cli',
-              managerId: 'cargo',
-              managerName: 'cargo',
-              version: '2.6.2',
-            ),
-          ],
-        ),
-      ],
-    );
-    controller.selectManager('cargo');
+      });
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: <PackageManagerAdapter>[adapter],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'cargo'},
+        initialManagerAvailability: const <String, bool>{'cargo': true},
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: adapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'tauri-cli',
+                managerId: 'cargo',
+                managerName: 'cargo',
+                version: '2.6.2',
+              ),
+            ],
+          ),
+        ],
+      );
 
-    await tester.pumpWidget(
-      PkgPanelApp(controller: controller, autoLoad: false),
-    );
-    await tester.pumpAndSettle();
+      controller.selectManager('cargo');
+      final command = await controller
+          .batchLatestVersionPrerequisiteCommandForSelectedManager();
 
-    await tester.tap(find.widgetWithText(FilledButton, '检查更新'));
-    await tester.pumpAndSettle();
+      expect(command, isNotNull);
+      expect(command!.command, 'cargo install cargo-update');
+    },
+  );
 
-    expect(find.text('需要先安装依赖'), findsOneWidget);
-    expect(find.textContaining('cargo-update'), findsWidgets);
-    expect(find.text('cargo install cargo-update'), findsOneWidget);
-  });
+  testWidgets(
+    'cargo batch check prompts to install cargo-update when missing',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final controller = PackagePanelController(
+        shell: _MappedShellExecutor(<Pattern, ShellResult>{
+          'cargo install-update --version': const ShellResult(
+            exitCode: 1,
+            stdout: '',
+            stderr: 'error: no such command: `install-update`',
+          ),
+        }),
+        adapters: <PackageManagerAdapter>[const CargoAdapter()],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'cargo'},
+        initialManagerAvailability: const <String, bool>{'cargo': true},
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: const CargoAdapter().definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'tauri-cli',
+                managerId: 'cargo',
+                managerName: 'cargo',
+                version: '2.6.2',
+              ),
+            ],
+          ),
+        ],
+      );
+      controller.selectManager('cargo');
+
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, '检查更新'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('需要先安装依赖'), findsOneWidget);
+      expect(find.textContaining('cargo-update'), findsWidgets);
+      expect(find.text('cargo install cargo-update'), findsOneWidget);
+    },
+  );
 
   test('first initialization only enables detected managers', () async {
     final controller = PackagePanelController(
@@ -1775,9 +1822,7 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
       await File(
         '${yarnGlobalDir.path}${Platform.pathSeparator}package.json',
       ).writeAsString(
-        jsonEncode(<String, Object>{
-          'dependencies': <String, String>{},
-        }),
+        jsonEncode(<String, Object>{'dependencies': <String, String>{}}),
       );
 
       final settingsStore = _PersistingVisibilitySettingsStore(
@@ -1845,7 +1890,9 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
 
       expect(reloadedController.isManagerVisible('yarn'), isFalse);
       expect(
-        reloadedController.visibleSnapshots.map((snapshot) => snapshot.manager.id),
+        reloadedController.visibleSnapshots.map(
+          (snapshot) => snapshot.manager.id,
+        ),
         isNot(contains('yarn')),
       );
     },
@@ -2049,58 +2096,65 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(find.text(commandText), findsNothing);
   });
 
-  test('controller tracks scoop batch latest command while lookup runs', () async {
-    const adapter = ScoopAdapter();
-    final shell = _DelayedShellExecutor(
-      const <Pattern, ShellResult>{},
-      delayedCommand: 'scoop status',
-      delayedResult: const ShellResult(
-        exitCode: 0,
-        stdout: '''
+  test(
+    'controller tracks scoop batch latest command while lookup runs',
+    () async {
+      const adapter = ScoopAdapter();
+      final shell = _DelayedShellExecutor(
+        const <Pattern, ShellResult>{},
+        delayedCommand: 'scoop status',
+        delayedResult: const ShellResult(
+          exitCode: 0,
+          stdout: '''
 Scoop is up to date.
 
 Name  Installed Version Latest Version Missing Dependencies Info
 ----  ----------------- -------------- -------------------- ----
 7zip  25.01             26.00
 ''',
-        stderr: '',
-      ),
-    );
-    final controller = PackagePanelController(
-      shell: shell,
-      adapters: <PackageManagerAdapter>[adapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
-      settingsStore: const _MemorySettingsStore(),
-      snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'scoop'},
-      initialManagerAvailability: const <String, bool>{'scoop': true},
-      initialSnapshots: <ManagerSnapshot>[
-        ManagerSnapshot(
-          manager: adapter.definition,
-          loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: '7zip',
-              managerId: 'scoop',
-              managerName: 'scoop',
-              version: '25.01',
-            ),
-          ],
+          stderr: '',
         ),
-      ],
-    );
+      );
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: <PackageManagerAdapter>[adapter],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'scoop'},
+        initialManagerAvailability: const <String, bool>{'scoop': true},
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: adapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: '7zip',
+                managerId: 'scoop',
+                managerName: 'scoop',
+                version: '25.01',
+              ),
+            ],
+          ),
+        ],
+      );
 
-    controller.selectManager('scoop');
-    final lookupFuture = controller.batchCheckLatestVersionsForSelectedManager();
-    await Future<void>.delayed(Duration.zero);
+      controller.selectManager('scoop');
+      final lookupFuture = controller
+          .batchCheckLatestVersionsForSelectedManager();
+      await Future<void>.delayed(Duration.zero);
 
-    expect(controller.runningCommandTexts, contains('scoop status'));
+      expect(
+        controller.runningCommands.map((command) => command.command),
+        contains('scoop status'),
+      );
 
-    shell.completeDelayed();
-    await lookupFuture;
+      shell.completeDelayed();
+      await lookupFuture;
 
-    expect(controller.runningCommandTexts, isEmpty);
-  });
+      expect(controller.runningCommands, isEmpty);
+    },
+  );
 
   test('manager reorder changes visible order', () async {
     final controller = PackagePanelController(
@@ -2274,18 +2328,20 @@ Available versions: 0.9.0, 0.8.6, 0.8.5
     expect(results.single.source, 'main');
   });
 
-  test('scoop batch latest lookup refreshes buckets before reading status', () async {
-    final shell = _SequenceShellExecutor(<String, List<ShellResult>>{
-      'scoop status': <ShellResult>[
-        const ShellResult(
-          exitCode: 0,
-          stdout:
-              "WARN  Scoop bucket(s) out of date. Run 'scoop update' to get the latest changes.\n",
-          stderr: '',
-        ),
-        const ShellResult(
-          exitCode: 0,
-          stdout: '''
+  test(
+    'scoop batch latest lookup refreshes buckets before reading status',
+    () async {
+      final shell = _SequenceShellExecutor(<String, List<ShellResult>>{
+        'scoop status': <ShellResult>[
+          const ShellResult(
+            exitCode: 0,
+            stdout:
+                "WARN  Scoop bucket(s) out of date. Run 'scoop update' to get the latest changes.\n",
+            stderr: '',
+          ),
+          const ShellResult(
+            exitCode: 0,
+            stdout: '''
 Scoop is up to date.
 
 Name  Installed Version Latest Version Missing Dependencies Info
@@ -2293,51 +2349,52 @@ Name  Installed Version Latest Version Missing Dependencies Info
 7zip  25.01             26.00
 llvm  20.1.8            22.1.1         zlib
 ''',
-          stderr: '',
+            stderr: '',
+          ),
+        ],
+        'scoop update': <ShellResult>[
+          const ShellResult(exitCode: 0, stdout: 'updated', stderr: ''),
+        ],
+      });
+      final packages = const <ManagedPackage>[
+        ManagedPackage(
+          name: '7zip',
+          managerId: 'scoop',
+          managerName: 'scoop',
+          version: '25.01',
         ),
-      ],
-      'scoop update': <ShellResult>[
-        const ShellResult(exitCode: 0, stdout: 'updated', stderr: ''),
-      ],
-    });
-    final packages = const <ManagedPackage>[
-      ManagedPackage(
-        name: '7zip',
-        managerId: 'scoop',
-        managerName: 'scoop',
-        version: '25.01',
-      ),
-      ManagedPackage(
-        name: 'llvm',
-        managerId: 'scoop',
-        managerName: 'scoop',
-        version: '20.1.8',
-      ),
-      ManagedPackage(
-        name: 'git',
-        managerId: 'scoop',
-        managerName: 'scoop',
-        version: '2.48.1',
-      ),
-    ];
+        ManagedPackage(
+          name: 'llvm',
+          managerId: 'scoop',
+          managerName: 'scoop',
+          version: '20.1.8',
+        ),
+        ManagedPackage(
+          name: 'git',
+          managerId: 'scoop',
+          managerName: 'scoop',
+          version: '2.48.1',
+        ),
+      ];
 
-    final versions = await const ScoopAdapter().lookupLatestVersions(
-      shell,
-      packages,
-    );
+      final versions = await const ScoopAdapter().lookupLatestVersions(
+        shell,
+        packages,
+      );
 
-    expect(versions[packages[0].key], '26.00');
-    expect(versions[packages[1].key], '22.1.1');
-    expect(versions[packages[2].key], '2.48.1');
-    expect(
-      shell.commands.where((command) => command == 'scoop status'),
-      hasLength(2),
-    );
-    expect(
-      shell.commands.where((command) => command == 'scoop update'),
-      hasLength(1),
-    );
-  });
+      expect(versions[packages[0].key], '26.00');
+      expect(versions[packages[1].key], '22.1.1');
+      expect(versions[packages[2].key], '2.48.1');
+      expect(
+        shell.commands.where((command) => command == 'scoop status'),
+        hasLength(2),
+      );
+      expect(
+        shell.commands.where((command) => command == 'scoop update'),
+        hasLength(1),
+      );
+    },
+  );
 
   test('controller batch latest check uses scoop status once', () async {
     const adapter = ScoopAdapter();
@@ -2485,6 +2542,7 @@ class _FakeShellExecutor extends ShellExecutor {
   Future<ShellResult> runRequest(
     ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     return result;
   }
@@ -2510,6 +2568,7 @@ class _MappedShellExecutor extends ShellExecutor {
   Future<ShellResult> runRequest(
     ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     final command = request.displayCommand;
     for (final entry in results.entries) {
@@ -2540,6 +2599,7 @@ class _RecordingShellExecutor extends ShellExecutor {
   Future<ShellResult> runRequest(
     ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     final command = request.displayCommand;
     commands.add(command);
@@ -2568,6 +2628,7 @@ class _SequenceShellExecutor extends ShellExecutor {
   Future<ShellResult> runRequest(
     ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     final command = request.displayCommand;
     commands.add(command);
@@ -2640,12 +2701,12 @@ class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
   _PersistingVisibilitySettingsStore({
     Set<String>? visibleManagerIds,
     Set<String>? manuallyHiddenManagerIds,
-  }) : visibleManagerIds =
-           visibleManagerIds == null ? null : Set<String>.from(visibleManagerIds),
-       manuallyHiddenManagerIds =
-           manuallyHiddenManagerIds == null
-               ? null
-               : Set<String>.from(manuallyHiddenManagerIds);
+  }) : visibleManagerIds = visibleManagerIds == null
+           ? null
+           : Set<String>.from(visibleManagerIds),
+       manuallyHiddenManagerIds = manuallyHiddenManagerIds == null
+           ? null
+           : Set<String>.from(manuallyHiddenManagerIds);
 
   Set<String>? visibleManagerIds;
   Set<String>? manuallyHiddenManagerIds;
@@ -2764,6 +2825,7 @@ class _DelayedShellExecutor extends ShellExecutor {
   Future<ShellResult> runRequest(
     ShellRequest request, {
     Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
   }) async {
     final command = request.displayCommand;
     if (command == delayedCommand) {

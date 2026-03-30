@@ -163,6 +163,34 @@ class PackageCommand {
   }
 }
 
+class RunningCommandInfo {
+  const RunningCommandInfo({
+    required this.busyKey,
+    required this.command,
+    this.canCancel = false,
+    this.isCancelling = false,
+  });
+
+  final String busyKey;
+  final String command;
+  final bool canCancel;
+  final bool isCancelling;
+
+  RunningCommandInfo copyWith({
+    String? busyKey,
+    String? command,
+    bool? canCancel,
+    bool? isCancelling,
+  }) {
+    return RunningCommandInfo(
+      busyKey: busyKey ?? this.busyKey,
+      command: command ?? this.command,
+      canCancel: canCancel ?? this.canCancel,
+      isCancelling: isCancelling ?? this.isCancelling,
+    );
+  }
+}
+
 class PackageVersionQueryResult {
   const PackageVersionQueryResult({
     this.versions = const <String>[],
