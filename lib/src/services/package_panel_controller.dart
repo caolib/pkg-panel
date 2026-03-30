@@ -483,6 +483,32 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setFontFamilyStack(List<String> values) async {
+    final normalized = <String>[];
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || normalized.contains(trimmed)) {
+        continue;
+      }
+      normalized.add(trimmed);
+    }
+
+    _customFontFamily = normalized.isEmpty ? null : normalized.first;
+    _customFallbackFontFamilies
+      ..clear()
+      ..addAll(
+        normalized.length <= 1
+            ? const <String>[]
+            : normalized.sublist(1),
+      );
+
+    await _settingsStore.saveCustomFontFamily(_customFontFamily);
+    await _settingsStore.saveCustomFallbackFontFamilies(
+      _customFallbackFontFamilies,
+    );
+    notifyListeners();
+  }
+
   List<PackageManagerAdapter> get searchableAdapters =>
       _searchAdaptersForScope(null);
 
@@ -504,8 +530,17 @@ class PackagePanelController extends ChangeNotifier {
 
   String installSearchFilterLabel(String filterId) {
     return filterId == _nodeRegistrySearchGroupId
-        ? 'npm/pnpm/yarn/bun'
+        ? _availableNodeRegistryInstallManagerIds()
+              .map(displayNameForManagerId)
+              .join('/')
         : displayNameForManagerId(filterId);
+  }
+
+  List<String> installSearchFilterManagerIds(String filterId) {
+    if (filterId == _nodeRegistrySearchGroupId) {
+      return _availableNodeRegistryInstallManagerIds();
+    }
+    return <String>[filterId];
   }
 
   String? installSearchFilterRepresentativeManagerId(String filterId) {
@@ -1995,7 +2030,9 @@ class PackagePanelController extends ChangeNotifier {
     final available = <String>[];
     for (final managerId in _nodeRegistryInstallPriority) {
       final adapter = _adapterFor(managerId);
-      if (adapter == null || !isManagerAvailable(managerId)) {
+      if (adapter == null ||
+          !isManagerAvailable(managerId) ||
+          !isManagerVisible(managerId)) {
         continue;
       }
       if (_capabilityOf<PackageInstallCapability>(adapter) == null) {

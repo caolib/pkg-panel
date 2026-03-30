@@ -24,6 +24,17 @@ const String _appTagline = '一个管理各种包管理器的面板。';
 const String _appAuthor = 'caolib';
 const String _appAuthorUrl = 'https://github.com/caolib';
 const String _appRepositoryUrl = 'https://github.com/caolib/pkg-panel';
+const String _defaultPrimaryFontFamily = 'Cascadia Code';
+const List<String> _defaultFallbackFontFamilies = <String>[
+  'JetBrains Mono',
+  '喵字果汁体',
+  '汉仪有圆',
+  '霞鹜文楷',
+  'Segoe UI Variable Text',
+  'Microsoft YaHei UI',
+  'Microsoft YaHei',
+  'Segoe UI',
+];
 
 class PkgPanelApp extends StatefulWidget {
   const PkgPanelApp({
@@ -127,18 +138,9 @@ ThemeData _buildTheme({
   const darkBase = Color(0xFF202020);
   final primaryFont = customFontFamily?.trim().isNotEmpty == true
       ? customFontFamily!.trim()
-      : 'Cascadia Code';
+      : _defaultPrimaryFontFamily;
   final fallbackFonts = customFallbackFontFamilies.isEmpty
-      ? const <String>[
-          'JetBrains Mono',
-          '喵字果汁体',
-          '汉仪有圆',
-          '霞鹜文楷',
-          'Segoe UI Variable Text',
-          'Microsoft YaHei UI',
-          'Microsoft YaHei',
-          'Segoe UI',
-        ]
+      ? _defaultFallbackFontFamilies
       : customFallbackFontFamilies;
   final colorScheme = brightness == Brightness.dark
       ? const ColorScheme(
@@ -709,19 +711,11 @@ class _ManagerFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final updateCount = controller.visibleSnapshots
-        .expand((snapshot) => snapshot.packages)
-        .where((package) => package.hasUpdate)
-        .length;
-
     return Wrap(
       spacing: 10,
       runSpacing: 10,
       children: <Widget>[
         ...controller.visibleHomeFilterGroups.map((group) {
-          final label = group.id == updateFilterId && updateCount > 0
-              ? '${group.displayName} ($updateCount)'
-              : group.displayName;
           final iconPath = controller.iconPathForHomeFilterGroup(group.id);
           final avatar = iconPath == null
               ? null
@@ -737,7 +731,7 @@ class _ManagerFilterBar extends StatelessWidget {
                 ? controller.selectedManagerId == null
                 : controller.selectedManagerId == group.id,
             showCheckmark: false,
-            label: Text(label),
+            label: Text(group.displayName),
             avatar: avatar,
             onSelected: (_) => controller.selectManager(group.id),
           );
@@ -2579,10 +2573,27 @@ class PackageSettingsPage extends StatelessWidget {
       );
   }
 
-  Future<void> _editFontFamily(BuildContext context) async {
+  List<String> _currentFontFamilyStack() {
+    final configured = <String>[
+      if (controller.customFontFamily != null) controller.customFontFamily!,
+      ...controller.customFallbackFontFamilies,
+    ];
+    if (configured.isNotEmpty) {
+      return configured;
+    }
+    return <String>[_defaultPrimaryFontFamily, ..._defaultFallbackFontFamilies];
+  }
+
+  Future<void> _editFontFamilyStack(BuildContext context) async {
     final textController = TextEditingController(
-      text: controller.customFontFamily ?? 'Cascadia Code',
+      text: _currentFontFamilyStack().join(', '),
     );
+    final fontSuggestions = <String>{
+      _defaultPrimaryFontFamily,
+      ..._defaultFallbackFontFamilies,
+      ..._fontSuggestions,
+      ..._fallbackFontSuggestions,
+    }.toList(growable: false);
 
     final value = await showDialog<String>(
       context: context,
@@ -2592,31 +2603,43 @@ class PackageSettingsPage extends StatelessWidget {
             return AlertDialog(
               title: const Text('设置字体'),
               content: SizedBox(
-                width: 520,
+                width: 620,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text('输入系统已安装的字体名称。留空或恢复默认会使用内置默认字体。'),
+                    const Text('用英文逗号分隔。'),
                     const SizedBox(height: 12),
                     TextField(
                       controller: textController,
                       autofocus: true,
+                      minLines: 2,
+                      maxLines: 4,
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
-                        hintText: '例如 Segoe UI / Microsoft YaHei UI',
+                        hintText: '例如 Cascadia Code, 汉仪有圆, Microsoft YaHei UI',
                       ),
                     ),
                     const SizedBox(height: 12),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: _fontSuggestions
+                      children: fontSuggestions
                           .map(
                             (font) => ActionChip(
                               label: Text(font),
                               onPressed: () {
-                                textController.text = font;
+                                final current = textController.text
+                                    .split(',')
+                                    .map((e) => e.trim())
+                                    .where((e) => e.isNotEmpty)
+                                    .toList();
+                                if (!current.contains(font)) {
+                                  current.add(font);
+                                  textController.text = current.join(', ');
+                                } else if (current.isEmpty) {
+                                  textController.text = font;
+                                }
                                 setState(() {});
                               },
                             ),
@@ -2650,97 +2673,12 @@ class PackageSettingsPage extends StatelessWidget {
     if (value == null) {
       return;
     }
-    await controller.setCustomFontFamily(value);
-  }
-
-  Future<void> _editFallbackFontFamilies(BuildContext context) async {
-    final textController = TextEditingController(
-      text: controller.customFallbackFontFamilies.join(', '),
-    );
-
-    final value = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('设置 fallback 字体'),
-              content: SizedBox(
-                width: 560,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    const Text('用英文逗号分隔多个字体，前面的优先级更高。'),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: textController,
-                      autofocus: true,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        hintText: '例如 Segoe UI, Microsoft YaHei UI, 霞鹜文楷',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _fallbackFontSuggestions
-                          .map(
-                            (font) => ActionChip(
-                              label: Text(font),
-                              onPressed: () {
-                                final current = textController.text
-                                    .split(',')
-                                    .map((e) => e.trim())
-                                    .where((e) => e.isNotEmpty)
-                                    .toList();
-                                if (!current.contains(font)) {
-                                  current.add(font);
-                                  textController.text = current.join(', ');
-                                  setState(() {});
-                                }
-                              },
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('取消'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(''),
-                  child: const Text('恢复默认'),
-                ),
-                FilledButton(
-                  onPressed: () =>
-                      Navigator.of(context).pop(textController.text),
-                  child: const Text('保存'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (value == null) {
-      return;
-    }
-
     final fonts = value
         .split(',')
         .map((item) => item.trim())
         .where((item) => item.isNotEmpty)
         .toList(growable: false);
-    await controller.setCustomFallbackFontFamilies(fonts);
+    await controller.setFontFamilyStack(fonts);
   }
 
   @override
@@ -2893,7 +2831,8 @@ class PackageSettingsPage extends StatelessWidget {
                                   return DecoratedBox(
                                     key: ValueKey(group.id),
                                     decoration: BoxDecoration(
-                                      border: index == homeFilterGroups.length - 1
+                                      border:
+                                          index == homeFilterGroups.length - 1
                                           ? null
                                           : Border(
                                               bottom: BorderSide(
@@ -2935,10 +2874,11 @@ class PackageSettingsPage extends StatelessWidget {
                                                   _ManagerIcon(
                                                     managerId: group.id,
                                                     customIconPath: iconPath,
-                                                    fallbackIcon:
-                                                        Icons.filter_alt_outlined,
-                                                    fallbackColor:
-                                                        theme.colorScheme.primary,
+                                                    fallbackIcon: Icons
+                                                        .filter_alt_outlined,
+                                                    fallbackColor: theme
+                                                        .colorScheme
+                                                        .primary,
                                                     size: 20,
                                                     showFallbackWhenNoAsset:
                                                         false,
@@ -2948,7 +2888,8 @@ class PackageSettingsPage extends StatelessWidget {
                                                 Expanded(
                                                   child: Column(
                                                     crossAxisAlignment:
-                                                        CrossAxisAlignment.start,
+                                                        CrossAxisAlignment
+                                                            .start,
                                                     children: <Widget>[
                                                       Text(
                                                         group.displayName,
@@ -3010,7 +2951,9 @@ class PackageSettingsPage extends StatelessWidget {
                                                 ),
                                                 const SizedBox(height: 2),
                                                 Text(
-                                                  _homeFilterGroupSummary(group),
+                                                  _homeFilterGroupSummary(
+                                                    group,
+                                                  ),
                                                   style: theme
                                                       .textTheme
                                                       .bodySmall
@@ -3046,12 +2989,11 @@ class PackageSettingsPage extends StatelessWidget {
                                                   const SizedBox(width: 8),
                                                   Switch(
                                                     value: group.isVisible,
-                                                    onChanged: (value) =>
-                                                        controller
-                                                            .setHomeFilterGroupVisibility(
-                                                              group.id,
-                                                              value,
-                                                            ),
+                                                    onChanged: (value) => controller
+                                                        .setHomeFilterGroupVisibility(
+                                                          group.id,
+                                                          value,
+                                                        ),
                                                   ),
                                                 ],
                                               ),
@@ -3331,6 +3273,7 @@ class PackageSettingsPage extends StatelessWidget {
                     SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Card(
                             child: Padding(
@@ -3388,7 +3331,7 @@ class PackageSettingsPage extends StatelessWidget {
                                               CrossAxisAlignment.start,
                                           children: <Widget>[
                                             Text(
-                                              '字体',
+                                              '字体栈',
                                               style: theme.textTheme.titleMedium
                                                   ?.copyWith(
                                                     fontWeight: FontWeight.w700,
@@ -3396,8 +3339,9 @@ class PackageSettingsPage extends StatelessWidget {
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              controller.customFontFamily ??
-                                                  'Cascadia Code',
+                                              _currentFontFamilyStack().join(
+                                                ', ',
+                                              ),
                                               style: theme.textTheme.bodyMedium
                                                   ?.copyWith(
                                                     color: theme
@@ -3410,12 +3354,19 @@ class PackageSettingsPage extends StatelessWidget {
                                       ),
                                       FilledButton.tonal(
                                         onPressed: () =>
-                                            _editFontFamily(context),
+                                            _editFontFamilyStack(context),
                                         child: const Text('设置字体'),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 16),
+                                  Text(
+                                    '第一个字体是主字体，其余字体会按顺序作为 fallback。',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
                                   Container(
                                     width: double.infinity,
                                     padding: const EdgeInsets.all(16),
@@ -3431,57 +3382,6 @@ class PackageSettingsPage extends StatelessWidget {
                                     child: const Text(
                                       '字体预览：The quick brown fox jumps over the lazy dog. 敏捷的棕狐跳过了懒狗。',
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            Text(
-                                              'Fallback 字体',
-                                              style: theme.textTheme.titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              controller
-                                                      .customFallbackFontFamilies
-                                                      .isEmpty
-                                                  ? '使用默认 fallback 字体栈'
-                                                  : controller
-                                                        .customFallbackFontFamilies
-                                                        .join(', '),
-                                              style: theme.textTheme.bodyMedium
-                                                  ?.copyWith(
-                                                    color: theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      FilledButton.tonal(
-                                        onPressed: () =>
-                                            _editFallbackFontFamilies(context),
-                                        child: const Text('设置 fallback'),
-                                      ),
-                                    ],
                                   ),
                                 ],
                               ),
@@ -3537,7 +3437,8 @@ class _HomeFilterGroupEditDialog extends StatefulWidget {
       _HomeFilterGroupEditDialogState();
 }
 
-class _HomeFilterGroupEditDialogState extends State<_HomeFilterGroupEditDialog> {
+class _HomeFilterGroupEditDialogState
+    extends State<_HomeFilterGroupEditDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _packageSearchController;
   late String? _selectedIconPath;
@@ -3556,8 +3457,12 @@ class _HomeFilterGroupEditDialogState extends State<_HomeFilterGroupEditDialog> 
     );
     _packageSearchController = TextEditingController();
     _selectedIconPath = widget.group?.iconPath;
-    _selectedManagerIds = Set<String>.from(widget.group?.managerIds ?? const <String>{});
-    _selectedPackageKeys = Set<String>.from(widget.group?.packageKeys ?? const <String>{});
+    _selectedManagerIds = Set<String>.from(
+      widget.group?.managerIds ?? const <String>{},
+    );
+    _selectedPackageKeys = Set<String>.from(
+      widget.group?.packageKeys ?? const <String>{},
+    );
     _packageSearchController.addListener(() {
       setState(() {});
     });
@@ -3602,33 +3507,39 @@ class _HomeFilterGroupEditDialogState extends State<_HomeFilterGroupEditDialog> 
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final managerStates = widget.controller.managerVisibilityStates;
-    final packages = widget.controller.snapshots
-        .expand((snapshot) => snapshot.packages)
-        .toList(growable: false)
-      ..sort((a, b) {
-        final managerCompare = widget.controller
-            .displayNameForPackage(a)
-            .compareTo(widget.controller.displayNameForPackage(b));
-        if (managerCompare != 0) {
-          return managerCompare;
-        }
-        return a.name.compareTo(b.name);
-      });
+    final packages =
+        widget.controller.snapshots
+            .expand((snapshot) => snapshot.packages)
+            .toList(growable: false)
+          ..sort((a, b) {
+            final managerCompare = widget.controller
+                .displayNameForPackage(a)
+                .compareTo(widget.controller.displayNameForPackage(b));
+            if (managerCompare != 0) {
+              return managerCompare;
+            }
+            return a.name.compareTo(b.name);
+          });
     final packageFilter = _packageSearchController.text.trim().toLowerCase();
-    final visiblePackages = packages.where((package) {
-      if (packageFilter.isEmpty) {
-        return true;
-      }
-      return [
-        package.name,
-        widget.controller.displayNameForPackage(package),
-        package.version,
-      ].join(' ').toLowerCase().contains(packageFilter);
-    }).toList(growable: false);
-    final hasIcon = _selectedIconPath != null && _selectedIconPath!.trim().isNotEmpty;
+    final visiblePackages = packages
+        .where((package) {
+          if (packageFilter.isEmpty) {
+            return true;
+          }
+          return [
+            package.name,
+            widget.controller.displayNameForPackage(package),
+            package.version,
+          ].join(' ').toLowerCase().contains(packageFilter);
+        })
+        .toList(growable: false);
+    final hasIcon =
+        _selectedIconPath != null && _selectedIconPath!.trim().isNotEmpty;
 
     return AlertDialog(
-      title: Text(widget.group == null ? '添加筛选组' : '编辑 ${widget.group!.displayName}'),
+      title: Text(
+        widget.group == null ? '添加筛选组' : '编辑 ${widget.group!.displayName}',
+      ),
       content: SizedBox(
         width: 720,
         child: SingleChildScrollView(
@@ -3737,9 +3648,8 @@ class _HomeFilterGroupEditDialogState extends State<_HomeFilterGroupEditDialog> 
                           ),
                           avatar: _ManagerIcon(
                             managerId: state.manager.id,
-                            customIconPath: widget.controller.customManagerIconPath(
-                              state.manager.id,
-                            ),
+                            customIconPath: widget.controller
+                                .customManagerIconPath(state.manager.id),
                             fallbackIcon: state.manager.icon,
                             fallbackColor: state.manager.color,
                           ),
@@ -4361,12 +4271,17 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                       },
                     ),
                     ...filterIds.map((filterId) {
+                      final managerIds = widget.controller
+                          .installSearchFilterManagerIds(filterId);
                       final representativeManagerId = widget.controller
                           .installSearchFilterRepresentativeManagerId(filterId);
+                      final showIconCluster = managerIds.length > 1;
+                      const clusterLabel = 'npm';
                       return FilterChip(
                         selected: _selectedSearchFilterId == filterId,
                         showCheckmark: false,
-                        avatar: representativeManagerId == null
+                        avatar:
+                            showIconCluster || representativeManagerId == null
                             ? null
                             : _ManagerIcon(
                                 managerId: representativeManagerId,
@@ -4381,9 +4296,35 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                                   representativeManagerId,
                                 ),
                               ),
-                        label: Text(
-                          widget.controller.installSearchFilterLabel(filterId),
-                        ),
+                        label: showIconCluster
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  ...managerIds.map(
+                                    (managerId) => Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 3,
+                                      ),
+                                      child: _ManagerIcon(
+                                        managerId: managerId,
+                                        customIconPath: widget.controller
+                                            .customManagerIconPath(managerId),
+                                        fallbackIcon: _managerIcon(managerId),
+                                        fallbackColor: _managerAccent(
+                                          managerId,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(clusterLabel),
+                                ],
+                              )
+                            : Text(
+                                widget.controller.installSearchFilterLabel(
+                                  filterId,
+                                ),
+                              ),
                         onSelected: (_) {
                           setState(() {
                             _selectedSearchFilterId = filterId;

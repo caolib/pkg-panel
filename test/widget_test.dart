@@ -674,11 +674,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('更新 (1)'), findsOneWidget);
+    expect(find.text('更新'), findsOneWidget);
     expect(find.text('eslint'), findsOneWidget);
     expect(find.text('ruff'), findsOneWidget);
 
-    await tester.tap(find.text('更新 (1)'));
+    await tester.tap(find.text('更新'));
     await tester.pumpAndSettle();
 
     expect(controller.selectedManagerId, updateFilterId);
@@ -917,7 +917,7 @@ void main() {
     await tester.tap(find.text('安装'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('npm/pnpm/yarn/bun'));
+    await tester.tap(find.byType(FilterChip).at(1));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(SearchBar), 'eslint');
@@ -952,6 +952,67 @@ void main() {
       tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
       isFalse,
     );
+  });
+
+  testWidgets('node install filter shows npm label with multiple manager icons', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialVisibleManagerIds: const <String>{'npm', 'pnpm', 'bun'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pnpm': true,
+        'yarn': true,
+        'bun': true,
+      },
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('npm'), findsOneWidget);
+    expect(find.text('npm/pnpm/bun'), findsNothing);
+    expect(find.text('npm/pnpm/yarn/bun'), findsNothing);
+  });
+
+  testWidgets('node install filter shows name when only one manager is enabled', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pnpm': true,
+        'yarn': true,
+        'bun': true,
+      },
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('npm'), findsOneWidget);
+    expect(find.text('npm/pnpm'), findsNothing);
   });
 
   test('node ecosystem search uses one provider and expands install options', () async {
