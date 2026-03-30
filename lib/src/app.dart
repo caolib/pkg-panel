@@ -12,6 +12,7 @@ import 'services/package_panel_controller.dart';
 import 'services/external_link_opener.dart';
 import 'services/local_file_picker.dart';
 import 'services/window_theme_sync.dart';
+import 'widgets/linkified_selectable_text.dart';
 import 'widgets/local_icon_image.dart';
 
 void runPkgPanel(PackagePanelController controller) {
@@ -1448,9 +1449,11 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
                         ),
                         _ when details != null && details.trim().isNotEmpty =>
                           SingleChildScrollView(
-                            child: SelectableText(
-                              details,
+                            child: LinkifiedSelectableText(
+                              text: details,
                               style: _monospaceTextStyle(context, height: 1.5),
+                              onOpenLink: (url) =>
+                                  _openExternalLink(context, url),
                             ),
                           ),
                         _ => Center(

@@ -14,6 +14,7 @@ import 'package:pkg_panel/src/services/package_panel_controller.dart';
 import 'package:pkg_panel/src/services/package_snapshot_store.dart';
 import 'package:pkg_panel/src/services/shell_executor.dart';
 import 'package:pkg_panel/src/services/winget_package_icon_resolver.dart';
+import 'package:pkg_panel/src/widgets/linkified_selectable_text.dart';
 
 void main() {
   testWidgets('renders seeded package data', (tester) async {
@@ -118,6 +119,29 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('检查更新'), findsOneWidget);
+  });
+
+  testWidgets('linkified selectable text opens detected links', (tester) async {
+    String? openedUrl;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LinkifiedSelectableText(
+            text: 'https://github.com/caolib/pkg-panel',
+            onOpenLink: (url) async {
+              openedUrl = url;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(SelectableText));
+    await tester.pump();
+
+    expect(openedUrl, 'https://github.com/caolib/pkg-panel');
   });
 
   test('refresh current selection only reloads selected manager', () async {
