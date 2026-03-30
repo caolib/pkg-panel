@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models/package_models.dart';
+import 'services/app_update_service.dart';
 import 'services/package_panel_controller.dart';
 import 'services/external_link_opener.dart';
 import 'services/local_file_picker.dart';
@@ -84,6 +85,13 @@ void _showCompactSnackBar(BuildContext context, String message) {
         ),
       ),
     );
+}
+
+String _formatUiError(Object error) {
+  return '$error'
+      .replaceFirst('Exception: ', '')
+      .replaceFirst('Bad state: ', '')
+      .replaceFirst('HttpException: ', '');
 }
 
 class PkgPanelApp extends StatefulWidget {
@@ -329,6 +337,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     with SingleTickerProviderStateMixin {
   late final TextEditingController _searchController;
   late final TabController _tabController;
+  bool _hasQueuedStartupUpdateCheck = false;
 
   @override
   void initState() {
@@ -341,8 +350,25 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     if (widget.autoLoad) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.controller.ensureLoaded();
+        _queueStartupUpdateCheck();
       });
     }
+  }
+
+  void _queueStartupUpdateCheck() {
+    if (_hasQueuedStartupUpdateCheck ||
+        !widget.controller.autoCheckAppUpdates) {
+      return;
+    }
+    _hasQueuedStartupUpdateCheck = true;
+    unawaited(
+      _checkForAppUpdateWithUi(
+        context,
+        widget.controller,
+        showAlreadyLatestMessage: false,
+        showErrorMessage: false,
+      ),
+    );
   }
 
   @override
@@ -3463,7 +3489,10 @@ class PackageSettingsPage extends StatelessWidget {
                     ),
                     SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                      child: _AboutAppCard(theme: theme),
+                      child: _AboutAppCard(
+                        theme: theme,
+                        controller: controller,
+                      ),
                     ),
                   ],
                 );
@@ -4070,9 +4099,60 @@ class _ManagerEditOutcome {
 }
 
 class _AboutAppCard extends StatelessWidget {
-  const _AboutAppCard({required this.theme});
+  const _AboutAppCard({required this.theme, required this.controller});
 
   final ThemeData theme;
+  final PackagePanelController controller;
+
+  Future<void> _editGithubMirrorBaseUrl(BuildContext context) async {
+    final textController = TextEditingController(
+      text: controller.githubMirrorBaseUrl,
+    );
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('设置 GitHub 镜像地址'),
+          content: SizedBox(
+            width: 560,
+            child: TextField(
+              controller: textController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '例如 https://ghproxy.net/',
+              ),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(''),
+              child: const Text('恢复默认'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(textController.text),
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      },
+    );
+    textController.dispose();
+
+    if (value == null || !context.mounted) {
+      return;
+    }
+
+    await controller.setGithubMirrorBaseUrl(value);
+    if (!context.mounted) {
+      return;
+    }
+    _showCompactSnackBar(context, '镜像地址已更新。');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4118,7 +4198,114 @@ class _AboutAppCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            const _AboutMetaRow(),
+            _AboutMetaRow(controller: controller),
+            const SizedBox(height: 16),
+            AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) {
+                return Column(
+                  children: <Widget>[
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: SwitchListTile.adaptive(
+                        value: controller.autoCheckAppUpdates,
+                        onChanged: (value) {
+                          unawaited(controller.setAutoCheckAppUpdates(value));
+                        },
+                        title: const Text('自动检查更新'),
+                        subtitle: const Text('开启后，每次启动应用时都会检查 GitHub Release。'),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Column(
+                        children: <Widget>[
+                          SwitchListTile.adaptive(
+                            value: controller.useGithubMirrorForDownloads,
+                            onChanged: (value) {
+                              unawaited(
+                                controller.setUseGithubMirrorForDownloads(
+                                  value,
+                                ),
+                              );
+                            },
+                            title: const Text('GitHub 镜像下载'),
+                            subtitle: const Text('开启后，更新弹窗中的下载按钮会优先使用镜像。'),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 4,
+                            ),
+                          ),
+                          Divider(
+                            height: 1,
+                            color: theme.colorScheme.outlineVariant,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        '镜像地址',
+                                        style: theme.textTheme.titleSmall
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      SelectableText(
+                                        controller.githubMirrorBaseUrl,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                FilledButton.tonalIcon(
+                                  onPressed: () =>
+                                      _editGithubMirrorBaseUrl(context),
+                                  icon: const Icon(Icons.edit_outlined),
+                                  label: const Text('编辑'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -4127,7 +4314,9 @@ class _AboutAppCard extends StatelessWidget {
 }
 
 class _AboutMetaRow extends StatelessWidget {
-  const _AboutMetaRow();
+  const _AboutMetaRow({required this.controller});
+
+  final PackagePanelController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -4141,48 +4330,80 @@ class _AboutMetaRow extends StatelessWidget {
             ? packageInfo.version
             : '${packageInfo.version}+${packageInfo.buildNumber}';
         final theme = Theme.of(context);
-        return Center(
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 12,
-            children: <Widget>[
-              Chip(
-                avatar: const Icon(Icons.sell_outlined, size: 18),
-                label: Text(versionLabel),
-                labelStyle: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-                side: BorderSide(color: theme.colorScheme.outlineVariant),
-                backgroundColor: theme.colorScheme.surfaceContainerLow,
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _openExternalLink(context, _appAuthorUrl),
-                icon: const Icon(Icons.person_outline),
-                label: const Text(_appAuthor),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 40),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+        return AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            return Center(
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 12,
+                children: <Widget>[
+                  Chip(
+                    avatar: const Icon(Icons.sell_outlined, size: 18),
+                    label: Text(versionLabel),
+                    labelStyle: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
+                    backgroundColor: theme.colorScheme.surfaceContainerLow,
                   ),
-                ),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: () => _openExternalLink(context, _appRepositoryUrl),
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('GitHub 仓库'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 40),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
+                  OutlinedButton.icon(
+                    onPressed: () => _openExternalLink(context, _appAuthorUrl),
+                    icon: const Icon(Icons.person_outline),
+                    label: const Text(_appAuthor),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
                   ),
-                ),
+                  FilledButton.tonalIcon(
+                    onPressed: () =>
+                        _openExternalLink(context, _appRepositoryUrl),
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('GitHub 仓库'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: controller.isCheckingAppUpdate
+                        ? null
+                        : () {
+                            unawaited(
+                              _checkForAppUpdateWithUi(context, controller),
+                            );
+                          },
+                    icon: controller.isCheckingAppUpdate
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.system_update_alt),
+                    label: Text(
+                      controller.isCheckingAppUpdate ? '检查中...' : '检查更新',
+                    ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -4203,6 +4424,394 @@ Future<void> _openExternalLink(BuildContext context, String url) async {
     }
   }
   _showCompactSnackBar(context, '无法打开链接：$url');
+}
+
+Future<void> _checkForAppUpdateWithUi(
+  BuildContext context,
+  PackagePanelController controller, {
+  bool showAlreadyLatestMessage = true,
+  bool showErrorMessage = true,
+}) async {
+  AppUpdateInfo info;
+  try {
+    info = await controller.checkForAppUpdate();
+  } catch (error) {
+    if (!context.mounted || !showErrorMessage) {
+      return;
+    }
+    _showCompactSnackBar(context, '检查更新失败：${_formatUiError(error)}');
+    return;
+  }
+
+  if (!context.mounted) {
+    return;
+  }
+  if (!info.hasUpdate) {
+    if (showAlreadyLatestMessage) {
+      _showCompactSnackBar(context, '当前已是最新版本：${info.currentDisplayVersion}');
+    }
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    builder: (context) => _AppUpdateDialog(controller: controller, info: info),
+  );
+}
+
+String _appReleaseAssetKindLabel(AppReleaseAssetKind kind) {
+  return switch (kind) {
+    AppReleaseAssetKind.installer => '安装包',
+    AppReleaseAssetKind.portable => '绿色版',
+    AppReleaseAssetKind.other => '发行文件',
+  };
+}
+
+String _formatAppReleaseAssetSize(int bytes) {
+  if (bytes <= 0) {
+    return '大小未知';
+  }
+  const units = <String>['B', 'KB', 'MB', 'GB'];
+  var size = bytes.toDouble();
+  var unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  final precision = unitIndex == 0 ? 0 : 1;
+  return '${size.toStringAsFixed(precision)} ${units[unitIndex]}';
+}
+
+String _buildDownloadProgressLabel(AppUpdateDownloadProgress? progress) {
+  if (progress == null) {
+    return '准备下载...';
+  }
+  final received = _formatAppReleaseAssetSize(progress.receivedBytes);
+  final total = progress.totalBytes;
+  final percent = progress.progress;
+  if (total == null || total <= 0 || percent == null) {
+    return '已下载 $received';
+  }
+  return '已下载 $received / ${_formatAppReleaseAssetSize(total)} · ${(percent * 100).toStringAsFixed(0)}%';
+}
+
+class _AppUpdateDialog extends StatefulWidget {
+  const _AppUpdateDialog({required this.controller, required this.info});
+
+  final PackagePanelController controller;
+  final AppUpdateInfo info;
+
+  @override
+  State<_AppUpdateDialog> createState() => _AppUpdateDialogState();
+}
+
+class _AppUpdateDialogState extends State<_AppUpdateDialog> {
+  String? _activeDownloadUrl;
+  AppUpdateDownloadProgress? _downloadProgress;
+  bool _isDisablingAutoCheck = false;
+  bool _autoCheckDisabledInDialog = false;
+
+  Future<void> _disableAutoCheck() async {
+    if (_isDisablingAutoCheck || _autoCheckDisabledInDialog) {
+      return;
+    }
+
+    setState(() {
+      _isDisablingAutoCheck = true;
+    });
+    try {
+      await widget.controller.setAutoCheckAppUpdates(false);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _autoCheckDisabledInDialog = true;
+      });
+      _showCompactSnackBar(context, '已关闭自动检查更新。');
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showCompactSnackBar(context, '关闭失败：${_formatUiError(error)}');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDisablingAutoCheck = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _downloadAsset(AppReleaseAsset asset) async {
+    if (_activeDownloadUrl != null) {
+      return;
+    }
+
+    setState(() {
+      _activeDownloadUrl = asset.downloadUrl;
+      _downloadProgress = const AppUpdateDownloadProgress(
+        receivedBytes: 0,
+        totalBytes: null,
+      );
+    });
+    try {
+      final result = await widget.controller.downloadAppUpdateAsset(
+        asset,
+        onProgress: (progress) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _downloadProgress = progress;
+          });
+        },
+      );
+      if (!mounted) {
+        return;
+      }
+
+      final message = asset.startsInstaller
+          ? result.startedInstaller
+                ? '安装包已启动。'
+                : '安装包已下载，但未能自动启动。'
+          : result.openedLocation
+          ? '已下载并打开所在目录。'
+          : '已下载完成。';
+      _showCompactSnackBar(context, message);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      _showCompactSnackBar(context, '下载失败：${_formatUiError(error)}');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _activeDownloadUrl = null;
+          _downloadProgress = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final assets = widget.info.assets;
+    final currentVersion = widget.info.currentVersion;
+    final latestVersion = widget.info.latestVersion;
+    final releaseNotes = widget.info.releaseBody.trim();
+    return AlertDialog(
+      title: const Text('发现新版本'),
+      content: SizedBox(
+        width: 620,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            RichText(
+              text: TextSpan(
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                ),
+                children: <InlineSpan>[
+                  const TextSpan(text: '当前 '),
+                  TextSpan(
+                    text: currentVersion,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const TextSpan(text: '  ->  最新 '),
+                  TextSpan(
+                    text: latestVersion,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '更新说明',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 180),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: SingleChildScrollView(
+                child: releaseNotes.isEmpty
+                    ? Text(
+                        '该 Release 暂未提供更新说明。',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      )
+                    : LinkifiedSelectableText(
+                        text: releaseNotes,
+                        style: theme.textTheme.bodyMedium,
+                        onOpenLink: (url) => _openExternalLink(context, url),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              assets.isEmpty ? '未读取到发行文件，可前往 Release 页面查看。' : '可用发行文件',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (assets.isNotEmpty) const SizedBox(height: 10),
+            if (assets.isNotEmpty)
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: assets
+                        .map(
+                          (asset) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: theme.colorScheme.outlineVariant,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Icon(
+                                        asset.startsInstaller
+                                            ? Icons.install_desktop_outlined
+                                            : Icons.archive_outlined,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Text(
+                                              asset.name,
+                                              style: theme.textTheme.titleSmall
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${_appReleaseAssetKindLabel(asset.kind)} · ${_formatAppReleaseAssetSize(asset.size)}',
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      FilledButton.tonalIcon(
+                                        onPressed: _activeDownloadUrl == null
+                                            ? () => _downloadAsset(asset)
+                                            : null,
+                                        icon:
+                                            _activeDownloadUrl ==
+                                                asset.downloadUrl
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : Icon(
+                                                asset.startsInstaller
+                                                    ? Icons
+                                                          .download_for_offline_outlined
+                                                    : Icons.download_outlined,
+                                              ),
+                                        label: Text(
+                                          _activeDownloadUrl ==
+                                                  asset.downloadUrl
+                                              ? '下载中...'
+                                              : asset.startsInstaller
+                                              ? '下载并安装'
+                                              : '下载',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (_activeDownloadUrl ==
+                                      asset.downloadUrl) ...<Widget>[
+                                    const SizedBox(height: 12),
+                                    LinearProgressIndicator(
+                                      value: _downloadProgress?.progress,
+                                      minHeight: 6,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _buildDownloadProgressLabel(
+                                        _downloadProgress,
+                                      ),
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        if (widget.controller.autoCheckAppUpdates &&
+            !_autoCheckDisabledInDialog)
+          TextButton(
+            onPressed: _isDisablingAutoCheck ? null : _disableAutoCheck,
+            child: Text(_isDisablingAutoCheck ? '处理中...' : '取消自动检查更新'),
+          ),
+        TextButton(
+          onPressed: widget.info.releasePageUrl.trim().isEmpty
+              ? null
+              : () => _openExternalLink(context, widget.info.releasePageUrl),
+          child: const Text('打开 Release 页面'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
 }
 
 class PackageInstallPage extends StatefulWidget {

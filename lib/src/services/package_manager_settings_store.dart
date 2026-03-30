@@ -288,6 +288,89 @@ class PackageManagerSettingsStore {
     }
   }
 
+  Future<bool> loadAutoCheckAppUpdates() async {
+    try {
+      final decoded = await _loadSettings();
+      final value = decoded?['autoCheckAppUpdates'];
+      if (value is bool) {
+        return value;
+      }
+      final normalized = '${value ?? ''}'.trim().toLowerCase();
+      if (normalized == 'false' || normalized == '0') {
+        return false;
+      }
+      if (normalized == 'true' || normalized == '1') {
+        return true;
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> saveAutoCheckAppUpdates(bool value) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['autoCheckAppUpdates'] = value;
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
+  Future<bool> loadUseGithubMirrorForDownloads() async {
+    try {
+      final decoded = await _loadSettings();
+      final value = decoded?['useGithubMirrorForDownloads'];
+      if (value is bool) {
+        return value;
+      }
+      final normalized = '${value ?? ''}'.trim().toLowerCase();
+      if (normalized == 'false' || normalized == '0') {
+        return false;
+      }
+      if (normalized == 'true' || normalized == '1') {
+        return true;
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> saveUseGithubMirrorForDownloads(bool value) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['useGithubMirrorForDownloads'] = value;
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
+  Future<String> loadGithubMirrorBaseUrl() async {
+    try {
+      final decoded = await _loadSettings();
+      final value = '${decoded?['githubMirrorBaseUrl'] ?? ''}'.trim();
+      return value.isEmpty ? 'https://ghproxy.net/' : value;
+    } catch (_) {
+      return 'https://ghproxy.net/';
+    }
+  }
+
+  Future<void> saveGithubMirrorBaseUrl(String value) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      final trimmed = value.trim();
+      payload['githubMirrorBaseUrl'] = trimmed.isEmpty
+          ? 'https://ghproxy.net/'
+          : trimmed;
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
   Future<String?> loadCustomFontFamily() async {
     try {
       final decoded = await _loadSettings();

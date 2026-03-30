@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/package_models.dart';
+import 'app_update_service.dart';
 import 'package_adapters.dart';
 import 'package_manager_settings_store.dart';
 import 'package_latest_info_store.dart';
@@ -38,10 +39,15 @@ class PackagePanelController extends ChangeNotifier {
     Map<String, String>? initialCustomManagerIconPaths,
     Map<String, String>? initialCustomManagerDisplayNames,
     ThemeMode? initialThemeMode,
+    bool? initialAutoCheckAppUpdates,
+    bool? initialUseGithubMirrorForDownloads,
+    String? initialGithubMirrorBaseUrl,
     String? initialCustomFontFamily,
     List<String>? initialCustomFallbackFontFamilies,
+    AppUpdateService? appUpdateService,
     WingetPackageIconResolver? wingetIconResolver,
   }) : _shell = shell,
+       _appUpdateService = appUpdateService ?? const AppUpdateService(),
        _latestInfoStore = latestInfoStore ?? const PackageLatestInfoStore(),
        _settingsStore = settingsStore ?? const PackageManagerSettingsStore(),
        _snapshotStore = snapshotStore ?? const PackageSnapshotStore(),
@@ -70,6 +76,13 @@ class PackagePanelController extends ChangeNotifier {
          initialCustomManagerDisplayNames ?? const <String, String>{},
        ),
        _themeMode = initialThemeMode ?? ThemeMode.system,
+       _autoCheckAppUpdates = initialAutoCheckAppUpdates ?? true,
+       _useGithubMirrorForDownloads =
+           initialUseGithubMirrorForDownloads ?? true,
+       _githubMirrorBaseUrl =
+           initialGithubMirrorBaseUrl?.trim().isNotEmpty == true
+           ? initialGithubMirrorBaseUrl!.trim()
+           : defaultGithubMirrorBaseUrl,
        _customFontFamily = initialCustomFontFamily?.trim(),
        _customFallbackFontFamilies = List<String>.from(
          initialCustomFallbackFontFamilies ?? const <String>[],
@@ -82,6 +95,7 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   final ShellExecutor _shell;
+  final AppUpdateService _appUpdateService;
   final PackageLatestInfoStore _latestInfoStore;
   final PackageManagerSettingsStore _settingsStore;
   final PackageSnapshotStore _snapshotStore;
@@ -117,7 +131,11 @@ class PackagePanelController extends ChangeNotifier {
   bool _hasCachedSnapshots;
   bool _hasTriggeredInitialRefresh = false;
   bool _hasInitializedManagerVisibility;
+  bool _isCheckingAppUpdate = false;
   ThemeMode _themeMode;
+  bool _autoCheckAppUpdates;
+  bool _useGithubMirrorForDownloads;
+  String _githubMirrorBaseUrl;
 
   List<ManagerSnapshot> get snapshots =>
       List<ManagerSnapshot>.unmodifiable(_snapshots);
@@ -160,6 +178,14 @@ class PackagePanelController extends ChangeNotifier {
   bool get isSearchingPackages => _isSearchingPackages;
 
   ThemeMode get themeMode => _themeMode;
+
+  bool get autoCheckAppUpdates => _autoCheckAppUpdates;
+
+  bool get useGithubMirrorForDownloads => _useGithubMirrorForDownloads;
+
+  String get githubMirrorBaseUrl => _githubMirrorBaseUrl;
+
+  bool get isCheckingAppUpdate => _isCheckingAppUpdate;
 
   String? get customFontFamily =>
       _customFontFamily == null || _customFontFamily!.trim().isEmpty
@@ -504,6 +530,54 @@ class PackagePanelController extends ChangeNotifier {
     _themeMode = value;
     await _settingsStore.saveThemeModeName(value.name);
     notifyListeners();
+  }
+
+  Future<void> setAutoCheckAppUpdates(bool value) async {
+    _autoCheckAppUpdates = value;
+    await _settingsStore.saveAutoCheckAppUpdates(value);
+    notifyListeners();
+  }
+
+  Future<void> setUseGithubMirrorForDownloads(bool value) async {
+    _useGithubMirrorForDownloads = value;
+    await _settingsStore.saveUseGithubMirrorForDownloads(value);
+    notifyListeners();
+  }
+
+  Future<void> setGithubMirrorBaseUrl(String value) async {
+    final trimmed = value.trim();
+    _githubMirrorBaseUrl = trimmed.isEmpty
+        ? defaultGithubMirrorBaseUrl
+        : trimmed;
+    await _settingsStore.saveGithubMirrorBaseUrl(_githubMirrorBaseUrl);
+    notifyListeners();
+  }
+
+  Future<AppUpdateInfo> checkForAppUpdate() async {
+    if (_isCheckingAppUpdate) {
+      throw StateError('正在检查更新，请稍候。');
+    }
+
+    _isCheckingAppUpdate = true;
+    notifyListeners();
+    try {
+      return await _appUpdateService.checkForUpdate();
+    } finally {
+      _isCheckingAppUpdate = false;
+      notifyListeners();
+    }
+  }
+
+  Future<AppUpdateDownloadResult> downloadAppUpdateAsset(
+    AppReleaseAsset asset, {
+    void Function(AppUpdateDownloadProgress progress)? onProgress,
+  }) {
+    return _appUpdateService.downloadAsset(
+      asset,
+      onProgress: onProgress,
+      useGithubMirror: _useGithubMirrorForDownloads,
+      githubMirrorBaseUrl: _githubMirrorBaseUrl,
+    );
   }
 
   Future<void> setCustomFontFamily(String? value) async {
@@ -1596,6 +1670,10 @@ class PackagePanelController extends ChangeNotifier {
         await _settingsStore.loadThemeModeName(),
         fallback: _themeMode,
       );
+      _autoCheckAppUpdates = await _settingsStore.loadAutoCheckAppUpdates();
+      _useGithubMirrorForDownloads = await _settingsStore
+          .loadUseGithubMirrorForDownloads();
+      _githubMirrorBaseUrl = await _settingsStore.loadGithubMirrorBaseUrl();
       _customFontFamily = savedCustomFontFamily?.trim().isEmpty ?? true
           ? null
           : savedCustomFontFamily?.trim();
@@ -1614,6 +1692,12 @@ class PackagePanelController extends ChangeNotifier {
         .loadCustomManagerDisplayNames();
     final savedManagerOrderIds = await _settingsStore.loadManagerOrderIds();
     final savedThemeModeName = await _settingsStore.loadThemeModeName();
+    final savedAutoCheckAppUpdates = await _settingsStore
+        .loadAutoCheckAppUpdates();
+    final savedUseGithubMirrorForDownloads = await _settingsStore
+        .loadUseGithubMirrorForDownloads();
+    final savedGithubMirrorBaseUrl = await _settingsStore
+        .loadGithubMirrorBaseUrl();
     final savedCustomFontFamily = await _settingsStore.loadCustomFontFamily();
     final savedFallbackFonts = await _settingsStore
         .loadCustomFallbackFontFamilies();
@@ -1652,6 +1736,9 @@ class PackagePanelController extends ChangeNotifier {
     _applyManagerOrder(savedManagerOrderIds);
 
     _themeMode = _parseThemeModeName(savedThemeModeName);
+    _autoCheckAppUpdates = savedAutoCheckAppUpdates;
+    _useGithubMirrorForDownloads = savedUseGithubMirrorForDownloads;
+    _githubMirrorBaseUrl = savedGithubMirrorBaseUrl;
     _customFontFamily = savedCustomFontFamily?.trim().isEmpty ?? true
         ? null
         : savedCustomFontFamily?.trim();

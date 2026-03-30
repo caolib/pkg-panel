@@ -25,6 +25,12 @@ Future<void> main() async {
   final initialCustomManagerDisplayNames = await managerSettingsStore
       .loadCustomManagerDisplayNames();
   final initialThemeModeName = await managerSettingsStore.loadThemeModeName();
+  final initialAutoCheckAppUpdates = await managerSettingsStore
+      .loadAutoCheckAppUpdates();
+  final initialUseGithubMirrorForDownloads = await managerSettingsStore
+      .loadUseGithubMirrorForDownloads();
+  final initialGithubMirrorBaseUrl = await managerSettingsStore
+      .loadGithubMirrorBaseUrl();
   final initialCustomFontFamily = await managerSettingsStore
       .loadCustomFontFamily();
   final initialCustomFallbackFontFamilies = await managerSettingsStore
@@ -52,6 +58,9 @@ Future<void> main() async {
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
     },
+    initialAutoCheckAppUpdates: initialAutoCheckAppUpdates,
+    initialUseGithubMirrorForDownloads: initialUseGithubMirrorForDownloads,
+    initialGithubMirrorBaseUrl: initialGithubMirrorBaseUrl,
     initialCustomFontFamily: initialCustomFontFamily,
     initialCustomFallbackFontFamilies: initialCustomFallbackFontFamilies,
   );

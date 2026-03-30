@@ -2695,6 +2695,24 @@ class _MemorySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveCustomManagerDisplayNames(
     Map<String, String> displayNames,
   ) async {}
+
+  @override
+  Future<bool> loadAutoCheckAppUpdates() async => true;
+
+  @override
+  Future<void> saveAutoCheckAppUpdates(bool value) async {}
+
+  @override
+  Future<bool> loadUseGithubMirrorForDownloads() async => true;
+
+  @override
+  Future<void> saveUseGithubMirrorForDownloads(bool value) async {}
+
+  @override
+  Future<String> loadGithubMirrorBaseUrl() async => 'https://ghproxy.net/';
+
+  @override
+  Future<void> saveGithubMirrorBaseUrl(String value) async {}
 }
 
 class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
@@ -2758,6 +2776,24 @@ class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveCustomManagerDisplayNames(
     Map<String, String> displayNames,
   ) async {}
+
+  @override
+  Future<bool> loadAutoCheckAppUpdates() async => true;
+
+  @override
+  Future<void> saveAutoCheckAppUpdates(bool value) async {}
+
+  @override
+  Future<bool> loadUseGithubMirrorForDownloads() async => true;
+
+  @override
+  Future<void> saveUseGithubMirrorForDownloads(bool value) async {}
+
+  @override
+  Future<String> loadGithubMirrorBaseUrl() async => 'https://ghproxy.net/';
+
+  @override
+  Future<void> saveGithubMirrorBaseUrl(String value) async {}
 }
 
 class _MemoryLatestInfoStore extends PackageLatestInfoStore {
