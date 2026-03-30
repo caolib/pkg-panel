@@ -10,6 +10,8 @@ import 'package_snapshot_store.dart';
 import 'shell_executor.dart';
 import 'winget_package_icon_resolver.dart';
 
+const String allFilterId = '__all__';
+const String updateFilterId = '__updates__';
 const String _nodeRegistrySearchGroupId = 'node_registry';
 const List<String> _nodeRegistrySearchPriority = <String>['npm', 'pnpm'];
 const List<String> _nodeRegistryInstallPriority = <String>[
@@ -29,6 +31,7 @@ class PackagePanelController extends ChangeNotifier {
     PackageSnapshotStore? snapshotStore,
     Map<String, PersistedPackageLatestInfo>? initialLatestInfo,
     Set<String>? initialVisibleManagerIds,
+    List<HomeFilterGroup>? initialHomeFilterGroups,
     List<String>? initialManagerOrderIds,
     Map<String, bool>? initialManagerAvailability,
     Set<String>? initialManuallyHiddenManagerIds,
@@ -48,6 +51,7 @@ class PackagePanelController extends ChangeNotifier {
          initialLatestInfo ?? const <String, PersistedPackageLatestInfo>{},
        ),
        _adapters = List<PackageManagerAdapter>.from(adapters),
+       _homeFilterGroups = _normalizeHomeFilterGroups(initialHomeFilterGroups),
        _snapshots = _normalizeSnapshots(adapters, initialSnapshots),
        _visibleManagerIds = Set<String>.from(
          initialVisibleManagerIds ??
@@ -84,6 +88,7 @@ class PackagePanelController extends ChangeNotifier {
   final WingetPackageIconResolver _wingetIconResolver;
   final Map<String, PersistedPackageLatestInfo> _latestInfo;
   final List<PackageManagerAdapter> _adapters;
+  final List<HomeFilterGroup> _homeFilterGroups;
   final List<ManagerSnapshot> _snapshots;
   final List<ActivityEntry> _activity = <ActivityEntry>[];
   final Set<String> _runningCommands = <String>{};
@@ -145,8 +150,7 @@ class PackagePanelController extends ChangeNotifier {
   bool get isRefreshingManagerAvailability => _isRefreshingManagerAvailability;
 
   bool get isRefreshingCurrentSelection {
-    final managerId = _selectedManagerId;
-    if (managerId == null) {
+    if (_selectedHomeFilterGroup != null || _selectedManagerId == null) {
       return _isRefreshingAll;
     }
     return selectedManagerSnapshot?.loadState == ManagerLoadState.loading;
@@ -195,7 +199,9 @@ class PackagePanelController extends ChangeNotifier {
   );
 
   List<ManagedPackage> get visiblePackages {
-    final selectedSnapshots = _selectedManagerId == null
+    final selectedGroup = _selectedHomeFilterGroup;
+    final selectedSnapshots =
+        _selectedManagerId == null || selectedGroup != null
         ? visibleSnapshots
         : _snapshots.where(
             (snapshot) => snapshot.manager.id == _selectedManagerId,
@@ -205,6 +211,12 @@ class PackagePanelController extends ChangeNotifier {
     final packages = selectedSnapshots
         .expand((snapshot) => snapshot.packages)
         .where((package) {
+          if (selectedGroup != null && !_homeFilterGroupMatchesPackage(
+            selectedGroup,
+            package,
+          )) {
+            return false;
+          }
           if (query.isEmpty) {
             return true;
           }
@@ -231,7 +243,7 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   ManagerSnapshot? get selectedManagerSnapshot {
-    if (_selectedManagerId == null) {
+    if (_selectedManagerId == null || _selectedHomeFilterGroup != null) {
       return null;
     }
 
@@ -249,11 +261,22 @@ class PackagePanelController extends ChangeNotifier {
 
   PackageManagerAdapter? get selectedAdapter {
     final managerId = _selectedManagerId;
-    if (managerId == null) {
+    if (managerId == null || _selectedHomeFilterGroup != null) {
       return null;
     }
     return _adapterFor(managerId);
   }
+
+  HomeFilterGroup? get selectedHomeFilterGroup {
+    return _selectedHomeFilterGroup;
+  }
+
+  List<HomeFilterGroup> get homeFilterGroups =>
+      List<HomeFilterGroup>.unmodifiable(_homeFilterGroups);
+
+  List<HomeFilterGroup> get visibleHomeFilterGroups => _homeFilterGroups
+      .where((group) => group.isVisible)
+      .toList(growable: false);
 
   bool get canBatchCheckLatestForSelectedManager {
     final snapshot = selectedManagerSnapshot;
@@ -371,6 +394,8 @@ class PackagePanelController extends ChangeNotifier {
   bool isManagerAvailable(String managerId) =>
       _managerAvailability[managerId] ?? false;
 
+  bool isHomeFilterGroupId(String id) => _homeFilterGroupById(id) != null;
+
   List<PackageManagerVisibilityState> get managerVisibilityStates => _adapters
       .map(
         (adapter) => PackageManagerVisibilityState(
@@ -412,9 +437,23 @@ class PackagePanelController extends ChangeNotifier {
   String displayNameForManagerId(String managerId) {
     return customManagerDisplayName(managerId) ??
         _adapters
-            .firstWhere((adapter) => adapter.definition.id == managerId)
-            .definition
-            .displayName;
+        .firstWhere((adapter) => adapter.definition.id == managerId)
+        .definition
+        .displayName;
+  }
+
+  String displayNameForHomeFilterGroup(String groupId) {
+    final group = _homeFilterGroupById(groupId);
+    if (group == null) {
+      return groupId;
+    }
+    return group.displayName;
+  }
+
+  String? iconPathForHomeFilterGroup(String groupId) {
+    final group = _homeFilterGroupById(groupId);
+    final value = group?.iconPath?.trim();
+    return value == null || value.isEmpty ? null : value;
   }
 
   String displayNameForPackage(ManagedPackage package) {
@@ -748,7 +787,7 @@ class PackagePanelController extends ChangeNotifier {
 
   Future<void> refreshCurrentSelection() async {
     final managerId = _selectedManagerId;
-    if (managerId == null) {
+    if (managerId == null || _selectedHomeFilterGroup != null) {
       await loadAll();
       return;
     }
@@ -815,11 +854,28 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   void selectManager(String? managerId) {
-    if (managerId != null &&
-        (!isManagerVisible(managerId) ||
-            !_supportsInstalledPackagesById(managerId))) {
+    if (managerId == null || managerId == allFilterId) {
+      _selectedManagerId = null;
+      _realignSelection();
+      notifyListeners();
       return;
     }
+
+    if (isHomeFilterGroupId(managerId)) {
+      final group = _homeFilterGroupById(managerId);
+      if (group == null || !group.isVisible) {
+        return;
+      }
+      _selectedManagerId = managerId;
+      _realignSelection();
+      notifyListeners();
+      return;
+    }
+
+    if (!isManagerVisible(managerId) || !_supportsInstalledPackagesById(managerId)) {
+      return;
+    }
+
     _selectedManagerId = managerId;
     _realignSelection();
     notifyListeners();
@@ -832,31 +888,129 @@ class PackagePanelController extends ChangeNotifier {
     } else {
       _visibleManagerIds.remove(managerId);
       _manuallyHiddenManagerIds.add(managerId);
-      final snapshot = _snapshotFor(managerId);
-      _setSnapshot(
-        managerId,
-        snapshot.copyWith(
-          packages: const <ManagedPackage>[],
-          loadState: ManagerLoadState.idle,
-          clearError: true,
-        ),
-      );
-      _clearPackageIconsForManager(managerId);
+      if (!isHomeFilterGroupId(managerId)) {
+        final snapshot = _snapshotFor(managerId);
+        _setSnapshot(
+          managerId,
+          snapshot.copyWith(
+            packages: const <ManagedPackage>[],
+            loadState: ManagerLoadState.idle,
+            clearError: true,
+          ),
+        );
+        _clearPackageIconsForManager(managerId);
+      }
     }
 
     await _settingsStore.saveVisibleManagerIds(_visibleManagerIds);
     await _settingsStore.saveManuallyHiddenManagerIds(_manuallyHiddenManagerIds);
 
-    if (_selectedManagerId != null && !isManagerVisible(_selectedManagerId!)) {
+    if (_selectedManagerId != null &&
+        !isHomeFilterGroupId(_selectedManagerId!) &&
+        !isManagerVisible(_selectedManagerId!)) {
       _selectedManagerId = null;
     }
 
     _realignSelection();
     notifyListeners();
 
-    if (isVisible && _hasTriggeredInitialRefresh) {
+    if (isVisible &&
+        _hasTriggeredInitialRefresh &&
+        !isHomeFilterGroupId(managerId)) {
       await refreshManager(managerId);
     }
+  }
+
+  Future<void> setHomeFilterGroupVisibility(String groupId, bool isVisible) async {
+    final index = _indexOfHomeFilterGroup(groupId);
+    if (index < 0) {
+      return;
+    }
+
+    _homeFilterGroups[index] = _homeFilterGroups[index].copyWith(
+      isVisible: isVisible,
+    );
+    if (_selectedManagerId == groupId && !isVisible) {
+      _selectedManagerId = null;
+    }
+    _realignSelection();
+    await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
+    notifyListeners();
+  }
+
+  Future<void> reorderHomeFilterGroup(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= _homeFilterGroups.length) {
+      return;
+    }
+    if (newIndex < 0 || newIndex >= _homeFilterGroups.length) {
+      return;
+    }
+
+    final group = _homeFilterGroups.removeAt(oldIndex);
+    _homeFilterGroups.insert(newIndex, group);
+    await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
+    notifyListeners();
+  }
+
+  Future<void> createHomeFilterGroup({
+    required String displayName,
+    String? iconPath,
+    List<String> managerIds = const <String>[],
+    List<String> packageKeys = const <String>[],
+  }) async {
+    final normalizedName = displayName.trim();
+    if (normalizedName.isEmpty) {
+      return;
+    }
+
+    _homeFilterGroups.add(
+      HomeFilterGroup(
+        id: 'group_${DateTime.now().microsecondsSinceEpoch}',
+        kind: HomeFilterGroupKind.custom,
+        displayName: normalizedName,
+        iconPath: _normalizeOptionalText(iconPath),
+        managerIds: _normalizeStringList(managerIds),
+        packageKeys: _normalizeStringList(packageKeys),
+      ),
+    );
+    await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
+    notifyListeners();
+  }
+
+  Future<void> updateHomeFilterGroup(HomeFilterGroup nextGroup) async {
+    final index = _indexOfHomeFilterGroup(nextGroup.id);
+    if (index < 0) {
+      return;
+    }
+
+    final normalizedName = nextGroup.displayName.trim();
+    if (normalizedName.isEmpty) {
+      return;
+    }
+
+    _homeFilterGroups[index] = nextGroup.copyWith(
+      displayName: normalizedName,
+      iconPath: _normalizeOptionalText(nextGroup.iconPath),
+      managerIds: _normalizeStringList(nextGroup.managerIds),
+      packageKeys: _normalizeStringList(nextGroup.packageKeys),
+    );
+    await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
+    notifyListeners();
+  }
+
+  Future<void> deleteHomeFilterGroup(String groupId) async {
+    final index = _indexOfHomeFilterGroup(groupId);
+    if (index < 0 || _homeFilterGroups[index].isBuiltIn) {
+      return;
+    }
+
+    _homeFilterGroups.removeAt(index);
+    if (_selectedManagerId == groupId) {
+      _selectedManagerId = null;
+    }
+    _realignSelection();
+    await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
+    notifyListeners();
   }
 
   Future<void> refreshManagerAvailability() async {
@@ -870,7 +1024,11 @@ class PackagePanelController extends ChangeNotifier {
     try {
       final availability = await _detectManagerAvailability();
       final managersToDisable = _visibleManagerIds
-          .where((managerId) => !(availability[managerId] ?? false))
+          .where(
+            (managerId) =>
+                !isHomeFilterGroupId(managerId) &&
+                !(availability[managerId] ?? false),
+          )
           .toList(growable: false);
 
       _managerAvailability
@@ -891,7 +1049,9 @@ class PackagePanelController extends ChangeNotifier {
         _clearPackageIconsForManager(managerId);
       }
 
-      if (_selectedManagerId != null && !isManagerVisible(_selectedManagerId!)) {
+      if (_selectedManagerId != null &&
+          !isHomeFilterGroupId(_selectedManagerId!) &&
+          !isManagerVisible(_selectedManagerId!)) {
         _selectedManagerId = null;
       }
 
@@ -1517,10 +1677,16 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   void _realignSelection() {
-    if (_selectedManagerId != null &&
-        (!isManagerVisible(_selectedManagerId!) ||
-            !_supportsInstalledPackagesById(_selectedManagerId!))) {
-      _selectedManagerId = null;
+    if (_selectedManagerId != null) {
+      final selectedGroup = _selectedHomeFilterGroup;
+      if (selectedGroup != null) {
+        if (!selectedGroup.isVisible) {
+          _selectedManagerId = null;
+        }
+      } else if (!isManagerVisible(_selectedManagerId!) ||
+          !_supportsInstalledPackagesById(_selectedManagerId!)) {
+        _selectedManagerId = null;
+      }
     }
     final packages = visiblePackages;
     if (packages.isEmpty) {
@@ -1939,6 +2105,109 @@ class PackagePanelController extends ChangeNotifier {
           );
         })
         .toList(growable: true);
+  }
+
+  HomeFilterGroup? get _selectedHomeFilterGroup {
+    final selectedId = _selectedManagerId;
+    if (selectedId == null) {
+      return null;
+    }
+    return _homeFilterGroupById(selectedId);
+  }
+
+  HomeFilterGroup? _homeFilterGroupById(String id) {
+    for (final group in _homeFilterGroups) {
+      if (group.id == id) {
+        return group;
+      }
+    }
+    return null;
+  }
+
+  int _indexOfHomeFilterGroup(String id) {
+    for (var i = 0; i < _homeFilterGroups.length; i++) {
+      if (_homeFilterGroups[i].id == id) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  bool _homeFilterGroupMatchesPackage(
+    HomeFilterGroup group,
+    ManagedPackage package,
+  ) {
+    return switch (group.kind) {
+      HomeFilterGroupKind.all => true,
+      HomeFilterGroupKind.updates => package.hasUpdate,
+      HomeFilterGroupKind.custom =>
+        group.managerIds.contains(package.managerId) ||
+        group.packageKeys.contains(package.key),
+    };
+  }
+
+  static List<HomeFilterGroup> _normalizeHomeFilterGroups(
+    List<HomeFilterGroup>? initialGroups,
+  ) {
+    final groupsById = <String, HomeFilterGroup>{
+      allFilterId: const HomeFilterGroup(
+        id: allFilterId,
+        kind: HomeFilterGroupKind.all,
+        displayName: '全部',
+      ),
+      updateFilterId: const HomeFilterGroup(
+        id: updateFilterId,
+        kind: HomeFilterGroupKind.updates,
+        displayName: '更新',
+      ),
+    };
+
+    final orderedIds = <String>[];
+    for (final group in initialGroups ?? const <HomeFilterGroup>[]) {
+      groupsById[group.id] = HomeFilterGroup(
+        id: group.id,
+        kind: group.kind,
+        displayName: group.displayName.trim(),
+        isVisible: group.isVisible,
+        iconPath: _normalizeOptionalText(group.iconPath),
+        managerIds: _normalizeStringList(group.managerIds),
+        packageKeys: _normalizeStringList(group.packageKeys),
+      );
+      if (!orderedIds.contains(group.id)) {
+        orderedIds.add(group.id);
+      }
+    }
+
+    for (final builtinId in <String>[allFilterId, updateFilterId]) {
+      if (!orderedIds.contains(builtinId)) {
+        orderedIds.insert(
+          builtinId == allFilterId ? 0 : orderedIds.contains(allFilterId) ? 1 : 0,
+          builtinId,
+        );
+      }
+    }
+
+    return orderedIds
+        .map((id) => groupsById[id]!)
+        .toList(growable: true);
+  }
+
+  static String? _normalizeOptionalText(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  static List<String> _normalizeStringList(List<String> values) {
+    final normalized = <String>[];
+    final seen = <String>{};
+    for (final value in values) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) {
+        continue;
+      }
+      normalized.add(trimmed);
+    }
+    return normalized;
   }
 }
 

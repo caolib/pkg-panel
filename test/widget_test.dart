@@ -215,6 +215,204 @@ void main() {
     );
   });
 
+  test('update filter shows only packages with updates and survives realignment', () async {
+    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'npm',
+    );
+    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'pip',
+    );
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm', 'pip'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pip': true,
+      },
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: npmAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+              latestVersion: '9.1.0',
+            ),
+          ],
+        ),
+        ManagerSnapshot(
+          manager: pipAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'ruff',
+              managerId: 'pip',
+              managerName: 'pip',
+              version: '0.8.6',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager(updateFilterId);
+
+    expect(controller.selectedManagerId, updateFilterId);
+    expect(
+      controller.visiblePackages.map((package) => package.name).toList(),
+      <String>['eslint'],
+    );
+
+    await controller.setManagerVisibility('pip', false);
+
+    expect(controller.selectedManagerId, updateFilterId);
+    expect(
+      controller.visiblePackages.map((package) => package.name).toList(),
+      <String>['eslint'],
+    );
+  });
+
+  test('custom home filter group combines manager and package membership', () async {
+    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'npm',
+    );
+    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'pip',
+    );
+    final pipPackage = ManagedPackage(
+      name: 'ruff',
+      managerId: 'pip',
+      managerName: 'pip',
+      version: '0.8.6',
+    );
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm', 'pip'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pip': true,
+      },
+      initialHomeFilterGroups: <HomeFilterGroup>[
+        HomeFilterGroup(
+          id: 'dev_tools',
+          kind: HomeFilterGroupKind.custom,
+          displayName: '开发工具',
+          managerIds: <String>['npm'],
+          packageKeys: <String>[pipPackage.key],
+        ),
+      ],
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: npmAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+            ),
+          ],
+        ),
+        ManagerSnapshot(
+          manager: pipAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: <ManagedPackage>[pipPackage],
+        ),
+      ],
+    );
+
+    controller.selectManager('dev_tools');
+
+    expect(
+      controller.visiblePackages.map((package) => package.name).toList(),
+      <String>['eslint', 'ruff'],
+    );
+  });
+
+  test('refresh current selection reloads all managers for update filter', () async {
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      'npm ls -g --depth=0 --json': const ShellResult(
+        exitCode: 0,
+        stdout: '{"dependencies":{"eslint":{"version":"9.1.0"}}}',
+        stderr: '',
+      ),
+      'pip list --format=json': const ShellResult(
+        exitCode: 0,
+        stdout: '[{"name":"ruff","version":"0.8.6"}]',
+        stderr: '',
+      ),
+    });
+    final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'npm',
+    );
+    final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+      (adapter) => adapter.definition.id == 'pip',
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+      latestInfoStore: const _MemoryLatestInfoStore(),
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm', 'pip'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pip': true,
+      },
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: npmAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+              latestVersion: '9.1.0',
+            ),
+          ],
+        ),
+        ManagerSnapshot(
+          manager: pipAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'ruff',
+              managerId: 'pip',
+              managerName: 'pip',
+              version: '0.8.5',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    controller.selectManager(updateFilterId);
+    await controller.refreshCurrentSelection();
+
+    expect(
+      shell.commands.where((command) => command == 'npm ls -g --depth=0 --json'),
+      hasLength(1),
+    );
+    expect(
+      shell.commands.where((command) => command == 'pip list --format=json'),
+      hasLength(1),
+    );
+  });
+
   test('shell executor refreshes Windows PATH for command resolution and child processes', () async {
     if (!Platform.isWindows) {
       return;
@@ -411,6 +609,7 @@ void main() {
     expect(find.text('外观'), findsOneWidget);
     expect(find.text('npm'), findsWidgets);
     expect(find.text('choco'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, '添加组'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '刷新状态'), findsOneWidget);
     expect(find.text('重命名'), findsNothing);
     expect(find.text('自定义图标'), findsNothing);
@@ -421,6 +620,70 @@ void main() {
 
     expect(find.textContaining('编辑 '), findsOneWidget);
     expect(find.text('选择图标'), findsOneWidget);
+  });
+
+  testWidgets('manager filter bar includes updates chip and filters package list', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialVisibleManagerIds: const <String>{'npm', 'pip'},
+      initialManagerAvailability: const <String, bool>{
+        'npm': true,
+        'pip': true,
+      },
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'npm')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+              latestVersion: '9.1.0',
+            ),
+          ],
+        ),
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'pip')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'ruff',
+              managerId: 'pip',
+              managerName: 'pip',
+              version: '0.8.6',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('更新 (1)'), findsOneWidget);
+    expect(find.text('eslint'), findsOneWidget);
+    expect(find.text('ruff'), findsOneWidget);
+
+    await tester.tap(find.text('更新 (1)'));
+    await tester.pumpAndSettle();
+
+    expect(controller.selectedManagerId, updateFilterId);
+    expect(find.text('eslint'), findsOneWidget);
+    expect(find.text('ruff'), findsNothing);
   });
 
   testWidgets('install page uses a single menu item and defaults npm to latest', (

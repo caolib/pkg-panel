@@ -709,16 +709,39 @@ class _ManagerFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final updateCount = controller.visibleSnapshots
+        .expand((snapshot) => snapshot.packages)
+        .where((package) => package.hasUpdate)
+        .length;
+
     return Wrap(
       spacing: 10,
       runSpacing: 10,
       children: <Widget>[
-        FilterChip(
-          selected: controller.selectedManagerId == null,
-          showCheckmark: false,
-          label: const Text('全部'),
-          onSelected: (_) => controller.selectManager(null),
-        ),
+        ...controller.visibleHomeFilterGroups.map((group) {
+          final label = group.id == updateFilterId && updateCount > 0
+              ? '${group.displayName} ($updateCount)'
+              : group.displayName;
+          final iconPath = controller.iconPathForHomeFilterGroup(group.id);
+          final avatar = iconPath == null
+              ? null
+              : _ManagerIcon(
+                  managerId: group.id,
+                  customIconPath: iconPath,
+                  fallbackIcon: Icons.filter_alt_outlined,
+                  fallbackColor: Theme.of(context).colorScheme.primary,
+                  showFallbackWhenNoAsset: false,
+                );
+          return FilterChip(
+            selected: group.id == allFilterId
+                ? controller.selectedManagerId == null
+                : controller.selectedManagerId == group.id,
+            showCheckmark: false,
+            label: Text(label),
+            avatar: avatar,
+            onSelected: (_) => controller.selectManager(group.id),
+          );
+        }),
         ...controller.visibleSnapshots.map((snapshot) {
           final label = switch (snapshot.loadState) {
             ManagerLoadState.error =>
@@ -1492,6 +1515,7 @@ class _ManagerIcon extends StatelessWidget {
     required this.fallbackColor,
     this.customIconPath,
     this.size = 18,
+    this.showFallbackWhenNoAsset = true,
   });
 
   final String managerId;
@@ -1499,6 +1523,7 @@ class _ManagerIcon extends StatelessWidget {
   final Color fallbackColor;
   final String? customIconPath;
   final double size;
+  final bool showFallbackWhenNoAsset;
 
   @override
   Widget build(BuildContext context) {
@@ -1539,6 +1564,9 @@ class _ManagerIcon extends StatelessWidget {
     final assetPath = _managerSvgAsset(managerId);
     final iconFallback = Icon(fallbackIcon, size: size, color: fallbackColor);
     if (assetPath == null) {
+      if (!showFallbackWhenNoAsset) {
+        return const SizedBox.shrink();
+      }
       return iconFallback;
     }
 
@@ -2422,6 +2450,18 @@ class PackageSettingsPage extends StatelessWidget {
     return parts.join(' · ');
   }
 
+  String _homeFilterGroupSummary(HomeFilterGroup group) {
+    return switch (group.kind) {
+      HomeFilterGroupKind.all => '显示全部本地包',
+      HomeFilterGroupKind.updates => '仅显示有更新的本地包',
+      HomeFilterGroupKind.custom => [
+        if (group.managerIds.isNotEmpty) '${group.managerIds.length} 个包管理器',
+        if (group.packageKeys.isNotEmpty) '${group.packageKeys.length} 个单包',
+        if (group.managerIds.isEmpty && group.packageKeys.isEmpty) '未配置成员',
+      ].join(' · '),
+    };
+  }
+
   Future<void> _editManager(
     BuildContext context,
     PackageManagerVisibilityState state,
@@ -2447,6 +2487,94 @@ class PackageSettingsPage extends StatelessWidget {
           content: Text(
             '${result.managerName} 已更新${result.changedParts.join('、')}。',
           ),
+        ),
+      );
+  }
+
+  Future<void> _addHomeFilterGroup(BuildContext context) async {
+    final draft = await showDialog<_HomeFilterGroupDraft>(
+      context: context,
+      builder: (dialogContext) => _HomeFilterGroupEditDialog(
+        controller: controller,
+        filePicker: filePicker,
+      ),
+    );
+    if (draft == null || !context.mounted) {
+      return;
+    }
+
+    await controller.createHomeFilterGroup(
+      displayName: draft.displayName,
+      iconPath: draft.iconPath,
+      managerIds: draft.managerIds,
+      packageKeys: draft.packageKeys,
+    );
+
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('${draft.displayName} 已添加。'),
+        ),
+      );
+  }
+
+  Future<void> _editHomeFilterGroup(
+    BuildContext context,
+    HomeFilterGroup group,
+  ) async {
+    final result = await showDialog<_HomeFilterGroupDraft>(
+      context: context,
+      builder: (dialogContext) => _HomeFilterGroupEditDialog(
+        controller: controller,
+        group: group,
+        filePicker: filePicker,
+      ),
+    );
+    if (result == null || !context.mounted) {
+      return;
+    }
+
+    if (result.deleteGroup) {
+      await controller.deleteHomeFilterGroup(group.id);
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('${group.displayName} 已删除。'),
+          ),
+        );
+      return;
+    }
+
+    await controller.updateHomeFilterGroup(
+      group.copyWith(
+        displayName: result.displayName,
+        iconPath: result.iconPath,
+        clearIconPath: result.iconPath == null,
+        managerIds: result.managerIds,
+        packageKeys: result.packageKeys,
+      ),
+    );
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('${result.displayName} 已更新。'),
         ),
       );
   }
@@ -2635,6 +2763,7 @@ class PackageSettingsPage extends StatelessWidget {
             child: AnimatedBuilder(
               animation: controller,
               builder: (context, _) {
+                final homeFilterGroups = controller.homeFilterGroups;
                 final states = controller.managerVisibilityStates;
                 return TabBarView(
                   children: <Widget>[
@@ -2648,12 +2777,18 @@ class PackageSettingsPage extends StatelessWidget {
                               child: Padding(
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(
-                                  '刷新后未安装的包管理器会被禁用',
+                                  '可以自定义主页筛选组；刷新后未安装的包管理器会被禁用',
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ),
+                            ),
+                            const SizedBox(width: 12),
+                            FilledButton.tonalIcon(
+                              onPressed: () => _addHomeFilterGroup(context),
+                              icon: const Icon(Icons.add),
+                              label: const Text('添加组'),
                             ),
                             const SizedBox(width: 12),
                             FilledButton.tonalIcon(
@@ -2676,6 +2811,260 @@ class PackageSettingsPage extends StatelessWidget {
                               label: const Text('刷新状态'),
                             ),
                           ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Column(
+                            children: <Widget>[
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerLowest,
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(20),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: <Widget>[
+                                    Expanded(
+                                      flex: 4,
+                                      child: Text(
+                                        '筛选组',
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 5,
+                                      child: Text(
+                                        '说明',
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        '启用',
+                                        textAlign: TextAlign.right,
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              ReorderableListView.builder(
+                                shrinkWrap: true,
+                                buildDefaultDragHandles: false,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: homeFilterGroups.length,
+                                onReorder: (oldIndex, newIndex) {
+                                  if (newIndex > oldIndex) {
+                                    newIndex -= 1;
+                                  }
+                                  controller.reorderHomeFilterGroup(
+                                    oldIndex,
+                                    newIndex,
+                                  );
+                                },
+                                itemBuilder: (context, index) {
+                                  final group = homeFilterGroups[index];
+                                  final iconPath = controller
+                                      .iconPathForHomeFilterGroup(group.id);
+                                  final hasIcon = iconPath != null;
+                                  return DecoratedBox(
+                                    key: ValueKey(group.id),
+                                    decoration: BoxDecoration(
+                                      border: index == homeFilterGroups.length - 1
+                                          ? null
+                                          : Border(
+                                              bottom: BorderSide(
+                                                color: theme
+                                                    .colorScheme
+                                                    .outlineVariant,
+                                              ),
+                                            ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 10,
+                                      ),
+                                      child: Row(
+                                        children: <Widget>[
+                                          MouseRegion(
+                                            cursor: SystemMouseCursors.grab,
+                                            child: ReorderableDragStartListener(
+                                              index: index,
+                                              child: Padding(
+                                                padding: const EdgeInsets.only(
+                                                  right: 12,
+                                                ),
+                                                child: Icon(
+                                                  Icons.drag_indicator,
+                                                  color: theme
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 4,
+                                            child: Row(
+                                              children: <Widget>[
+                                                if (hasIcon)
+                                                  _ManagerIcon(
+                                                    managerId: group.id,
+                                                    customIconPath: iconPath,
+                                                    fallbackIcon:
+                                                        Icons.filter_alt_outlined,
+                                                    fallbackColor:
+                                                        theme.colorScheme.primary,
+                                                    size: 20,
+                                                    showFallbackWhenNoAsset:
+                                                        false,
+                                                  ),
+                                                if (hasIcon)
+                                                  const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment.start,
+                                                    children: <Widget>[
+                                                      Text(
+                                                        group.displayName,
+                                                        style: theme
+                                                            .textTheme
+                                                            .titleMedium
+                                                            ?.copyWith(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                            ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        group.kind ==
+                                                                HomeFilterGroupKind
+                                                                    .custom
+                                                            ? '自定义组'
+                                                            : '内置组',
+                                                        style: theme
+                                                            .textTheme
+                                                            .bodySmall
+                                                            ?.copyWith(
+                                                              color: theme
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                            ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 5,
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: <Widget>[
+                                                Text(
+                                                  group.isVisible
+                                                      ? '主页显示中'
+                                                      : '主页已隐藏',
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodyMedium
+                                                      ?.copyWith(
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color: group.isVisible
+                                                            ? theme
+                                                                  .colorScheme
+                                                                  .primary
+                                                            : theme
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                      ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  _homeFilterGroupSummary(group),
+                                                  style: theme
+                                                      .textTheme
+                                                      .bodySmall
+                                                      ?.copyWith(
+                                                        color: theme
+                                                            .colorScheme
+                                                            .onSurfaceVariant,
+                                                      ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Align(
+                                              alignment: Alignment.centerRight,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.end,
+                                                children: <Widget>[
+                                                  OutlinedButton.icon(
+                                                    onPressed: () =>
+                                                        _editHomeFilterGroup(
+                                                          context,
+                                                          group,
+                                                        ),
+                                                    icon: const Icon(
+                                                      Icons.edit_outlined,
+                                                      size: 18,
+                                                    ),
+                                                    label: const Text('编辑'),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Switch(
+                                                    value: group.isVisible,
+                                                    onChanged: (value) =>
+                                                        controller
+                                                            .setHomeFilterGroupVisibility(
+                                                              group.id,
+                                                              value,
+                                                            ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 12),
                         Container(
@@ -3112,6 +3501,358 @@ class PackageSettingsPage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _HomeFilterGroupDraft {
+  const _HomeFilterGroupDraft({
+    required this.displayName,
+    required this.iconPath,
+    required this.managerIds,
+    required this.packageKeys,
+    this.deleteGroup = false,
+  });
+
+  final String displayName;
+  final String? iconPath;
+  final List<String> managerIds;
+  final List<String> packageKeys;
+  final bool deleteGroup;
+}
+
+class _HomeFilterGroupEditDialog extends StatefulWidget {
+  const _HomeFilterGroupEditDialog({
+    required this.controller,
+    required this.filePicker,
+    this.group,
+  });
+
+  final PackagePanelController controller;
+  final LocalFilePicker filePicker;
+  final HomeFilterGroup? group;
+
+  @override
+  State<_HomeFilterGroupEditDialog> createState() =>
+      _HomeFilterGroupEditDialogState();
+}
+
+class _HomeFilterGroupEditDialogState extends State<_HomeFilterGroupEditDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _packageSearchController;
+  late String? _selectedIconPath;
+  late Set<String> _selectedManagerIds;
+  late Set<String> _selectedPackageKeys;
+  bool _isSaving = false;
+
+  bool get _isCustomGroup =>
+      widget.group == null || widget.group!.kind == HomeFilterGroupKind.custom;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.group?.displayName ?? '',
+    );
+    _packageSearchController = TextEditingController();
+    _selectedIconPath = widget.group?.iconPath;
+    _selectedManagerIds = Set<String>.from(widget.group?.managerIds ?? const <String>{});
+    _selectedPackageKeys = Set<String>.from(widget.group?.packageKeys ?? const <String>{});
+    _packageSearchController.addListener(() {
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _packageSearchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickIcon() async {
+    final pickedPath = await widget.filePicker.pickManagerIconFile();
+    if (!mounted || pickedPath == null) {
+      return;
+    }
+    setState(() {
+      _selectedIconPath = pickedPath;
+    });
+  }
+
+  void _save() {
+    final displayName = _nameController.text.trim();
+    if (displayName.isEmpty) {
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _HomeFilterGroupDraft(
+        displayName: displayName,
+        iconPath: _selectedIconPath?.trim().isEmpty ?? true
+            ? null
+            : _selectedIconPath?.trim(),
+        managerIds: _selectedManagerIds.toList(growable: false),
+        packageKeys: _selectedPackageKeys.toList(growable: false),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final managerStates = widget.controller.managerVisibilityStates;
+    final packages = widget.controller.snapshots
+        .expand((snapshot) => snapshot.packages)
+        .toList(growable: false)
+      ..sort((a, b) {
+        final managerCompare = widget.controller
+            .displayNameForPackage(a)
+            .compareTo(widget.controller.displayNameForPackage(b));
+        if (managerCompare != 0) {
+          return managerCompare;
+        }
+        return a.name.compareTo(b.name);
+      });
+    final packageFilter = _packageSearchController.text.trim().toLowerCase();
+    final visiblePackages = packages.where((package) {
+      if (packageFilter.isEmpty) {
+        return true;
+      }
+      return [
+        package.name,
+        widget.controller.displayNameForPackage(package),
+        package.version,
+      ].join(' ').toLowerCase().contains(packageFilter);
+    }).toList(growable: false);
+    final hasIcon = _selectedIconPath != null && _selectedIconPath!.trim().isNotEmpty;
+
+    return AlertDialog(
+      title: Text(widget.group == null ? '添加筛选组' : '编辑 ${widget.group!.displayName}'),
+      content: SizedBox(
+        width: 720,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              TextField(
+                controller: _nameController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '组名称',
+                  border: OutlineInputBorder(),
+                  hintText: '例如 开发工具 / CLI / 常用',
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '图标',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerLowest,
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    if (hasIcon)
+                      _ManagerIcon(
+                        managerId: widget.group?.id ?? 'new_group',
+                        customIconPath: _selectedIconPath,
+                        fallbackIcon: Icons.filter_alt_outlined,
+                        fallbackColor: theme.colorScheme.primary,
+                        size: 20,
+                        showFallbackWhenNoAsset: false,
+                      ),
+                    if (hasIcon) const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _selectedIconPath ?? '未设置图标',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text('支持 svg、png、jpg、jpeg、webp、ico。'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  FilledButton.tonalIcon(
+                    onPressed: _isSaving ? null : _pickIcon,
+                    icon: const Icon(Icons.folder_open_outlined),
+                    label: Text(_selectedIconPath == null ? '选择图标' : '更换图标'),
+                  ),
+                  if (_selectedIconPath != null)
+                    TextButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () {
+                              setState(() {
+                                _selectedIconPath = null;
+                              });
+                            },
+                      child: const Text('移除图标'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (_isCustomGroup) ...<Widget>[
+                Text(
+                  '包含的包管理器',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: managerStates
+                      .map((state) {
+                        final selected = _selectedManagerIds.contains(
+                          state.manager.id,
+                        );
+                        return FilterChip(
+                          selected: selected,
+                          label: Text(
+                            widget.controller.displayNameForManagerId(
+                              state.manager.id,
+                            ),
+                          ),
+                          avatar: _ManagerIcon(
+                            managerId: state.manager.id,
+                            customIconPath: widget.controller.customManagerIconPath(
+                              state.manager.id,
+                            ),
+                            fallbackIcon: state.manager.icon,
+                            fallbackColor: state.manager.color,
+                          ),
+                          onSelected: (value) {
+                            setState(() {
+                              if (value) {
+                                _selectedManagerIds.add(state.manager.id);
+                              } else {
+                                _selectedManagerIds.remove(state.manager.id);
+                              }
+                            });
+                          },
+                        );
+                      })
+                      .toList(growable: false),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '包含的单个本地包',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _packageSearchController,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search),
+                    hintText: '搜索本地包',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  height: 260,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerLowest,
+                    border: Border.all(color: theme.colorScheme.outlineVariant),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: visiblePackages.isEmpty
+                      ? Center(
+                          child: Text(
+                            packageFilter.isEmpty ? '暂无本地包' : '没有匹配的包',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: visiblePackages.length,
+                          itemBuilder: (context, index) {
+                            final package = visiblePackages[index];
+                            final selected = _selectedPackageKeys.contains(
+                              package.key,
+                            );
+                            return CheckboxListTile(
+                              dense: true,
+                              value: selected,
+                              title: Text(package.name),
+                              subtitle: Text(
+                                '${widget.controller.displayNameForPackage(package)} · ${package.version}',
+                              ),
+                              onChanged: (value) {
+                                setState(() {
+                                  if (value ?? false) {
+                                    _selectedPackageKeys.add(package.key);
+                                  } else {
+                                    _selectedPackageKeys.remove(package.key);
+                                  }
+                                });
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ] else ...<Widget>[
+                Text(
+                  widget.group?.kind == HomeFilterGroupKind.all
+                      ? '这是内置“全部”筛选组，会显示所有本地包。'
+                      : '这是内置“更新”筛选组，会显示有更新的本地包。',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        if (widget.group != null && _isCustomGroup)
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(
+              const _HomeFilterGroupDraft(
+                displayName: '',
+                iconPath: null,
+                managerIds: <String>[],
+                packageKeys: <String>[],
+                deleteGroup: true,
+              ),
+            ),
+            child: const Text('删除组'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _isSaving ? null : _save,
+          child: const Text('保存'),
+        ),
+      ],
     );
   }
 }

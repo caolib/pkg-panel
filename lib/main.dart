@@ -16,6 +16,8 @@ Future<void> main() async {
   final initialLatestInfo = await latestInfoStore.load();
   final initialVisibleManagerIds = await managerSettingsStore
       .loadVisibleManagerIds();
+  final initialHomeFilterGroups = await managerSettingsStore
+      .loadHomeFilterGroups();
   final initialManagerOrderIds = await managerSettingsStore
       .loadManagerOrderIds();
   final initialCustomManagerIconPaths = await managerSettingsStore
@@ -41,6 +43,7 @@ Future<void> main() async {
     initialLatestInfo: initialLatestInfo,
     initialSnapshots: initialSnapshots,
     initialVisibleManagerIds: initialVisibleManagerIds,
+    initialHomeFilterGroups: initialHomeFilterGroups,
     initialManagerOrderIds: initialManagerOrderIds,
     initialCustomManagerIconPaths: initialCustomManagerIconPaths,
     initialCustomManagerDisplayNames: initialCustomManagerDisplayNames,

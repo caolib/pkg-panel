@@ -6,6 +6,8 @@ enum ManagerLoadState { idle, loading, ready, error }
 
 enum PackageAction { update, remove }
 
+enum HomeFilterGroupKind { all, updates, custom }
+
 class PackageManagerDefinition {
   const PackageManagerDefinition({
     required this.id,
@@ -261,6 +263,49 @@ class PackageManagerVisibilityState {
   final PackageManagerDefinition manager;
   final bool isVisible;
   final bool isAvailable;
+}
+
+class HomeFilterGroup {
+  const HomeFilterGroup({
+    required this.id,
+    required this.kind,
+    required this.displayName,
+    this.isVisible = true,
+    this.iconPath,
+    this.managerIds = const <String>[],
+    this.packageKeys = const <String>[],
+  });
+
+  final String id;
+  final HomeFilterGroupKind kind;
+  final String displayName;
+  final bool isVisible;
+  final String? iconPath;
+  final List<String> managerIds;
+  final List<String> packageKeys;
+
+  bool get isBuiltIn => kind != HomeFilterGroupKind.custom;
+
+  HomeFilterGroup copyWith({
+    String? id,
+    HomeFilterGroupKind? kind,
+    String? displayName,
+    bool? isVisible,
+    String? iconPath,
+    bool clearIconPath = false,
+    List<String>? managerIds,
+    List<String>? packageKeys,
+  }) {
+    return HomeFilterGroup(
+      id: id ?? this.id,
+      kind: kind ?? this.kind,
+      displayName: displayName ?? this.displayName,
+      isVisible: isVisible ?? this.isVisible,
+      iconPath: clearIconPath ? null : iconPath ?? this.iconPath,
+      managerIds: managerIds ?? this.managerIds,
+      packageKeys: packageKeys ?? this.packageKeys,
+    );
+  }
 }
 
 class ActivityEntry {

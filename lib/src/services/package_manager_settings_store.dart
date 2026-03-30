@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import '../models/package_models.dart';
+
 class PackageManagerSettingsStore {
   const PackageManagerSettingsStore();
 
@@ -173,6 +175,93 @@ class PackageManagerSettingsStore {
           if (entry.key.trim().isNotEmpty && entry.value.trim().isNotEmpty)
             entry.key: entry.value,
       };
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
+  Future<List<HomeFilterGroup>> loadHomeFilterGroups() async {
+    try {
+      final decoded = await _loadSettings();
+      final values = decoded?['homeFilterGroups'];
+      if (values is! List) {
+        return const <HomeFilterGroup>[];
+      }
+
+      final groups = <HomeFilterGroup>[];
+      for (final value in values) {
+        if (value is! Map<String, dynamic>) {
+          continue;
+        }
+
+        final id = '${value['id'] ?? ''}'.trim();
+        final kindName = '${value['kind'] ?? ''}'.trim();
+        final displayName = '${value['displayName'] ?? ''}'.trim();
+        if (id.isEmpty || kindName.isEmpty || displayName.isEmpty) {
+          continue;
+        }
+
+        final managerIds = (value['managerIds'] is List)
+            ? (value['managerIds'] as List)
+                  .map((item) => '$item'.trim())
+                  .where((item) => item.isNotEmpty)
+                  .toList(growable: false)
+            : const <String>[];
+        final packageKeys = (value['packageKeys'] is List)
+            ? (value['packageKeys'] as List)
+                  .map((item) => '$item'.trim())
+                  .where((item) => item.isNotEmpty)
+                  .toList(growable: false)
+            : const <String>[];
+
+        final kind = switch (kindName) {
+          'all' => HomeFilterGroupKind.all,
+          'updates' => HomeFilterGroupKind.updates,
+          'custom' => HomeFilterGroupKind.custom,
+          _ => null,
+        };
+        if (kind == null) {
+          continue;
+        }
+
+        final iconPath = '${value['iconPath'] ?? ''}'.trim();
+        groups.add(
+          HomeFilterGroup(
+            id: id,
+            kind: kind,
+            displayName: displayName,
+            isVisible: value['isVisible'] != false,
+            iconPath: iconPath.isEmpty ? null : iconPath,
+            managerIds: managerIds,
+            packageKeys: packageKeys,
+          ),
+        );
+      }
+
+      return groups;
+    } catch (_) {
+      return const <HomeFilterGroup>[];
+    }
+  }
+
+  Future<void> saveHomeFilterGroups(List<HomeFilterGroup> groups) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['homeFilterGroups'] = groups
+          .map(
+            (group) => <String, dynamic>{
+              'id': group.id,
+              'kind': group.kind.name,
+              'displayName': group.displayName,
+              'isVisible': group.isVisible,
+              if (group.iconPath != null && group.iconPath!.trim().isNotEmpty)
+                'iconPath': group.iconPath!.trim(),
+              'managerIds': group.managerIds,
+              'packageKeys': group.packageKeys,
+            },
+          )
+          .toList(growable: false);
       await _saveSettings(payload);
     } catch (_) {
       // Best-effort settings persistence.
