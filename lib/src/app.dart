@@ -896,15 +896,19 @@ class _PackageListView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 1120;
+        final theme = Theme.of(context);
+        final borderRadius = BorderRadius.circular(18);
 
-        return Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
-            side: BorderSide(
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
+        return Container(
           clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: borderRadius,
+          ),
+          foregroundDecoration: BoxDecoration(
+            borderRadius: borderRadius,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
           child: packages.isEmpty
               ? _EmptyPackages(
                   hasManagersLoading: controller.isRefreshingCurrentSelection,
@@ -926,7 +930,7 @@ class _PackageListView extends StatelessWidget {
                         itemCount: packages.length,
                         separatorBuilder: (_, _) => Divider(
                           height: 1,
-                          color: Theme.of(context).colorScheme.outlineVariant,
+                          color: theme.colorScheme.outlineVariant,
                         ),
                         itemBuilder: (context, index) {
                           return _PackageListTile(
@@ -4396,14 +4400,19 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final compact = constraints.maxWidth < 900;
-                    return Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero,
-                        side: BorderSide(
+                    final borderRadius = BorderRadius.circular(18);
+                    return Container(
+                      clipBehavior: Clip.antiAlias,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surface,
+                        borderRadius: borderRadius,
+                      ),
+                      foregroundDecoration: BoxDecoration(
+                        borderRadius: borderRadius,
+                        border: Border.all(
                           color: theme.colorScheme.outlineVariant,
                         ),
                       ),
-                      clipBehavior: Clip.antiAlias,
                       child: results.isEmpty
                           ? _InstallSearchEmpty(
                               isSearching:
