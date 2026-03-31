@@ -4,10 +4,12 @@ class PackageSettingsPage extends StatelessWidget {
   const PackageSettingsPage({
     super.key,
     required this.controller,
+    required this.settingsTabController,
     this.filePicker = const LocalFilePicker(),
   });
 
   final PackagePanelController controller;
+  final TabController settingsTabController;
   final LocalFilePicker filePicker;
 
   static const List<String> _fontSuggestions = <String>[
@@ -536,41 +538,16 @@ class PackageSettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = context.l10n;
-
-    return DefaultTabController(
-      length: 4,
-      child: Builder(
-        builder: (context) {
-          return Column(
-            children: <Widget>[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TabBar(
-                  isScrollable: true,
-                  tabAlignment: TabAlignment.start,
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 20),
-                  tabs: <Widget>[
-                    Tab(text: l10n.settingsTabGeneral),
-                    Tab(text: l10n.settingsTabManagers),
-                    Tab(text: l10n.settingsTabAppearance),
-                    Tab(text: l10n.settingsTabAbout),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: AnimatedBuilder(
-                  animation: Listenable.merge(<Listenable>[
-                    controller,
-                    DefaultTabController.of(context),
-                  ]),
-                  builder: (context, _) {
-                    final currentTabIndex = DefaultTabController.of(
-                      context,
-                    ).index;
-                    final homeFilterGroups = controller.homeFilterGroups;
-                    final states = controller.managerVisibilityStates;
-                    final pages = <Widget>[
+    return AnimatedBuilder(
+      animation: Listenable.merge(<Listenable>[
+        controller,
+        settingsTabController,
+      ]),
+      builder: (context, _) {
+        final currentTabIndex = settingsTabController.index;
+        final homeFilterGroups = controller.homeFilterGroups;
+        final states = controller.managerVisibilityStates;
+        final pages = <Widget>[
                       _buildGeneralTab(context, theme),
                       ListView(
                         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
@@ -1178,14 +1155,8 @@ class PackageSettingsPage extends StatelessWidget {
                         ),
                       ),
                     ];
-                    return pages[currentTabIndex];
-                  },
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+        return pages[currentTabIndex];
+      },
     );
   }
 }

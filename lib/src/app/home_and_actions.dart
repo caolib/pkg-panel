@@ -15,17 +15,21 @@ class PackagePanelHome extends StatefulWidget {
 }
 
 class _PackagePanelHomeState extends State<PackagePanelHome>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final TextEditingController _searchController;
   late final TabController _tabController;
+  late final TabController _settingsTabController;
   int _currentTabIndex = 0;
+  int _currentSettingsTabIndex = 0;
   bool _hasQueuedStartupUpdateCheck = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _settingsTabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_handleTabSelectionChanged);
+    _settingsTabController.addListener(_handleSettingsTabSelectionChanged);
     _searchController = TextEditingController(
       text: widget.controller.searchQuery,
     );
@@ -57,7 +61,9 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   @override
   void dispose() {
     _tabController.removeListener(_handleTabSelectionChanged);
+    _settingsTabController.removeListener(_handleSettingsTabSelectionChanged);
     _tabController.dispose();
+    _settingsTabController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -68,6 +74,15 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     }
     setState(() {
       _currentTabIndex = _tabController.index;
+    });
+  }
+
+  void _handleSettingsTabSelectionChanged() {
+    if (_currentSettingsTabIndex == _settingsTabController.index || !mounted) {
+      return;
+    }
+    setState(() {
+      _currentSettingsTabIndex = _settingsTabController.index;
     });
   }
 
@@ -82,20 +97,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TabBar(
-                      controller: _tabController,
-                      isScrollable: true,
-                      tabAlignment: TabAlignment.start,
-                      labelPadding: const EdgeInsets.symmetric(horizontal: 24),
-                      tabs: <Widget>[
-                        Tab(text: context.l10n.tabLocal),
-                        Tab(text: context.l10n.tabInstall),
-                        Tab(text: context.l10n.tabSettings),
-                      ],
-                    ),
-                  ),
+                  _buildNavigationRow(context),
                   const SizedBox(height: 16),
                   Expanded(child: _buildCurrentTabBody()),
                 ],
@@ -128,7 +130,10 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   Widget _buildCurrentTabBody() {
     return switch (_currentTabIndex) {
       1 => PackageInstallPage(controller: widget.controller),
-      2 => PackageSettingsPage(controller: widget.controller),
+      2 => PackageSettingsPage(
+        controller: widget.controller,
+        settingsTabController: _settingsTabController,
+      ),
       _ => AnimatedBuilder(
         animation: widget.controller,
         builder: (context, _) {
@@ -166,6 +171,58 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
         },
       ),
     };
+  }
+
+  Widget _buildNavigationRow(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    return AnimatedBuilder(
+      animation: Listenable.merge(<Listenable>[
+        _tabController,
+        _settingsTabController,
+      ]),
+      builder: (context, _) {
+        final showSettingsSubTabs = _currentTabIndex == 2;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: <Widget>[
+              TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                labelPadding: const EdgeInsets.symmetric(horizontal: 24),
+                tabs: <Widget>[
+                  Tab(text: l10n.tabLocal),
+                  Tab(text: l10n.tabInstall),
+                  Tab(text: l10n.tabSettings),
+                ],
+              ),
+              if (showSettingsSubTabs) ...<Widget>[
+                Container(
+                  width: 1,
+                  height: 24,
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  color: theme.colorScheme.outlineVariant,
+                ),
+                TabBar(
+                  controller: _settingsTabController,
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 20),
+                  tabs: <Widget>[
+                    Tab(text: l10n.settingsTabGeneral),
+                    Tab(text: l10n.settingsTabManagers),
+                    Tab(text: l10n.settingsTabAppearance),
+                    Tab(text: l10n.settingsTabAbout),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _cancelRunningCommand(RunningCommandInfo command) async {
