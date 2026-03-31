@@ -56,6 +56,12 @@ class Win32Window {
   // Overrides the title bar theme. A null value follows the system theme.
   void SetThemeMode(std::optional<bool> prefers_dark_mode);
 
+  // Overrides the title bar colors used for light and dark appearance.
+  void SetTitleBarColors(std::optional<COLORREF> light_background_color,
+                         std::optional<COLORREF> dark_background_color,
+                         std::optional<COLORREF> light_foreground_color,
+                         std::optional<COLORREF> dark_foreground_color);
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -94,11 +100,17 @@ class Win32Window {
   // Update the window frame's theme to match either the app or system theme.
   void UpdateTheme();
 
-  static void ApplyTheme(HWND window, bool enable_dark_mode);
+  static void ApplyTheme(HWND window, bool enable_dark_mode,
+                         std::optional<COLORREF> caption_color,
+                         std::optional<COLORREF> text_color);
   static bool IsSystemDarkModeEnabled();
 
   bool quit_on_close_ = false;
   std::optional<bool> prefers_dark_mode_;
+  std::optional<COLORREF> light_title_bar_background_color_;
+  std::optional<COLORREF> dark_title_bar_background_color_;
+  std::optional<COLORREF> light_title_bar_foreground_color_;
+  std::optional<COLORREF> dark_title_bar_foreground_color_;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

@@ -5,7 +5,13 @@ import 'package:flutter/services.dart';
 abstract class WindowThemeSync {
   const WindowThemeSync();
 
-  Future<void> sync(ThemeMode themeMode);
+  Future<void> sync({
+    required ThemeMode themeMode,
+    required Color lightBackgroundColor,
+    required Color darkBackgroundColor,
+    required Color lightForegroundColor,
+    required Color darkForegroundColor,
+  });
 }
 
 class PlatformWindowThemeSync implements WindowThemeSync {
@@ -14,14 +20,24 @@ class PlatformWindowThemeSync implements WindowThemeSync {
   static const MethodChannel _channel = MethodChannel('pkg_panel/window_theme');
 
   @override
-  Future<void> sync(ThemeMode themeMode) async {
+  Future<void> sync({
+    required ThemeMode themeMode,
+    required Color lightBackgroundColor,
+    required Color darkBackgroundColor,
+    required Color lightForegroundColor,
+    required Color darkForegroundColor,
+  }) async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.windows) {
       return;
     }
 
     try {
-      await _channel.invokeMethod<void>('setWindowThemeMode', <String, String>{
+      await _channel.invokeMethod<void>('setWindowThemeMode', <String, Object>{
         'themeMode': themeMode.name,
+        'lightBackgroundColor': lightBackgroundColor.toARGB32(),
+        'darkBackgroundColor': darkBackgroundColor.toARGB32(),
+        'lightForegroundColor': lightForegroundColor.toARGB32(),
+        'darkForegroundColor': darkForegroundColor.toARGB32(),
       });
     } on MissingPluginException {
       // Ignore in tests and non-Windows runtimes.

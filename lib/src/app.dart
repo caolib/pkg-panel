@@ -137,15 +137,15 @@ class PkgPanelApp extends StatefulWidget {
 }
 
 class _PkgPanelAppState extends State<PkgPanelApp> {
-  ThemeMode? _lastSyncedWindowThemeMode;
-  ThemeMode? _pendingWindowThemeMode;
+  _WindowThemeSyncConfig? _lastSyncedWindowThemeConfig;
+  _WindowThemeSyncConfig? _pendingWindowThemeConfig;
   bool _windowThemeSyncScheduled = false;
 
   @override
   void didUpdateWidget(covariant PkgPanelApp oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.windowThemeSync != widget.windowThemeSync) {
-      _lastSyncedWindowThemeMode = null;
+      _lastSyncedWindowThemeConfig = null;
     }
   }
 
@@ -155,8 +155,8 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
     super.dispose();
   }
 
-  void _scheduleWindowThemeSync(ThemeMode themeMode) {
-    _pendingWindowThemeMode = themeMode;
+  void _scheduleWindowThemeSync(_WindowThemeSyncConfig config) {
+    _pendingWindowThemeConfig = config;
     if (_windowThemeSyncScheduled) {
       return;
     }
@@ -168,15 +168,22 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
         return;
       }
 
-      final themeModeToSync = _pendingWindowThemeMode;
-      _pendingWindowThemeMode = null;
-      if (themeModeToSync == null ||
-          themeModeToSync == _lastSyncedWindowThemeMode) {
+      final configToSync = _pendingWindowThemeConfig;
+      _pendingWindowThemeConfig = null;
+      if (configToSync == null || configToSync == _lastSyncedWindowThemeConfig) {
         return;
       }
 
-      _lastSyncedWindowThemeMode = themeModeToSync;
-      unawaited(widget.windowThemeSync.sync(themeModeToSync));
+      _lastSyncedWindowThemeConfig = configToSync;
+      unawaited(
+        widget.windowThemeSync.sync(
+          themeMode: configToSync.themeMode,
+          lightBackgroundColor: configToSync.lightBackgroundColor,
+          darkBackgroundColor: configToSync.darkBackgroundColor,
+          lightForegroundColor: configToSync.lightForegroundColor,
+          darkForegroundColor: configToSync.darkForegroundColor,
+        ),
+      );
     });
   }
 
@@ -186,7 +193,29 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
       animation: widget.controller,
       builder: (context, _) {
         final themeMode = widget.controller.themeMode;
-        _scheduleWindowThemeSync(themeMode);
+        final lightTheme = _buildTheme(
+          brightness: Brightness.light,
+          seedColor: widget.controller.activeThemeSeedColor,
+          customFontFamily: widget.controller.customFontFamily,
+          customFallbackFontFamilies:
+              widget.controller.customFallbackFontFamilies,
+        );
+        final darkTheme = _buildTheme(
+          brightness: Brightness.dark,
+          seedColor: widget.controller.activeThemeSeedColor,
+          customFontFamily: widget.controller.customFontFamily,
+          customFallbackFontFamilies:
+              widget.controller.customFallbackFontFamilies,
+        );
+        _scheduleWindowThemeSync(
+          _WindowThemeSyncConfig(
+            themeMode: themeMode,
+            lightBackgroundColor: lightTheme.scaffoldBackgroundColor,
+            darkBackgroundColor: darkTheme.scaffoldBackgroundColor,
+            lightForegroundColor: lightTheme.colorScheme.onSurface,
+            darkForegroundColor: darkTheme.colorScheme.onSurface,
+          ),
+        );
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           onGenerateTitle: (context) => context.l10n.appTitle,
@@ -194,20 +223,8 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
           supportedLocales: AppLocalizations.supportedLocales,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           themeMode: themeMode,
-          theme: _buildTheme(
-            brightness: Brightness.light,
-            seedColor: widget.controller.activeThemeSeedColor,
-            customFontFamily: widget.controller.customFontFamily,
-            customFallbackFontFamilies:
-                widget.controller.customFallbackFontFamilies,
-          ),
-          darkTheme: _buildTheme(
-            brightness: Brightness.dark,
-            seedColor: widget.controller.activeThemeSeedColor,
-            customFontFamily: widget.controller.customFontFamily,
-            customFallbackFontFamilies:
-                widget.controller.customFallbackFontFamilies,
-          ),
+          theme: lightTheme,
+          darkTheme: darkTheme,
           home: PackagePanelHome(
             controller: widget.controller,
             autoLoad: widget.autoLoad,
@@ -370,6 +387,45 @@ String _themePaletteLabel(BuildContext context, String paletteId) {
     customAppThemePaletteId => l10n.themePaletteCustom,
     _ => paletteId,
   };
+}
+
+class _WindowThemeSyncConfig {
+  const _WindowThemeSyncConfig({
+    required this.themeMode,
+    required this.lightBackgroundColor,
+    required this.darkBackgroundColor,
+    required this.lightForegroundColor,
+    required this.darkForegroundColor,
+  });
+
+  final ThemeMode themeMode;
+  final Color lightBackgroundColor;
+  final Color darkBackgroundColor;
+  final Color lightForegroundColor;
+  final Color darkForegroundColor;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _WindowThemeSyncConfig &&
+        other.themeMode == themeMode &&
+        other.lightBackgroundColor.toARGB32() ==
+            lightBackgroundColor.toARGB32() &&
+        other.darkBackgroundColor.toARGB32() ==
+            darkBackgroundColor.toARGB32() &&
+        other.lightForegroundColor.toARGB32() ==
+            lightForegroundColor.toARGB32() &&
+        other.darkForegroundColor.toARGB32() ==
+            darkForegroundColor.toARGB32();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    themeMode,
+    lightBackgroundColor.toARGB32(),
+    darkBackgroundColor.toARGB32(),
+    lightForegroundColor.toARGB32(),
+    darkForegroundColor.toARGB32(),
+  );
 }
 
 String _formatThemeSeedColorHex(Color color) {

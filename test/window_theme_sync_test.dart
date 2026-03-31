@@ -12,6 +12,13 @@ void main() {
     tester,
   ) async {
     final sync = _RecordingWindowThemeSync();
+    final expectedDarkBackground = Color.alphaBlend(
+      ColorScheme.fromSeed(
+        seedColor: const Color(0xFF0F766E),
+        brightness: Brightness.dark,
+      ).primary.withAlpha(18),
+      const Color(0xFF18181B),
+    );
     final controller = PackagePanelController(
       shell: const ShellExecutor(),
       adapters: PackageManagerRegistry.defaultAdapters,
@@ -28,7 +35,9 @@ void main() {
     );
     await tester.pump();
 
-    expect(sync.themeModes, <ThemeMode>[ThemeMode.dark]);
+    expect(sync.configs.map((config) => config.themeMode), <ThemeMode>[
+      ThemeMode.dark,
+    ]);
 
     await controller.setThemeMode(ThemeMode.light);
     await tester.pump();
@@ -37,19 +46,51 @@ void main() {
     await tester.pump();
 
     expect(
-      sync.themeModes,
+      sync.configs.map((config) => config.themeMode),
       <ThemeMode>[ThemeMode.dark, ThemeMode.light, ThemeMode.system],
     );
+    expect(sync.configs.first.darkBackgroundColor, expectedDarkBackground);
   });
 }
 
 class _RecordingWindowThemeSync implements WindowThemeSync {
-  final List<ThemeMode> themeModes = <ThemeMode>[];
+  final List<_RecordedWindowThemeConfig> configs =
+      <_RecordedWindowThemeConfig>[];
 
   @override
-  Future<void> sync(ThemeMode themeMode) async {
-    themeModes.add(themeMode);
+  Future<void> sync({
+    required ThemeMode themeMode,
+    required Color lightBackgroundColor,
+    required Color darkBackgroundColor,
+    required Color lightForegroundColor,
+    required Color darkForegroundColor,
+  }) async {
+    configs.add(
+      _RecordedWindowThemeConfig(
+        themeMode: themeMode,
+        lightBackgroundColor: lightBackgroundColor,
+        darkBackgroundColor: darkBackgroundColor,
+        lightForegroundColor: lightForegroundColor,
+        darkForegroundColor: darkForegroundColor,
+      ),
+    );
   }
+}
+
+class _RecordedWindowThemeConfig {
+  const _RecordedWindowThemeConfig({
+    required this.themeMode,
+    required this.lightBackgroundColor,
+    required this.darkBackgroundColor,
+    required this.lightForegroundColor,
+    required this.darkForegroundColor,
+  });
+
+  final ThemeMode themeMode;
+  final Color lightBackgroundColor;
+  final Color darkBackgroundColor;
+  final Color lightForegroundColor;
+  final Color darkForegroundColor;
 }
 
 class _MemorySettingsStore extends PackageManagerSettingsStore {

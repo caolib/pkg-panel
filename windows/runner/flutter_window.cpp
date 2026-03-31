@@ -10,6 +10,38 @@ namespace {
 constexpr auto kWindowThemeChannelName = "pkg_panel/window_theme";
 constexpr auto kSetWindowThemeModeMethod = "setWindowThemeMode";
 constexpr auto kThemeModeArgumentKey = "themeMode";
+constexpr auto kLightBackgroundColorArgumentKey = "lightBackgroundColor";
+constexpr auto kDarkBackgroundColorArgumentKey = "darkBackgroundColor";
+constexpr auto kLightForegroundColorArgumentKey = "lightForegroundColor";
+constexpr auto kDarkForegroundColorArgumentKey = "darkForegroundColor";
+
+COLORREF ArgbToColorRef(uint32_t argb) {
+  const auto red = static_cast<BYTE>((argb >> 16) & 0xFF);
+  const auto green = static_cast<BYTE>((argb >> 8) & 0xFF);
+  const auto blue = static_cast<BYTE>(argb & 0xFF);
+  return RGB(red, green, blue);
+}
+
+std::optional<COLORREF> ReadColorRefArgument(
+    const flutter::EncodableMap& arguments,
+    const char* key) {
+  const auto it = arguments.find(flutter::EncodableValue(key));
+  if (it == arguments.end()) {
+    return std::nullopt;
+  }
+
+  const auto* color_value = std::get_if<int32_t>(&it->second);
+  if (color_value != nullptr) {
+    return ArgbToColorRef(static_cast<uint32_t>(*color_value));
+  }
+
+  const auto* long_color_value = std::get_if<int64_t>(&it->second);
+  if (long_color_value != nullptr) {
+    return ArgbToColorRef(static_cast<uint32_t>(*long_color_value));
+  }
+
+  return std::nullopt;
+}
 
 }  // namespace
 
@@ -69,17 +101,32 @@ bool FlutterWindow::OnCreate() {
           return;
         }
 
+        const auto light_background_color = ReadColorRefArgument(
+            *arguments, kLightBackgroundColorArgumentKey);
+        const auto dark_background_color =
+            ReadColorRefArgument(*arguments, kDarkBackgroundColorArgumentKey);
+        const auto light_foreground_color = ReadColorRefArgument(
+            *arguments, kLightForegroundColorArgumentKey);
+        const auto dark_foreground_color =
+            ReadColorRefArgument(*arguments, kDarkForegroundColorArgumentKey);
+
         if (*theme_mode == "system") {
+          SetTitleBarColors(light_background_color, dark_background_color,
+                            light_foreground_color, dark_foreground_color);
           SetThemeMode(std::nullopt);
           result->Success();
           return;
         }
         if (*theme_mode == "dark") {
+          SetTitleBarColors(light_background_color, dark_background_color,
+                            light_foreground_color, dark_foreground_color);
           SetThemeMode(true);
           result->Success();
           return;
         }
         if (*theme_mode == "light") {
+          SetTitleBarColors(light_background_color, dark_background_color,
+                            light_foreground_color, dark_foreground_color);
           SetThemeMode(false);
           result->Success();
           return;

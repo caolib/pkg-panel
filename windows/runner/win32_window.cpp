@@ -16,6 +16,16 @@ namespace {
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
+
+constexpr COLORREF kDwmDefaultColor = 0xFFFFFFFF;
+
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 /// Registry key for app theme preference.
@@ -270,6 +280,18 @@ void Win32Window::SetThemeMode(std::optional<bool> prefers_dark_mode) {
   UpdateTheme();
 }
 
+void Win32Window::SetTitleBarColors(
+    std::optional<COLORREF> light_background_color,
+    std::optional<COLORREF> dark_background_color,
+    std::optional<COLORREF> light_foreground_color,
+    std::optional<COLORREF> dark_foreground_color) {
+  light_title_bar_background_color_ = light_background_color;
+  dark_title_bar_background_color_ = dark_background_color;
+  light_title_bar_foreground_color_ = light_foreground_color;
+  dark_title_bar_foreground_color_ = dark_foreground_color;
+  UpdateTheme();
+}
+
 bool Win32Window::OnCreate() {
   // No-op; provided for subclasses.
   return true;
@@ -290,15 +312,26 @@ bool Win32Window::IsSystemDarkModeEnabled() {
   return result == ERROR_SUCCESS && light_mode == 0;
 }
 
-void Win32Window::ApplyTheme(HWND window, bool enable_dark_mode) {
+void Win32Window::ApplyTheme(HWND window, bool enable_dark_mode,
+                             std::optional<COLORREF> caption_color,
+                             std::optional<COLORREF> text_color) {
   BOOL use_dark_mode = enable_dark_mode ? TRUE : FALSE;
-  if (SUCCEEDED(DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                                      &use_dark_mode,
-                                      sizeof(use_dark_mode)))) {
-    SetWindowPos(window, nullptr, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
-                     SWP_FRAMECHANGED);
-  }
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE, &use_dark_mode,
+                        sizeof(use_dark_mode));
+
+  const COLORREF title_bar_color =
+      caption_color.has_value() ? *caption_color : kDwmDefaultColor;
+  DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &title_bar_color,
+                        sizeof(title_bar_color));
+
+  const COLORREF title_bar_text_color =
+      text_color.has_value() ? *text_color : kDwmDefaultColor;
+  DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &title_bar_text_color,
+                        sizeof(title_bar_text_color));
+
+  SetWindowPos(window, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                   SWP_FRAMECHANGED);
 }
 
 void Win32Window::UpdateTheme() {
@@ -306,8 +339,13 @@ void Win32Window::UpdateTheme() {
     return;
   }
 
-  ApplyTheme(
-      window_handle_,
-      prefers_dark_mode_.has_value() ? *prefers_dark_mode_
-                                     : IsSystemDarkModeEnabled());
+  const bool use_dark_mode = prefers_dark_mode_.has_value()
+                                 ? *prefers_dark_mode_
+                                 : IsSystemDarkModeEnabled();
+
+  ApplyTheme(window_handle_, use_dark_mode,
+             use_dark_mode ? dark_title_bar_background_color_
+                           : light_title_bar_background_color_,
+             use_dark_mode ? dark_title_bar_foreground_color_
+                           : light_title_bar_foreground_color_);
 }
