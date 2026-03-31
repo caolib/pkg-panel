@@ -26,11 +26,10 @@ class PipAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.runExecutable(
-      'pip',
-      const <String>['list', '--format=json'],
-      displayCommand: 'pip list --format=json',
-    );
+    final result = await shell.runExecutable('pip', const <String>[
+      'list',
+      '--format=json',
+    ], displayCommand: 'pip list --format=json');
     final payload = decodeJsonArray(
       result,
       managerName: definition.displayName,

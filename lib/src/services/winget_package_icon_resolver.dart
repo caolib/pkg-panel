@@ -187,7 +187,10 @@ class WingetPackageIconResolver {
     return "'${value.replaceAll("'", "''")}'";
   }
 
-  Future<String?> _resolveIconPath(ShellExecutor shell, String sourcePath) async {
+  Future<String?> _resolveIconPath(
+    ShellExecutor shell,
+    String sourcePath,
+  ) async {
     final lowerPath = sourcePath.toLowerCase();
     if (lowerPath.endsWith('.svg') ||
         lowerPath.endsWith('.png') ||
@@ -219,7 +222,8 @@ class WingetPackageIconResolver {
       return outputFile.path;
     }
 
-    final command = '''
+    final command =
+        '''
 Add-Type -AssemblyName System.Drawing;
 \$source = ${_quoteDisplay(sourcePath)};
 \$target = ${_quoteDisplay(outputPath)};

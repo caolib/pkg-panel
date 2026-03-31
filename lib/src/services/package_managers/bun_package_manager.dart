@@ -34,11 +34,11 @@ class BunAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.runExecutable(
-      'bun',
-      const <String>['pm', 'bin', '-g'],
-      displayCommand: 'bun pm bin -g',
-    );
+    final result = await shell.runExecutable('bun', const <String>[
+      'pm',
+      'bin',
+      '-g',
+    ], displayCommand: 'bun pm bin -g');
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,

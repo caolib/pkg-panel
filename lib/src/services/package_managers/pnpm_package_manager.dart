@@ -31,11 +31,12 @@ class PnpmAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.runExecutable(
-      'pnpm',
-      const <String>['ls', '-g', '--depth=0', '--json'],
-      displayCommand: 'pnpm ls -g --depth=0 --json',
-    );
+    final result = await shell.runExecutable('pnpm', const <String>[
+      'ls',
+      '-g',
+      '--depth=0',
+      '--json',
+    ], displayCommand: 'pnpm ls -g --depth=0 --json');
     final payload = decodeJson(result, managerName: definition.displayName);
     final packages = <ManagedPackage>[];
 

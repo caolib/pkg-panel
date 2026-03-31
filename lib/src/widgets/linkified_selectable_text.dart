@@ -136,7 +136,9 @@ _NormalizedLink _normalizeLink(String rawMatch) {
     break;
   }
 
-  final targetUrl = linkText.startsWith('www.') ? 'https://$linkText' : linkText;
+  final targetUrl = linkText.startsWith('www.')
+      ? 'https://$linkText'
+      : linkText;
   return _NormalizedLink(
     linkText: linkText,
     targetUrl: targetUrl,

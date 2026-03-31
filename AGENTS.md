@@ -19,4 +19,4 @@ There is no established git history in this repository yet, so use short imperat
 Do not hardcode machine-specific paths or package-manager state. Keep command execution inside `ShellExecutor`, and treat external command output as untrusted input that must be parsed defensively.
 
 ## Agent Workflow
-After completing all requested tasks, use command `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\notify.ps1 '任务完成'` to notify the user that the work is finished.
+Once you have completed all the tasks given by the user and summarized them, the last thing you need to do is to use the notification skill to notify the user that the task is complete

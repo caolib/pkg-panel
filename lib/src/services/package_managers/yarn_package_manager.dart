@@ -33,11 +33,10 @@ class YarnAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.runExecutable(
-      'yarn',
-      const <String>['global', 'dir'],
-      displayCommand: 'yarn global dir',
-    );
+    final result = await shell.runExecutable('yarn', const <String>[
+      'global',
+      'dir',
+    ], displayCommand: 'yarn global dir');
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -47,10 +46,7 @@ class YarnAdapter extends PackageManagerAdapter
 
     final globalDirPath = firstNonEmptyLine(result.stdout);
     if (globalDirPath == null) {
-      throw PackageAdapterException(
-        definition.displayName,
-        '无法解析 Yarn 全局目录。',
-      );
+      throw PackageAdapterException(definition.displayName, '无法解析 Yarn 全局目录。');
     }
 
     final globalDir = Directory(globalDirPath);

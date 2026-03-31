@@ -213,7 +213,8 @@ class ScoopAdapter extends PackageManagerAdapter
     );
     return <String, String>{
       for (final package in packages)
-        package.key: latestByName[package.name.trim().toLowerCase()] ?? package.version,
+        package.key:
+            latestByName[package.name.trim().toLowerCase()] ?? package.version,
     };
   }
 

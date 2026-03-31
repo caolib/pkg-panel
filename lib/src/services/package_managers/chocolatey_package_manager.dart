@@ -32,11 +32,11 @@ class ChocolateyAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.runExecutable(
-      'choco',
-      const <String>['list', '--local-only', '--limit-output'],
-      displayCommand: 'choco list --local-only --limit-output',
-    );
+    final result = await shell.runExecutable('choco', const <String>[
+      'list',
+      '--local-only',
+      '--limit-output',
+    ], displayCommand: 'choco list --local-only --limit-output');
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
@@ -114,13 +114,7 @@ class ChocolateyAdapter extends PackageManagerAdapter
     final target = package.identifier ?? package.packageName;
     final result = await shell.runExecutable(
       'choco',
-      <String>[
-        'search',
-        target,
-        '--exact',
-        '--all-versions',
-        '--limit-output',
-      ],
+      <String>['search', target, '--exact', '--all-versions', '--limit-output'],
       timeout: const Duration(seconds: 45),
       displayCommand:
           'choco search ${psQuote(target)} --exact --all-versions --limit-output',
@@ -238,7 +232,8 @@ class ChocolateyAdapter extends PackageManagerAdapter
     );
     return <String, String>{
       for (final package in packages)
-        package.key: latestByName[package.name.trim().toLowerCase()] ?? package.version,
+        package.key:
+            latestByName[package.name.trim().toLowerCase()] ?? package.version,
     };
   }
 }

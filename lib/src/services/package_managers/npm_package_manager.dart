@@ -31,11 +31,12 @@ class NpmAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.runExecutable(
-      'npm',
-      const <String>['ls', '-g', '--depth=0', '--json'],
-      displayCommand: 'npm ls -g --depth=0 --json',
-    );
+    final result = await shell.runExecutable('npm', const <String>[
+      'ls',
+      '-g',
+      '--depth=0',
+      '--json',
+    ], displayCommand: 'npm ls -g --depth=0 --json');
     final payload = decodeJsonObject(
       result,
       managerName: definition.displayName,

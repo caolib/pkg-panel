@@ -154,6 +154,11 @@ class PackagePanelController extends ChangeNotifier {
   bool _autoCheckAppUpdates;
   bool _useGithubMirrorForDownloads;
   String _githubMirrorBaseUrl;
+  int _visiblePackagesDataStamp = 0;
+  int _cachedVisiblePackagesDataStamp = -1;
+  String _cachedVisiblePackagesQuery = '';
+  String? _cachedVisiblePackagesManagerId;
+  List<ManagedPackage>? _cachedVisiblePackages;
 
   List<ManagerSnapshot> get snapshots =>
       List<ManagerSnapshot>.unmodifiable(_snapshots);
@@ -201,8 +206,7 @@ class PackagePanelController extends ChangeNotifier {
 
   Color get customThemeSeedColor => _customThemeSeedColor;
 
-  Color get activeThemeSeedColor =>
-      _themePaletteId == customAppThemePaletteId
+  Color get activeThemeSeedColor => _themePaletteId == customAppThemePaletteId
       ? _customThemeSeedColor
       : (appThemePaletteById(_themePaletteId)?.seedColor ??
             defaultCustomAppThemeSeedColor);
@@ -249,27 +253,33 @@ class PackagePanelController extends ChangeNotifier {
   int get updateCandidates =>
       visiblePackages.where((package) => package.hasUpdate).length;
 
-  bool get hasVisibleLocalManagers => _adapters.any(
-    (adapter) {
-      final managerId = adapter.definition.id;
-      if (!_supportsInstalledPackages(adapter)) {
-        return false;
-      }
-      final selectedGroup = _selectedHomeFilterGroup;
-      if (selectedGroup != null) {
-        return _managerIdsReferencedByHomeFilterGroup(selectedGroup).contains(
-          managerId,
-        );
-      }
-      return isManagerVisible(managerId);
-    },
-  );
+  bool get hasVisibleLocalManagers => _adapters.any((adapter) {
+    final managerId = adapter.definition.id;
+    if (!_supportsInstalledPackages(adapter)) {
+      return false;
+    }
+    final selectedGroup = _selectedHomeFilterGroup;
+    if (selectedGroup != null) {
+      return _managerIdsReferencedByHomeFilterGroup(
+        selectedGroup,
+      ).contains(managerId);
+    }
+    return isManagerVisible(managerId);
+  });
 
   List<ManagedPackage> get visiblePackages {
+    final selectedManagerId = _selectedManagerId;
     final selectedGroup = _selectedHomeFilterGroup;
-    final selectedSnapshots = _snapshotsForCurrentSelection();
-
     final query = _searchQuery.trim().toLowerCase();
+    final cached = _cachedVisiblePackages;
+    if (cached != null &&
+        _cachedVisiblePackagesDataStamp == _visiblePackagesDataStamp &&
+        _cachedVisiblePackagesQuery == query &&
+        _cachedVisiblePackagesManagerId == selectedManagerId) {
+      return cached;
+    }
+
+    final selectedSnapshots = _snapshotsForCurrentSelection();
     final packages = selectedSnapshots
         .expand((snapshot) => snapshot.packages)
         .where((package) {
@@ -299,7 +309,12 @@ class PackagePanelController extends ChangeNotifier {
       }
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
-    return packages;
+    final computed = List<ManagedPackage>.unmodifiable(packages);
+    _cachedVisiblePackages = computed;
+    _cachedVisiblePackagesDataStamp = _visiblePackagesDataStamp;
+    _cachedVisiblePackagesQuery = query;
+    _cachedVisiblePackagesManagerId = selectedManagerId;
+    return computed;
   }
 
   ManagerSnapshot? get selectedManagerSnapshot {
@@ -1130,6 +1145,7 @@ class PackagePanelController extends ChangeNotifier {
       _selectedManagerId = null;
     }
 
+    _invalidateVisiblePackagesCache();
     _realignSelection();
     notifyListeners();
 
@@ -1155,6 +1171,7 @@ class PackagePanelController extends ChangeNotifier {
     if (_selectedManagerId == groupId && !isVisible) {
       _selectedManagerId = null;
     }
+    _invalidateVisiblePackagesCache();
     _realignSelection();
     await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
     notifyListeners();
@@ -1173,6 +1190,7 @@ class PackagePanelController extends ChangeNotifier {
 
     final group = _homeFilterGroups.removeAt(oldIndex);
     _homeFilterGroups.insert(newIndex, group);
+    _invalidateVisiblePackagesCache();
     await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
     notifyListeners();
   }
@@ -1197,6 +1215,7 @@ class PackagePanelController extends ChangeNotifier {
       packageKeys: _normalizeStringList(packageKeys),
     );
     _homeFilterGroups.add(nextGroup);
+    _invalidateVisiblePackagesCache();
     await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
     notifyListeners();
     await _loadManagersForHomeFilterGroup(nextGroup);
@@ -1220,6 +1239,7 @@ class PackagePanelController extends ChangeNotifier {
       packageKeys: _normalizeStringList(nextGroup.packageKeys),
     );
     _homeFilterGroups[index] = normalizedGroup;
+    _invalidateVisiblePackagesCache();
     await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
     notifyListeners();
     await _loadManagersForHomeFilterGroup(normalizedGroup);
@@ -1235,6 +1255,7 @@ class PackagePanelController extends ChangeNotifier {
     if (_selectedManagerId == groupId) {
       _selectedManagerId = null;
     }
+    _invalidateVisiblePackagesCache();
     _realignSelection();
     await _settingsStore.saveHomeFilterGroups(_homeFilterGroups);
     notifyListeners();
@@ -1325,6 +1346,7 @@ class PackagePanelController extends ChangeNotifier {
     await _settingsStore.saveCustomManagerDisplayNames(
       _customManagerDisplayNames,
     );
+    _invalidateVisiblePackagesCache();
     notifyListeners();
   }
 
@@ -1336,6 +1358,7 @@ class PackagePanelController extends ChangeNotifier {
     await _settingsStore.saveCustomManagerDisplayNames(
       _customManagerDisplayNames,
     );
+    _invalidateVisiblePackagesCache();
     notifyListeners();
   }
 
@@ -1781,9 +1804,15 @@ class PackagePanelController extends ChangeNotifier {
     for (var i = 0; i < _snapshots.length; i++) {
       if (_snapshots[i].manager.id == managerId) {
         _snapshots[i] = next;
+        _invalidateVisiblePackagesCache();
         return;
       }
     }
+  }
+
+  void _invalidateVisiblePackagesCache() {
+    _visiblePackagesDataStamp += 1;
+    _cachedVisiblePackages = null;
   }
 
   Future<void> _ensureManagerVisibilityInitialized() async {
@@ -1836,6 +1865,7 @@ class PackagePanelController extends ChangeNotifier {
       _customFallbackFontFamilies
         ..clear()
         ..addAll(savedFallbackFonts);
+      _invalidateVisiblePackagesCache();
       return;
     }
 
@@ -1928,6 +1958,7 @@ class PackagePanelController extends ChangeNotifier {
         _manuallyHiddenManagerIds,
       );
     }
+    _invalidateVisiblePackagesCache();
   }
 
   Future<Map<String, bool>> _detectManagerAvailability() async {
@@ -2406,7 +2437,8 @@ class PackagePanelController extends ChangeNotifier {
     if (normalized == customAppThemePaletteId) {
       return customAppThemePaletteId;
     }
-    return appThemePaletteById(normalized ?? '')?.id ?? defaultAppThemePaletteId;
+    return appThemePaletteById(normalized ?? '')?.id ??
+        defaultAppThemePaletteId;
   }
 
   static Color _normalizeThemeSeedColor(int? value) {

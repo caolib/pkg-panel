@@ -37,7 +37,9 @@ class WingetAdapter extends PackageManagerAdapter
       );
     }
 
-    final result = await shell.runPowerShell('winget list --disable-interactivity');
+    final result = await shell.runPowerShell(
+      'winget list --disable-interactivity',
+    );
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,

@@ -867,7 +867,11 @@ Map<String, String> parseScoopStatusLatestVersions(
       continue;
     }
 
-    final latestVersion = sliceColumn(line, latestVersionStart, latestVersionEnd);
+    final latestVersion = sliceColumn(
+      line,
+      latestVersionStart,
+      latestVersionEnd,
+    );
     if (latestVersion.isNotEmpty) {
       latestVersions[name.toLowerCase()] = latestVersion;
     }
@@ -929,7 +933,8 @@ Map<String, String> parseCargoInstallUpdateLatestVersions(
     if (trimmed.isEmpty ||
         trimmed.startsWith('Polling registry ') ||
         trimmed.startsWith('Package') ||
-        trimmed.startsWith('cargo-') && trimmed.contains('contains removed executables')) {
+        trimmed.startsWith('cargo-') &&
+            trimmed.contains('contains removed executables')) {
       continue;
     }
 
@@ -985,13 +990,15 @@ Map<String, String> parseChocolateyOutdatedLatestVersions(
       continue;
     }
 
-    final columns = trimmed.split('|').map((part) => part.trim()).toList(
-      growable: false,
-    );
+    final columns = trimmed
+        .split('|')
+        .map((part) => part.trim())
+        .toList(growable: false);
     if (columns.length < 3) {
       continue;
     }
-    if (columns[0].toLowerCase() == 'chocolatey has determined 0 package(s) are outdated.') {
+    if (columns[0].toLowerCase() ==
+        'chocolatey has determined 0 package(s) are outdated.') {
       continue;
     }
 

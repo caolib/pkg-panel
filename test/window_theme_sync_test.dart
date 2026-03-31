@@ -45,10 +45,11 @@ void main() {
     await controller.setThemeMode(ThemeMode.system);
     await tester.pump();
 
-    expect(
-      sync.configs.map((config) => config.themeMode),
-      <ThemeMode>[ThemeMode.dark, ThemeMode.light, ThemeMode.system],
-    );
+    expect(sync.configs.map((config) => config.themeMode), <ThemeMode>[
+      ThemeMode.dark,
+      ThemeMode.light,
+      ThemeMode.system,
+    ]);
     expect(sync.configs.first.darkBackgroundColor, expectedDarkBackground);
   });
 }

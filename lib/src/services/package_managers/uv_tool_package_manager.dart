@@ -31,11 +31,10 @@ class UvToolAdapter extends PackageManagerAdapter
 
   @override
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
-    final result = await shell.runExecutable(
-      'uv',
-      const <String>['tool', 'list'],
-      displayCommand: 'uv tool list',
-    );
+    final result = await shell.runExecutable('uv', const <String>[
+      'tool',
+      'list',
+    ], displayCommand: 'uv tool list');
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
