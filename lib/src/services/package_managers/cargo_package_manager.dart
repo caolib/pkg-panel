@@ -15,7 +15,6 @@ class CargoAdapter extends PackageManagerAdapter
         PackageActionCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability,
-        BatchLatestVersionPrerequisiteCapability,
         PackageDetailsCapability {
   const CargoAdapter()
     : super(
@@ -155,42 +154,12 @@ class CargoAdapter extends PackageManagerAdapter
 
   @override
   String latestVersionLookupCommand(ManagedPackage package) {
-    return 'cargo search ${psQuote(package.name)} --limit 5';
+    return 'cargo search ${psQuote(package.name)} --registry crates-io --limit 5';
   }
 
   @override
   String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
-    return 'cargo install-update --list';
-  }
-
-  @override
-  Future<PackageCommand?> batchLatestVersionPrerequisiteCommand(
-    ShellExecutor shell,
-    List<ManagedPackage> packages,
-  ) async {
-    final probe = await shell.runExecutable(
-      'cargo',
-      const <String>['install-update', '--version'],
-      timeout: const Duration(seconds: 15),
-      displayCommand: 'cargo install-update --version',
-    );
-    if (probe.isSuccess) {
-      return null;
-    }
-
-    return buildPackageCommand(
-      managerId: definition.id,
-      label: '安装 cargo-update',
-      executable: 'cargo',
-      arguments: const <String>['install', 'cargo-update'],
-      command: 'cargo install cargo-update',
-      timeout: const Duration(minutes: 12),
-    );
-  }
-
-  @override
-  String batchLatestVersionPrerequisitePrompt(List<ManagedPackage> packages) {
-    return 'cargo 批量检查更新需要先安装 cargo-update，是否现在执行 cargo install cargo-update？';
+    return 'cargo search --registry crates-io（逐个查询 ${packages.length} 个包）';
   }
 
   @override
@@ -200,9 +169,16 @@ class CargoAdapter extends PackageManagerAdapter
   ) async {
     final result = await shell.runExecutable(
       'cargo',
-      <String>['search', package.name, '--limit', '5'],
+      <String>[
+        'search',
+        package.name,
+        '--registry',
+        'crates-io',
+        '--limit',
+        '5',
+      ],
       timeout: const Duration(seconds: 45),
-      displayCommand: 'cargo search ${psQuote(package.name)} --limit 5',
+      displayCommand: latestVersionLookupCommand(package),
     );
     return parseCargoLatestVersion(
       result,
@@ -220,20 +196,27 @@ class CargoAdapter extends PackageManagerAdapter
       return const <String, String>{};
     }
 
-    final result = await shell.runExecutable(
-      'cargo',
-      const <String>['install-update', '--list'],
-      timeout: const Duration(seconds: 45),
-      displayCommand: 'cargo install-update --list',
-    );
-    final latestByName = parseCargoInstallUpdateLatestVersions(
-      result,
-      managerName: definition.displayName,
-    );
-    return <String, String>{
-      for (final package in packages)
-        package.key:
-            latestByName[package.name.trim().toLowerCase()] ?? package.version,
-    };
+    final latestByPackageKey = <String, String>{};
+    for (final package in packages) {
+      final result = await shell.runExecutable(
+        'cargo',
+        <String>[
+          'search',
+          package.name,
+          '--registry',
+          'crates-io',
+          '--limit',
+          '5',
+        ],
+        timeout: const Duration(seconds: 45),
+        displayCommand: latestVersionLookupCommand(package),
+      );
+      latestByPackageKey[package.key] = parseCargoLatestVersion(
+        result,
+        managerName: definition.displayName,
+        packageName: package.name,
+      );
+    }
+    return latestByPackageKey;
   }
 }

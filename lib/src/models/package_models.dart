@@ -169,24 +169,28 @@ class RunningCommandInfo {
     required this.command,
     this.canCancel = false,
     this.isCancelling = false,
+    this.statusLabel,
   });
 
   final String busyKey;
   final String command;
   final bool canCancel;
   final bool isCancelling;
+  final String? statusLabel;
 
   RunningCommandInfo copyWith({
     String? busyKey,
     String? command,
     bool? canCancel,
     bool? isCancelling,
+    String? statusLabel,
   }) {
     return RunningCommandInfo(
       busyKey: busyKey ?? this.busyKey,
       command: command ?? this.command,
       canCancel: canCancel ?? this.canCancel,
       isCancelling: isCancelling ?? this.isCancelling,
+      statusLabel: statusLabel ?? this.statusLabel,
     );
   }
 }

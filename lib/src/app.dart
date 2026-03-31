@@ -609,126 +609,151 @@ class _RunningCommandToast extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 360),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: Colors.black.withAlpha(38),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              mainAxisSize: MainAxisSize.max,
-              children: <Widget>[
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2.6),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '正在执行命令 (${commands.length})',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
+    final queuedCount = commands
+        .where((command) => command.statusLabel == '排队中')
+        .length;
+    final runningCount = commands.length - queuedCount;
+    final title = queuedCount == 0
+        ? '正在执行命令 ($runningCount)'
+        : '命令队列 ($runningCount 运行中，$queuedCount 排队中)';
+    return RepaintBoundary(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 360),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withAlpha(24),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                mainAxisSize: MainAxisSize.max,
+                children: <Widget>[
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.terminal,
+                      size: 12,
+                      color: theme.colorScheme.onPrimaryContainer,
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    for (final command in commands)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainer,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: theme.colorScheme.outlineVariant,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      for (final command in commands)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
                             ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Expanded(
-                                child: Text(
-                                  command.command,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    fontFamily: 'Cascadia Code',
-                                    fontFamilyFallback: theme
-                                        .textTheme
-                                        .bodyMedium
-                                        ?.fontFamilyFallback,
-                                  ),
-                                ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainer,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant,
                               ),
-                              const SizedBox(width: 8),
-                              if (command.canCancel)
-                                command.isCancelling
-                                    ? Padding(
-                                        padding: const EdgeInsets.only(top: 8),
-                                        child: SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: theme.colorScheme.primary,
-                                          ),
-                                        ),
-                                      )
-                                    : IconButton(
-                                        tooltip: '取消此命令',
-                                        onPressed: () =>
-                                            onCancelCommand?.call(command),
-                                        icon: const Icon(
-                                          Icons.stop_circle_outlined,
-                                        ),
-                                      )
-                              else
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Expanded(
                                   child: Text(
-                                    command.isCancelling ? '正在取消...' : '不可取消',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
+                                    command.command,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'Cascadia Code',
+                                      fontFamilyFallback: theme
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.fontFamilyFallback,
                                     ),
                                   ),
                                 ),
-                            ],
+                                const SizedBox(width: 8),
+                                if (command.canCancel)
+                                  command.isCancelling
+                                      ? Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 8,
+                                          ),
+                                          child: SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: theme.colorScheme.primary,
+                                            ),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          tooltip: '取消此命令',
+                                          onPressed: () =>
+                                              onCancelCommand?.call(command),
+                                          icon: const Icon(
+                                            Icons.stop_circle_outlined,
+                                          ),
+                                        )
+                                else
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      command.isCancelling
+                                          ? '正在取消...'
+                                          : command.statusLabel ?? '不可取消',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -826,7 +851,9 @@ class _ActionBar extends StatelessWidget {
               ),
             if (showBatchUpdate)
               FilledButton.tonalIcon(
-                onPressed: onBatchUpdate,
+                onPressed: controller.isBusy(batchCommand!.busyKey)
+                    ? null
+                    : onBatchUpdate,
                 icon: const Icon(Icons.system_update_alt),
                 label: const Text('批量更新'),
               ),

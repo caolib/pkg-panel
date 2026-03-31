@@ -106,8 +106,14 @@ class PackagePanelController extends ChangeNotifier {
   final List<ManagerSnapshot> _snapshots;
   final List<ActivityEntry> _activity = <ActivityEntry>[];
   final Set<String> _runningCommands = <String>{};
+  final Set<String> _queuedCommands = <String>{};
   final Map<String, RunningCommandInfo> _runningCommandInfo =
       <String, RunningCommandInfo>{};
+  final Map<String, RunningCommandInfo> _queuedCommandInfo =
+      <String, RunningCommandInfo>{};
+  final Map<String, String> _activeManagerCommandBusyKeys = <String, String>{};
+  final Map<String, List<_QueuedPackageCommand>> _queuedManagerCommands =
+      <String, List<_QueuedPackageCommand>>{};
   final Set<String> _selectedPackageKeys = <String>{};
   final Set<String> _visibleManagerIds;
   final Set<String> _manuallyHiddenManagerIds;
@@ -329,10 +335,14 @@ class PackagePanelController extends ChangeNotifier {
     return _runningCommands.contains(_batchLatestBusyKey(managerId));
   }
 
-  bool isBusy(String busyKey) => _runningCommands.contains(busyKey);
+  bool isBusy(String busyKey) =>
+      _runningCommands.contains(busyKey) || _queuedCommands.contains(busyKey);
 
   List<RunningCommandInfo> get runningCommands =>
-      List<RunningCommandInfo>.unmodifiable(_runningCommandInfo.values);
+      List<RunningCommandInfo>.unmodifiable(<RunningCommandInfo>[
+        ..._runningCommandInfo.values,
+        ..._queuedCommandInfo.values,
+      ]);
 
   Future<bool> cancelRunningCommand(String busyKey) async {
     final command = _runningCommandInfo[busyKey];
@@ -446,8 +456,11 @@ class PackagePanelController extends ChangeNotifier {
   bool isInstallingSearchOption(SearchPackageInstallOption option) {
     final prefix = _installBusyKeyPrefix(option);
     return _runningCommands.any(
-      (key) => key == prefix || key.startsWith('$prefix::'),
-    );
+          (key) => key == prefix || key.startsWith('$prefix::'),
+        ) ||
+        _queuedCommands.any(
+          (key) => key == prefix || key.startsWith('$prefix::'),
+        );
   }
 
   bool isPackageSelected(ManagedPackage package) {
@@ -1469,7 +1482,45 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   Future<ShellResult> runCommand(PackageCommand command) async {
+    if (isBusy(command.busyKey)) {
+      return const ShellResult(
+        exitCode: 125,
+        stdout: '',
+        stderr: '该命令已在执行中或已在队列中，请勿重复启动。',
+      );
+    }
+
+    final activeManagerBusyKey =
+        _activeManagerCommandBusyKeys[command.managerId];
+    final hasQueuedManagerCommands =
+        _queuedManagerCommands[command.managerId]?.isNotEmpty ?? false;
+    if (activeManagerBusyKey != null || hasQueuedManagerCommands) {
+      final completer = Completer<ShellResult>();
+      (_queuedManagerCommands[command.managerId] ??= <_QueuedPackageCommand>[])
+          .add(_QueuedPackageCommand(command: command, completer: completer));
+      _queuedCommands.add(command.busyKey);
+      _queuedCommandInfo[command.busyKey] = RunningCommandInfo(
+        busyKey: command.busyKey,
+        command: command.command,
+        statusLabel: '排队中',
+      );
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '${command.label} 已加入队列',
+          message: command.command,
+        ),
+      );
+      notifyListeners();
+      return completer.future;
+    }
+
+    return _runCommandNow(command);
+  }
+
+  Future<ShellResult> _runCommandNow(PackageCommand command) async {
     _runningCommands.add(command.busyKey);
+    _activeManagerCommandBusyKeys[command.managerId] = command.busyKey;
     _runningCommandInfo[command.busyKey] = RunningCommandInfo(
       busyKey: command.busyKey,
       command: command.command,
@@ -1484,38 +1535,73 @@ class PackagePanelController extends ChangeNotifier {
     );
     notifyListeners();
 
-    final result = await _shell.runRequest(
-      command.request,
-      timeout: command.timeout,
-      executionKey: command.busyKey,
-    );
-    _runningCommands.remove(command.busyKey);
-    _runningCommandInfo.remove(command.busyKey);
+    try {
+      final result = await _shell.runRequest(
+        command.request,
+        timeout: command.timeout,
+        executionKey: command.busyKey,
+      );
 
-    _pushActivity(
-      ActivityEntry(
-        timestamp: DateTime.now(),
-        title: result.isSuccess
-            ? '${command.label} 已完成'
-            : result.wasCancelled
-            ? '${command.label} 已取消'
-            : '${command.label} 失败',
-        message: result.wasCancelled
-            ? (result.combinedOutput.isEmpty ? '命令已取消。' : result.combinedOutput)
-            : result.combinedOutput.isEmpty
-            ? '命令执行完成，但没有控制台输出。'
-            : result.combinedOutput,
-        isError: !result.isSuccess && !result.wasCancelled,
-      ),
-    );
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: result.isSuccess
+              ? '${command.label} 已完成'
+              : result.wasCancelled
+              ? '${command.label} 已取消'
+              : '${command.label} 失败',
+          message: result.wasCancelled
+              ? (result.combinedOutput.isEmpty
+                    ? '命令已取消。'
+                    : result.combinedOutput)
+              : result.combinedOutput.isEmpty
+              ? '命令执行完成，但没有控制台输出。'
+              : result.combinedOutput,
+          isError: !result.isSuccess && !result.wasCancelled,
+        ),
+      );
 
-    if (result.isSuccess) {
-      await refreshManager(command.managerId);
-    } else {
+      if (result.isSuccess) {
+        await refreshManager(command.managerId);
+      }
+
+      return result;
+    } finally {
+      _runningCommands.remove(command.busyKey);
+      _runningCommandInfo.remove(command.busyKey);
+      if (_activeManagerCommandBusyKeys[command.managerId] == command.busyKey) {
+        _activeManagerCommandBusyKeys.remove(command.managerId);
+      }
       notifyListeners();
+      _startNextQueuedCommand(command.managerId);
+    }
+  }
+
+  void _startNextQueuedCommand(String managerId) {
+    if (_activeManagerCommandBusyKeys.containsKey(managerId)) {
+      return;
     }
 
-    return result;
+    final queue = _queuedManagerCommands[managerId];
+    if (queue == null || queue.isEmpty) {
+      _queuedManagerCommands.remove(managerId);
+      return;
+    }
+
+    final next = queue.removeAt(0);
+    if (queue.isEmpty) {
+      _queuedManagerCommands.remove(managerId);
+    }
+    _queuedCommands.remove(next.command.busyKey);
+    _queuedCommandInfo.remove(next.command.busyKey);
+    notifyListeners();
+    unawaited(() async {
+      try {
+        next.completer.complete(await _runCommandNow(next.command));
+      } catch (error, stackTrace) {
+        next.completer.completeError(error, stackTrace);
+      }
+    }());
   }
 
   Future<String?> checkLatestVersion(ManagedPackage package) async {
@@ -2408,4 +2494,11 @@ bool _sameStringSet(Set<String> left, Set<String> right) {
     }
   }
   return true;
+}
+
+class _QueuedPackageCommand {
+  const _QueuedPackageCommand({required this.command, required this.completer});
+
+  final PackageCommand command;
+  final Completer<ShellResult> completer;
 }
