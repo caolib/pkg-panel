@@ -1095,6 +1095,48 @@ void main() {
     },
   );
 
+  testWidgets(
+    'node install filter stays available for managers referenced by custom group',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: PackageManagerRegistry.defaultAdapters,
+        initialVisibleManagerIds: const <String>{},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pnpm': true,
+          'yarn': true,
+          'bun': true,
+        },
+        initialHomeFilterGroups: const <HomeFilterGroup>[
+          HomeFilterGroup(
+            id: 'npmpkg',
+            kind: HomeFilterGroupKind.custom,
+            displayName: 'npmpkg',
+            managerIds: <String>['npm', 'pnpm'],
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('安装'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('npm'), findsOneWidget);
+      expect(
+        controller.installSearchFilterManagerIds('node_registry'),
+        <String>['npm', 'pnpm'],
+      );
+    },
+  );
+
   test(
     'node ecosystem search uses one provider and expands install options',
     () async {

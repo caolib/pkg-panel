@@ -2347,7 +2347,7 @@ class PackagePanelController extends ChangeNotifier {
       final adapter = _adapterFor(managerId);
       if (adapter == null ||
           !isManagerAvailable(managerId) ||
-          !isManagerVisible(managerId)) {
+          !_isManagerExposedForInstallSearch(managerId)) {
         continue;
       }
       if (_capabilityOf<PackageInstallCapability>(adapter) == null) {
@@ -2587,6 +2587,13 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   bool _shouldLoadManagerForHome(String managerId) {
+    return isManagerVisible(managerId) ||
+        _managerIdsReferencedByVisibleCustomHomeFilterGroups().contains(
+          managerId,
+        );
+  }
+
+  bool _isManagerExposedForInstallSearch(String managerId) {
     return isManagerVisible(managerId) ||
         _managerIdsReferencedByVisibleCustomHomeFilterGroups().contains(
           managerId,
