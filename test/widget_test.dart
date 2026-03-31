@@ -351,6 +351,58 @@ void main() {
   );
 
   test(
+    'custom home filter group loads packages from hidden managers',
+    () async {
+      final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+        'npm ls -g --depth=0 --json': const ShellResult(
+          exitCode: 0,
+          stdout: '{"dependencies":{"eslint":{"version":"9.1.0"}}}',
+          stderr: '',
+        ),
+        'pip list --format=json': const ShellResult(
+          exitCode: 0,
+          stdout: '[{"name":"ruff","version":"0.8.6"}]',
+          stderr: '',
+        ),
+      });
+      final npmAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'npm',
+      );
+      final pipAdapter = PackageManagerRegistry.defaultAdapters.firstWhere(
+        (adapter) => adapter.definition.id == 'pip',
+      );
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
+        latestInfoStore: const _MemoryLatestInfoStore(),
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pip': true,
+        },
+        initialHomeFilterGroups: const <HomeFilterGroup>[
+          HomeFilterGroup(
+            id: 'dev_tools',
+            kind: HomeFilterGroupKind.custom,
+            displayName: '开发工具',
+            managerIds: <String>['npm', 'pip'],
+          ),
+        ],
+      );
+
+      await controller.ensureLoaded();
+      controller.selectManager('dev_tools');
+
+      expect(
+        controller.visiblePackages.map((package) => package.name).toList(),
+        <String>['eslint', 'ruff'],
+      );
+    },
+  );
+
+  test(
     'refresh current selection reloads all managers for update filter',
     () async {
       final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
