@@ -44,6 +44,7 @@ class PackagePanelController extends ChangeNotifier {
     ThemeMode? initialThemeMode,
     int? initialCustomThemeSeedColorValue,
     bool? initialAutoCheckAppUpdates,
+    bool? initialRememberWindowPlacement,
     bool? initialUseGithubMirrorForDownloads,
     String? initialGithubMirrorBaseUrl,
     String? initialCustomFontFamily,
@@ -86,6 +87,7 @@ class PackagePanelController extends ChangeNotifier {
        ),
        _themeMode = initialThemeMode ?? ThemeMode.system,
        _autoCheckAppUpdates = initialAutoCheckAppUpdates ?? true,
+       _rememberWindowPlacement = initialRememberWindowPlacement ?? true,
        _useGithubMirrorForDownloads =
            initialUseGithubMirrorForDownloads ?? true,
        _githubMirrorBaseUrl =
@@ -152,6 +154,7 @@ class PackagePanelController extends ChangeNotifier {
   Color _customThemeSeedColor;
   ThemeMode _themeMode;
   bool _autoCheckAppUpdates;
+  bool _rememberWindowPlacement;
   bool _useGithubMirrorForDownloads;
   String _githubMirrorBaseUrl;
   int _visiblePackagesDataStamp = 0;
@@ -214,6 +217,8 @@ class PackagePanelController extends ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
 
   bool get autoCheckAppUpdates => _autoCheckAppUpdates;
+
+  bool get rememberWindowPlacement => _rememberWindowPlacement;
 
   bool get useGithubMirrorForDownloads => _useGithubMirrorForDownloads;
 
@@ -619,6 +624,12 @@ class PackagePanelController extends ChangeNotifier {
   Future<void> setAutoCheckAppUpdates(bool value) async {
     _autoCheckAppUpdates = value;
     await _settingsStore.saveAutoCheckAppUpdates(value);
+    notifyListeners();
+  }
+
+  Future<void> setRememberWindowPlacement(bool value) async {
+    _rememberWindowPlacement = value;
+    await _settingsStore.saveRememberWindowPlacement(value);
     notifyListeners();
   }
 
@@ -1856,6 +1867,8 @@ class PackagePanelController extends ChangeNotifier {
         fallback: _themeMode,
       );
       _autoCheckAppUpdates = await _settingsStore.loadAutoCheckAppUpdates();
+      _rememberWindowPlacement =
+          await _settingsStore.loadRememberWindowPlacement();
       _useGithubMirrorForDownloads = await _settingsStore
           .loadUseGithubMirrorForDownloads();
       _githubMirrorBaseUrl = await _settingsStore.loadGithubMirrorBaseUrl();
@@ -1884,6 +1897,8 @@ class PackagePanelController extends ChangeNotifier {
         .loadCustomThemeSeedColorValue();
     final savedAutoCheckAppUpdates = await _settingsStore
         .loadAutoCheckAppUpdates();
+    final savedRememberWindowPlacement = await _settingsStore
+        .loadRememberWindowPlacement();
     final savedUseGithubMirrorForDownloads = await _settingsStore
         .loadUseGithubMirrorForDownloads();
     final savedGithubMirrorBaseUrl = await _settingsStore
@@ -1934,6 +1949,7 @@ class PackagePanelController extends ChangeNotifier {
     );
     _themeMode = _parseThemeModeName(savedThemeModeName);
     _autoCheckAppUpdates = savedAutoCheckAppUpdates;
+    _rememberWindowPlacement = savedRememberWindowPlacement;
     _useGithubMirrorForDownloads = savedUseGithubMirrorForDownloads;
     _githubMirrorBaseUrl = savedGithubMirrorBaseUrl;
     _customFontFamily = savedCustomFontFamily?.trim().isEmpty ?? true

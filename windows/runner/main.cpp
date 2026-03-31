@@ -27,9 +27,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
+  window.SetMinimumSize(Win32Window::Size(960, 640));
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"Pkg Panel", origin, size)) {
+  bool use_physical_coordinates = false;
+  if (const auto saved_placement = Win32Window::LoadSavedWindowPlacement()) {
+    origin = saved_placement->origin;
+    size = saved_placement->size;
+    use_physical_coordinates = true;
+    if (saved_placement->maximized) {
+      window.SetInitialShowState(SW_SHOWMAXIMIZED);
+    }
+  }
+  if (!window.Create(L"Pkg Panel", origin, size, use_physical_coordinates)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

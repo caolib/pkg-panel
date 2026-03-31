@@ -3,6 +3,11 @@
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <string>
+
 #include "resource.h"
 
 namespace {
@@ -36,6 +41,10 @@ constexpr const wchar_t kGetPreferredBrightnessRegKey[] =
   L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
 constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme";
 
+constexpr const wchar_t kSettingsDirectoryName[] = L"pkg_panel";
+constexpr const wchar_t kManagerSettingsFileName[] = L"manager_settings.json";
+constexpr const wchar_t kWindowStateFileName[] = L"window_state.txt";
+
 // The number of Win32Window objects that currently exist.
 static int g_active_window_count = 0;
 
@@ -61,6 +70,99 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
     enable_non_client_dpi_scaling(hwnd);
   }
   FreeLibrary(user32_module);
+}
+
+std::wstring ReadEnvironmentVariable(const wchar_t* key) {
+  const DWORD required_size = GetEnvironmentVariableW(key, nullptr, 0);
+  if (required_size == 0) {
+    return L"";
+  }
+
+  std::wstring value(required_size - 1, L'\0');
+  const DWORD actual_size =
+      GetEnvironmentVariableW(key, value.data(), required_size);
+  if (actual_size == 0) {
+    return L"";
+  }
+  return value;
+}
+
+std::filesystem::path ResolveSettingsDirectoryPath() {
+  for (const auto* key : {L"LOCALAPPDATA", L"APPDATA"}) {
+    const std::wstring value = ReadEnvironmentVariable(key);
+    if (!value.empty()) {
+      return std::filesystem::path(value) / kSettingsDirectoryName;
+    }
+  }
+  return std::filesystem::temp_directory_path() / kSettingsDirectoryName;
+}
+
+std::filesystem::path ResolveSettingsFilePath(const wchar_t* file_name) {
+  return ResolveSettingsDirectoryPath() / file_name;
+}
+
+std::optional<std::string> ReadTextFile(
+    const std::filesystem::path& path) {
+  std::ifstream stream(path, std::ios::in);
+  if (!stream.is_open()) {
+    return std::nullopt;
+  }
+  return std::string((std::istreambuf_iterator<char>(stream)),
+                     std::istreambuf_iterator<char>());
+}
+
+std::optional<int> ParseIntSetting(const std::string& content,
+                                   const std::string& key) {
+  const std::string prefix = key + "=";
+  const size_t start = content.find(prefix);
+  if (start == std::string::npos) {
+    return std::nullopt;
+  }
+
+  size_t value_start = start + prefix.size();
+  size_t value_end = content.find_first_of("\r\n", value_start);
+  const std::string value = content.substr(value_start, value_end - value_start);
+  if (value.empty()) {
+    return std::nullopt;
+  }
+
+  try {
+    return std::stoi(value);
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+bool ParseBoolFromJsonSetting(const std::string& content,
+                              const std::string& key,
+                              bool fallback) {
+  const std::string needle = "\"" + key + "\"";
+  const size_t key_index = content.find(needle);
+  if (key_index == std::string::npos) {
+    return fallback;
+  }
+
+  size_t value_index = content.find(':', key_index + needle.size());
+  if (value_index == std::string::npos) {
+    return fallback;
+  }
+  value_index += 1;
+  while (value_index < content.size() &&
+         (content[value_index] == ' ' || content[value_index] == '\t' ||
+          content[value_index] == '\r' || content[value_index] == '\n')) {
+    value_index += 1;
+  }
+  if (content.compare(value_index, 4, "true") == 0) {
+    return true;
+  }
+  if (content.compare(value_index, 5, "false") == 0) {
+    return false;
+  }
+  return fallback;
+}
+
+bool IsPlacementVisible(const RECT& rect) {
+  return MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) != nullptr;
 }
 
 }  // namespace
@@ -132,23 +234,34 @@ Win32Window::~Win32Window() {
 
 bool Win32Window::Create(const std::wstring& title,
                          const Point& origin,
-                         const Size& size) {
+                         const Size& size,
+                         bool coordinates_are_physical) {
   Destroy();
 
   const wchar_t* window_class =
       WindowClassRegistrar::GetInstance()->GetWindowClass();
 
-  const POINT target_point = {static_cast<LONG>(origin.x),
-                              static_cast<LONG>(origin.y)};
-  HMONITOR monitor = MonitorFromPoint(target_point, MONITOR_DEFAULTTONEAREST);
-  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
-  double scale_factor = dpi / 96.0;
+  int window_x = origin.x;
+  int window_y = origin.y;
+  int window_width = static_cast<int>(size.width);
+  int window_height = static_cast<int>(size.height);
+
+  if (!coordinates_are_physical) {
+    const POINT target_point = {static_cast<LONG>(origin.x),
+                                static_cast<LONG>(origin.y)};
+    HMONITOR monitor = MonitorFromPoint(target_point, MONITOR_DEFAULTTONEAREST);
+    UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+    double scale_factor = dpi / 96.0;
+    window_x = Scale(origin.x, scale_factor);
+    window_y = Scale(origin.y, scale_factor);
+    window_width = Scale(static_cast<int>(size.width), scale_factor);
+    window_height = Scale(static_cast<int>(size.height), scale_factor);
+  }
 
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
-      Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
-      Scale(size.width, scale_factor), Scale(size.height, scale_factor),
-      nullptr, nullptr, GetModuleHandle(nullptr), this);
+      window_class, title.c_str(), WS_OVERLAPPEDWINDOW, window_x, window_y,
+      window_width, window_height, nullptr, nullptr, GetModuleHandle(nullptr),
+      this);
 
   if (!window) {
     return false;
@@ -160,7 +273,16 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  return ShowWindow(window_handle_, initial_show_state_);
+}
+
+void Win32Window::SetInitialShowState(int show_state) {
+  initial_show_state_ =
+      show_state == SW_SHOWMAXIMIZED ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+}
+
+void Win32Window::SetMinimumSize(Size size) {
+  minimum_size_ = size;
 }
 
 // static
@@ -189,6 +311,10 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_CLOSE:
+      SaveWindowPlacement(hwnd);
+      break;
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -205,6 +331,22 @@ Win32Window::MessageHandler(HWND hwnd,
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
 
+      return 0;
+    }
+    case WM_GETMINMAXINFO: {
+      if (!minimum_size_.has_value()) {
+        break;
+      }
+
+      auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
+      const HMONITOR monitor =
+          MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+      const UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+      const double scale_factor = dpi / 96.0;
+      info->ptMinTrackSize.x =
+          Scale(static_cast<int>(minimum_size_->width), scale_factor);
+      info->ptMinTrackSize.y =
+          Scale(static_cast<int>(minimum_size_->height), scale_factor);
       return 0;
     }
     case WM_SIZE: {
@@ -234,6 +376,9 @@ Win32Window::MessageHandler(HWND hwnd,
 }
 
 void Win32Window::Destroy() {
+  if (window_handle_) {
+    SaveWindowPlacement(window_handle_);
+  }
   OnDestroy();
 
   if (window_handle_) {
@@ -275,6 +420,41 @@ void Win32Window::SetQuitOnClose(bool quit_on_close) {
   quit_on_close_ = quit_on_close;
 }
 
+std::optional<Win32Window::SavedWindowPlacement>
+Win32Window::LoadSavedWindowPlacement() {
+  if (!ShouldRememberWindowPlacement()) {
+    return std::nullopt;
+  }
+
+  const auto content = ReadTextFile(ResolveSettingsFilePath(kWindowStateFileName));
+  if (!content.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto left = ParseIntSetting(*content, "left");
+  const auto top = ParseIntSetting(*content, "top");
+  const auto width = ParseIntSetting(*content, "width");
+  const auto height = ParseIntSetting(*content, "height");
+  const auto maximized = ParseIntSetting(*content, "maximized");
+  if (!left.has_value() || !top.has_value() || !width.has_value() ||
+      !height.has_value() || !maximized.has_value()) {
+    return std::nullopt;
+  }
+  if (*width < 320 || *height < 240) {
+    return std::nullopt;
+  }
+
+  RECT bounds{*left, *top, *left + *width, *top + *height};
+  if (!IsPlacementVisible(bounds)) {
+    return std::nullopt;
+  }
+
+  return SavedWindowPlacement(
+      Point(*left, *top), Size(static_cast<unsigned int>(*width),
+                               static_cast<unsigned int>(*height)),
+      *maximized != 0);
+}
+
 void Win32Window::SetThemeMode(std::optional<bool> prefers_dark_mode) {
   prefers_dark_mode_ = prefers_dark_mode;
   UpdateTheme();
@@ -310,6 +490,50 @@ bool Win32Window::IsSystemDarkModeEnabled() {
                                &light_mode_size);
 
   return result == ERROR_SUCCESS && light_mode == 0;
+}
+
+bool Win32Window::ShouldRememberWindowPlacement() {
+  const auto content =
+      ReadTextFile(ResolveSettingsFilePath(kManagerSettingsFileName));
+  if (!content.has_value()) {
+    return true;
+  }
+  return ParseBoolFromJsonSetting(*content, "rememberWindowPlacement", true);
+}
+
+void Win32Window::SaveWindowPlacement(HWND window) {
+  if (window == nullptr || !ShouldRememberWindowPlacement()) {
+    return;
+  }
+
+  WINDOWPLACEMENT placement{};
+  placement.length = sizeof(WINDOWPLACEMENT);
+  if (!GetWindowPlacement(window, &placement)) {
+    return;
+  }
+
+  const bool maximized = IsZoomed(window) || placement.showCmd == SW_SHOWMAXIMIZED;
+  const RECT bounds = placement.rcNormalPosition;
+  const int width = bounds.right - bounds.left;
+  const int height = bounds.bottom - bounds.top;
+  if (width < 320 || height < 240) {
+    return;
+  }
+
+  const auto path = ResolveSettingsFilePath(kWindowStateFileName);
+  std::error_code error;
+  std::filesystem::create_directories(path.parent_path(), error);
+
+  std::ofstream stream(path, std::ios::out | std::ios::trunc);
+  if (!stream.is_open()) {
+    return;
+  }
+
+  stream << "left=" << bounds.left << '\n'
+         << "top=" << bounds.top << '\n'
+         << "width=" << width << '\n'
+         << "height=" << height << '\n'
+         << "maximized=" << (maximized ? 1 : 0) << '\n';
 }
 
 void Win32Window::ApplyTheme(HWND window, bool enable_dark_mode,

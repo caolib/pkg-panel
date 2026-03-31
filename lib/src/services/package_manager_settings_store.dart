@@ -385,6 +385,36 @@ class PackageManagerSettingsStore {
     }
   }
 
+  Future<bool> loadRememberWindowPlacement() async {
+    try {
+      final decoded = await _loadSettings();
+      final value = decoded?['rememberWindowPlacement'];
+      if (value is bool) {
+        return value;
+      }
+      final normalized = '${value ?? ''}'.trim().toLowerCase();
+      if (normalized == 'false' || normalized == '0') {
+        return false;
+      }
+      if (normalized == 'true' || normalized == '1') {
+        return true;
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> saveRememberWindowPlacement(bool value) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['rememberWindowPlacement'] = value;
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
   Future<bool> loadUseGithubMirrorForDownloads() async {
     try {
       final decoded = await _loadSettings();

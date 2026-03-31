@@ -308,6 +308,18 @@ abstract class AppLocalizations {
   /// **'开启后，每次启动应用时都会检查 GitHub Release。'**
   String get autoCheckUpdatesSubtitle;
 
+  /// No description provided for @rememberWindowPlacementTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'记住窗口位置和大小'**
+  String get rememberWindowPlacementTitle;
+
+  /// No description provided for @rememberWindowPlacementSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启后，下次启动时会恢复上次关闭时的窗口位置和大小。'**
+  String get rememberWindowPlacementSubtitle;
+
   /// No description provided for @githubMirrorTitle.
   ///
   /// In zh, this message translates to:

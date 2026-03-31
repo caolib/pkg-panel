@@ -119,6 +119,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'When enabled, the app checks GitHub Releases on startup.';
 
   @override
+  String get rememberWindowPlacementTitle =>
+      'Remember window position and size';
+
+  @override
+  String get rememberWindowPlacementSubtitle =>
+      'When enabled, the app restores the window position and size from the last session on startup.';
+
+  @override
   String get githubMirrorTitle => 'Use GitHub mirror for downloads';
 
   @override

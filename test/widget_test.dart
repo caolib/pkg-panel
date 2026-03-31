@@ -2797,6 +2797,12 @@ class _MemorySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveAutoCheckAppUpdates(bool value) async {}
 
   @override
+  Future<bool> loadRememberWindowPlacement() async => true;
+
+  @override
+  Future<void> saveRememberWindowPlacement(bool value) async {}
+
+  @override
   Future<bool> loadUseGithubMirrorForDownloads() async => true;
 
   @override
@@ -2876,6 +2882,12 @@ class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
 
   @override
   Future<void> saveAutoCheckAppUpdates(bool value) async {}
+
+  @override
+  Future<bool> loadRememberWindowPlacement() async => true;
+
+  @override
+  Future<void> saveRememberWindowPlacement(bool value) async {}
 
   @override
   Future<bool> loadUseGithubMirrorForDownloads() async => true;

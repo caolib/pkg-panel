@@ -31,6 +31,8 @@ Future<void> main() async {
       .loadCustomThemeSeedColorValue();
   final initialAutoCheckAppUpdates = await managerSettingsStore
       .loadAutoCheckAppUpdates();
+  final initialRememberWindowPlacement = await managerSettingsStore
+      .loadRememberWindowPlacement();
   final initialUseGithubMirrorForDownloads = await managerSettingsStore
       .loadUseGithubMirrorForDownloads();
   final initialGithubMirrorBaseUrl = await managerSettingsStore
@@ -69,6 +71,7 @@ Future<void> main() async {
     },
     initialCustomThemeSeedColorValue: initialCustomThemeSeedColorValue,
     initialAutoCheckAppUpdates: initialAutoCheckAppUpdates,
+    initialRememberWindowPlacement: initialRememberWindowPlacement,
     initialUseGithubMirrorForDownloads: initialUseGithubMirrorForDownloads,
     initialGithubMirrorBaseUrl: initialGithubMirrorBaseUrl,
     initialCustomFontFamily: initialCustomFontFamily,

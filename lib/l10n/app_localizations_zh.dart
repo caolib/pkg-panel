@@ -117,6 +117,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoCheckUpdatesSubtitle => '开启后，每次启动应用时都会检查 GitHub Release。';
 
   @override
+  String get rememberWindowPlacementTitle => '记住窗口位置和大小';
+
+  @override
+  String get rememberWindowPlacementSubtitle => '开启后，下次启动时会恢复上次关闭时的窗口位置和大小。';
+
+  @override
   String get githubMirrorTitle => 'GitHub 镜像下载';
 
   @override

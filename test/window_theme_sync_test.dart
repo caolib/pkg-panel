@@ -99,4 +99,10 @@ class _MemorySettingsStore extends PackageManagerSettingsStore {
 
   @override
   Future<void> saveThemeModeName(String themeMode) async {}
+
+  @override
+  Future<bool> loadRememberWindowPlacement() async => true;
+
+  @override
+  Future<void> saveRememberWindowPlacement(bool value) async {}
 }
