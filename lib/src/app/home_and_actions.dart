@@ -749,18 +749,26 @@ class _PackageListView extends StatelessWidget {
                       selectedCount: controller.selectedPackageCount,
                     ),
                     Expanded(
-                      child: ListView.separated(
+                      child: ListView.builder(
                         itemCount: packages.length,
-                        separatorBuilder: (_, _) => Divider(
-                          height: 1,
-                          color: theme.colorScheme.outlineVariant,
-                        ),
                         itemBuilder: (context, index) {
-                          return _PackageListTile(
-                            package: packages[index],
-                            controller: controller,
-                            onRunAction: onRunAction,
-                            compact: compact,
+                          final package = packages[index];
+                          return DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: index == packages.length - 1
+                                  ? null
+                                  : Border(
+                                      bottom: BorderSide(
+                                        color: theme.colorScheme.outlineVariant,
+                                      ),
+                                    ),
+                            ),
+                            child: _PackageListTile(
+                              package: package,
+                              controller: controller,
+                              onRunAction: onRunAction,
+                              compact: compact,
+                            ),
                           );
                         },
                       ),
@@ -850,37 +858,20 @@ class _PackageListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final versionInstallOption = _installOptionFromManagedPackage(package);
-    final updateCommand = controller.commandFor(PackageAction.update, package);
-    final removeCommand = controller.commandFor(PackageAction.remove, package);
-    final canViewDetails = controller.canViewPackageDetails(package);
-    final canCheckLatest = controller.canCheckLatestVersion(package);
-    final canInstallSpecificVersion = controller.canInstallSpecificVersion(
-      versionInstallOption,
+    final tileState = _PackageTileState.fromController(
+      controller: controller,
+      package: package,
     );
-    final isLoadingDetails = controller.isLoadingPackageDetails(package);
-    final isCheckingLatest = controller.isCheckingLatestVersion(package);
-    final isInstallingSpecificVersion = controller.isInstallingSearchOption(
-      versionInstallOption,
-    );
-    final isUpdating =
-        updateCommand != null && controller.isBusy(updateCommand.busyKey);
-    final isRemoving =
-        removeCommand != null && controller.isBusy(removeCommand.busyKey);
-    final accent = _managerAccent(package.managerId);
-    final extra = _extraLine(context, package);
-    final isSelected = controller.isPackageSelected(package);
     final theme = Theme.of(context);
+    final extra = _extraLine(context, package);
     final rowContent = compact
         ? Row(
             children: <Widget>[
               _ManagerIcon(
                 managerId: package.managerId,
-                customIconPath:
-                    controller.packageIconPath(package) ??
-                    controller.customManagerIconPath(package.managerId),
+                customIconPath: tileState.iconPath,
                 fallbackIcon: _managerIcon(package.managerId),
-                fallbackColor: accent,
+                fallbackColor: tileState.accent,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -924,11 +915,9 @@ class _PackageListTile extends StatelessWidget {
                   children: <Widget>[
                     _ManagerIcon(
                       managerId: package.managerId,
-                      customIconPath:
-                          controller.packageIconPath(package) ??
-                          controller.customManagerIconPath(package.managerId),
+                      customIconPath: tileState.iconPath,
                       fallbackIcon: _managerIcon(package.managerId),
-                      fallbackColor: accent,
+                      fallbackColor: tileState.accent,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -981,47 +970,40 @@ class _PackageListTile extends StatelessWidget {
         ? const EdgeInsets.fromLTRB(16, 10, 16, 10)
         : const EdgeInsets.fromLTRB(16, 8, 16, 8);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (event) {
-          if (event.kind == PointerDeviceKind.mouse &&
-              event.buttons != kPrimaryMouseButton) {
-            return;
-          }
-          controller.selectPackage(
-            package,
-            additive: _isAdditiveSelectionPressed(),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) {
+        controller.selectPackage(
+          package,
+          additive: _isAdditiveSelectionPressed(),
             range: _isRangeSelectionPressed(),
-          );
-        },
-        child: Material(
-          color: isSelected
-              ? theme.colorScheme.primary.withAlpha(36)
-              : Colors.transparent,
-          child: InkWell(
-            onTap: () {},
-            onDoubleTap: canViewDetails && !isLoadingDetails
-                ? () => _openPackageDetails(context)
-                : null,
-            onSecondaryTapUp: (details) => _showContextMenu(
-              context,
-              details.globalPosition,
-              canViewDetails: canViewDetails,
-              canCheckLatest: canCheckLatest,
-              isLoadingDetails: isLoadingDetails,
-              isCheckingLatest: isCheckingLatest,
-              isUpdating: isUpdating,
-              isRemoving: isRemoving,
-              canInstallSpecificVersion: canInstallSpecificVersion,
-              isInstallingSpecificVersion: isInstallingSpecificVersion,
-              versionInstallOption: versionInstallOption,
-              updateCommand: updateCommand,
-              removeCommand: removeCommand,
-            ),
-            child: Padding(padding: innerPadding, child: rowContent),
-          ),
+        );
+      },
+      onDoubleTap: tileState.canViewDetails && !tileState.isLoadingDetails
+          ? () => _openPackageDetails(context)
+          : null,
+      onSecondaryTapUp: (details) => _showContextMenu(
+        context,
+        details.globalPosition,
+        canViewDetails: tileState.canViewDetails,
+        canCheckLatest: tileState.canCheckLatest,
+        isLoadingDetails: tileState.isLoadingDetails,
+        isCheckingLatest: tileState.isCheckingLatest,
+        isUpdating: tileState.isUpdating,
+        isRemoving: tileState.isRemoving,
+        canInstallSpecificVersion: tileState.canInstallSpecificVersion,
+        isInstallingSpecificVersion: tileState.isInstallingSpecificVersion,
+        versionInstallOption: tileState.versionInstallOption,
+        updateCommand: tileState.updateCommand,
+        removeCommand: tileState.removeCommand,
+      ),
+      child: ColoredBox(
+        color: tileState.isSelected
+            ? theme.colorScheme.primary.withAlpha(36)
+            : Colors.transparent,
+        child: Padding(
+          padding: innerPadding,
+          child: rowContent,
         ),
       ),
     );
@@ -1145,19 +1127,25 @@ class _PackageListTile extends StatelessWidget {
 }
 
 class _ContextMenuItemLabel extends StatelessWidget {
-  const _ContextMenuItemLabel({this.icon, this.leading, required this.label})
+  const _ContextMenuItemLabel({
+    this.icon,
+    this.leading,
+    required this.label,
+    this.foregroundColor,
+  })
     : assert(icon != null || leading != null);
 
   final IconData? icon;
   final Widget? leading;
   final String label;
+  final Color? foregroundColor;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        leading ?? Icon(icon, size: 18),
+        leading ?? Icon(icon, size: 18, color: foregroundColor),
         const SizedBox(width: 10),
         Text(label),
       ],
@@ -1303,21 +1291,25 @@ class _DesktopContextMenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final foregroundColor = item.enabled
+        ? theme.colorScheme.onSurface
+        : theme.colorScheme.onSurface.withAlpha(115);
     return InkWell(
       onTap: item.enabled ? () => onPressed() : null,
       child: Align(
         alignment: Alignment.centerLeft,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          child: Opacity(
-            opacity: item.enabled ? 1 : 0.45,
-            child: DefaultTextStyle(
-              style: theme.textTheme.bodyMedium ?? const TextStyle(),
-              child: _ContextMenuItemLabel(
-                icon: item.icon,
-                leading: item.leading,
-                label: item.label,
-              ),
+          child: DefaultTextStyle(
+            style:
+                (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+                  color: foregroundColor,
+                ),
+            child: _ContextMenuItemLabel(
+              icon: item.icon,
+              leading: item.leading,
+              label: item.label,
+              foregroundColor: foregroundColor,
             ),
           ),
         ),
@@ -1452,6 +1444,74 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
       ),
     );
   }
+
+}
+
+class _PackageTileState {
+  const _PackageTileState({
+    required this.versionInstallOption,
+    required this.updateCommand,
+    required this.removeCommand,
+    required this.canViewDetails,
+    required this.canCheckLatest,
+    required this.canInstallSpecificVersion,
+    required this.isLoadingDetails,
+    required this.isCheckingLatest,
+    required this.isInstallingSpecificVersion,
+    required this.isUpdating,
+    required this.isRemoving,
+    required this.isSelected,
+    required this.iconPath,
+    required this.accent,
+  });
+
+  factory _PackageTileState.fromController({
+    required PackagePanelController controller,
+    required ManagedPackage package,
+  }) {
+    final versionInstallOption = _installOptionFromManagedPackage(package);
+    final updateCommand = controller.commandFor(PackageAction.update, package);
+    final removeCommand = controller.commandFor(PackageAction.remove, package);
+    return _PackageTileState(
+      versionInstallOption: versionInstallOption,
+      updateCommand: updateCommand,
+      removeCommand: removeCommand,
+      canViewDetails: controller.canViewPackageDetails(package),
+      canCheckLatest: controller.canCheckLatestVersion(package),
+      canInstallSpecificVersion: controller.canInstallSpecificVersion(
+        versionInstallOption,
+      ),
+      isLoadingDetails: controller.isLoadingPackageDetails(package),
+      isCheckingLatest: controller.isCheckingLatestVersion(package),
+      isInstallingSpecificVersion: controller.isInstallingSearchOption(
+        versionInstallOption,
+      ),
+      isUpdating:
+          updateCommand != null && controller.isBusy(updateCommand.busyKey),
+      isRemoving:
+          removeCommand != null && controller.isBusy(removeCommand.busyKey),
+      isSelected: controller.isPackageSelected(package),
+      iconPath:
+          controller.packageIconPath(package) ??
+          controller.customManagerIconPath(package.managerId),
+      accent: _managerAccent(package.managerId),
+    );
+  }
+
+  final SearchPackageInstallOption versionInstallOption;
+  final PackageCommand? updateCommand;
+  final PackageCommand? removeCommand;
+  final bool canViewDetails;
+  final bool canCheckLatest;
+  final bool canInstallSpecificVersion;
+  final bool isLoadingDetails;
+  final bool isCheckingLatest;
+  final bool isInstallingSpecificVersion;
+  final bool isUpdating;
+  final bool isRemoving;
+  final bool isSelected;
+  final String? iconPath;
+  final Color accent;
 }
 
 class _ManagerIcon extends StatelessWidget {
@@ -1474,7 +1534,7 @@ class _ManagerIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final customPath = customIconPath?.trim();
-    final fallback = _buildDefaultManagerIcon();
+    final fallback = _buildFallbackIcon();
     if (customPath != null && customPath.isNotEmpty) {
       return LocalIconImage(
         filePath: customPath,
@@ -1488,48 +1548,43 @@ class _ManagerIcon extends StatelessWidget {
       return fallback;
     }
 
-    final lowerAssetPath = assetPath.toLowerCase();
-
-    return SizedBox.square(
-      dimension: size,
-      child: lowerAssetPath.endsWith('.svg')
-          ? SvgPicture.asset(
-              assetPath,
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => fallback,
-            )
-          : Image.asset(
-              assetPath,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => fallback,
-            ),
+    return _AssetManagerIcon(
+      assetPath: assetPath,
+      size: size,
+      fallback: fallback,
     );
   }
 
-  Widget _buildDefaultManagerIcon() {
-    final assetPath = _managerSvgAsset(managerId);
-    final iconFallback = Icon(fallbackIcon, size: size, color: fallbackColor);
-    if (assetPath == null) {
-      if (!showFallbackWhenNoAsset) {
-        return const SizedBox.shrink();
-      }
-      return iconFallback;
+  Widget _buildFallbackIcon() {
+    if (!showFallbackWhenNoAsset) {
+      return const SizedBox.shrink();
     }
+    return Icon(fallbackIcon, size: size, color: fallbackColor);
+  }
+}
 
-    final lowerAssetPath = assetPath.toLowerCase();
+class _AssetManagerIcon extends StatelessWidget {
+  const _AssetManagerIcon({
+    required this.assetPath,
+    required this.size,
+    required this.fallback,
+  });
+
+  final String assetPath;
+  final double size;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context) {
     return SizedBox.square(
       dimension: size,
-      child: lowerAssetPath.endsWith('.svg')
-          ? SvgPicture.asset(
-              assetPath,
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => iconFallback,
-            )
-          : Image.asset(
-              assetPath,
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => iconFallback,
-            ),
+      child: Image.asset(
+        assetPath,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => fallback,
+      ),
     );
   }
 }

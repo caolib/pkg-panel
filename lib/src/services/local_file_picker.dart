@@ -19,6 +19,6 @@ class LocalFilePicker {
 
   static const XTypeGroup _managerIconTypeGroup = XTypeGroup(
     label: 'manager icons',
-    extensions: <String>['svg', 'png', 'jpg', 'jpeg', 'webp', 'ico'],
+    extensions: <String>['png', 'jpg', 'jpeg', 'webp', 'ico'],
   );
 }

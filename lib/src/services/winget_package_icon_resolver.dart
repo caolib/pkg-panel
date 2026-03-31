@@ -145,7 +145,7 @@ class WingetPackageIconResolver {
     }
 
     final match = RegExp(
-      r'^(.*?\.(?:exe|dll|ico|svg|png|jpg|jpeg|webp|bmp|gif))(?:,.*)?$',
+      r'^(.*?\.(?:exe|dll|ico|png|jpg|jpeg|webp|bmp|gif))(?:,.*)?$',
       caseSensitive: false,
     ).firstMatch(path);
     if (match != null) {
@@ -174,7 +174,6 @@ class WingetPackageIconResolver {
     return lowerPath.endsWith('.exe') ||
         lowerPath.endsWith('.dll') ||
         lowerPath.endsWith('.ico') ||
-        lowerPath.endsWith('.svg') ||
         lowerPath.endsWith('.png') ||
         lowerPath.endsWith('.jpg') ||
         lowerPath.endsWith('.jpeg') ||
@@ -192,8 +191,7 @@ class WingetPackageIconResolver {
     String sourcePath,
   ) async {
     final lowerPath = sourcePath.toLowerCase();
-    if (lowerPath.endsWith('.svg') ||
-        lowerPath.endsWith('.png') ||
+    if (lowerPath.endsWith('.png') ||
         lowerPath.endsWith('.jpg') ||
         lowerPath.endsWith('.jpeg') ||
         lowerPath.endsWith('.webp') ||

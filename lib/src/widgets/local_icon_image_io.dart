@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 class LocalIconImage extends StatelessWidget {
   const LocalIconImage({
@@ -24,23 +23,16 @@ class LocalIconImage extends StatelessWidget {
 
     return SizedBox.square(
       dimension: size,
-      child: lowerFilePath.endsWith('.svg')
-          ? SvgPicture.file(
-              File(filePath),
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => fallback,
-            )
-          : Image.file(
-              File(filePath),
-              fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => fallback,
-            ),
+      child: Image.file(
+        File(filePath),
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => fallback,
+      ),
     );
   }
 
   bool _isSupportedImageFile(String filePath) {
-    return filePath.endsWith('.svg') ||
-        filePath.endsWith('.ico') ||
+    return filePath.endsWith('.ico') ||
         filePath.endsWith('.png') ||
         filePath.endsWith('.jpg') ||
         filePath.endsWith('.jpeg') ||

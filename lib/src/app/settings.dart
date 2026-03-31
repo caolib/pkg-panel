@@ -608,9 +608,9 @@ class PackageSettingsPage extends StatelessWidget {
         final currentTabIndex = settingsTabController.index;
         final homeFilterGroups = controller.homeFilterGroups;
         final states = controller.managerVisibilityStates;
-        final pages = <Widget>[
-                      _buildGeneralTab(context, theme),
-                      ListView(
+        return switch (currentTabIndex) {
+          0 => _buildGeneralTab(context, theme),
+          1 => ListView(
                         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                         children: <Widget>[
                           Row(
@@ -1207,16 +1207,15 @@ class PackageSettingsPage extends StatelessWidget {
                           ),
                         ],
                       ),
-                      _buildAppearanceTab(context, theme),
-                      SingleChildScrollView(
+          2 => _buildAppearanceTab(context, theme),
+          _ => SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                         child: _AboutAppCard(
                           theme: theme,
                           controller: controller,
                         ),
                       ),
-                    ];
-        return pages[currentTabIndex];
+        };
       },
     );
   }
@@ -2313,8 +2312,8 @@ class _AboutAppCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Center(
-              child: SvgPicture.asset(
-                'assets/branding/logo.svg',
+              child: Image.asset(
+                'assets/branding/logo.png',
                 width: 120,
                 height: 120,
                 fit: BoxFit.contain,

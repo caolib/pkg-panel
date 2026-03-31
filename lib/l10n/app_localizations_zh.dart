@@ -526,7 +526,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get defaultIconLabel => '使用默认图标';
 
   @override
-  String get iconFormatsHint => '支持 svg、png、jpg、jpeg、webp、ico。';
+  String get iconFormatsHint => '支持 png、jpg、jpeg、webp、ico。';
 
   @override
   String get includedManagersLabel => '包含的包管理器';

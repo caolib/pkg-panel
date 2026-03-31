@@ -1405,6 +1405,13 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     final targetKey = package.key;
+    if (!additive &&
+        !range &&
+        _selectedPackage?.key == targetKey &&
+        _selectedPackageKeys.length == 1 &&
+        _selectedPackageKeys.contains(targetKey)) {
+      return;
+    }
     if (range) {
       final anchorKey =
           _selectionAnchorKey ?? _selectedPackage?.key ?? targetKey;
@@ -1460,6 +1467,10 @@ class PackagePanelController extends ChangeNotifier {
   void selectPackageForContextMenu(ManagedPackage package) {
     final targetKey = package.key;
     if (_selectedPackageKeys.contains(targetKey)) {
+      if (_selectedPackage?.key == targetKey &&
+          _selectionAnchorKey == targetKey) {
+        return;
+      }
       _selectedPackage = package;
       _selectionAnchorKey = targetKey;
       notifyListeners();

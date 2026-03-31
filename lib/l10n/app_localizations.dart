@@ -1055,7 +1055,7 @@ abstract class AppLocalizations {
   /// No description provided for @iconFormatsHint.
   ///
   /// In zh, this message translates to:
-  /// **'支持 svg、png、jpg、jpeg、webp、ico。'**
+  /// **'支持 png、jpg、jpeg、webp、ico。'**
   String get iconFormatsHint;
 
   /// No description provided for @includedManagersLabel.

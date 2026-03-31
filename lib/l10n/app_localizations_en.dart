@@ -538,7 +538,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get defaultIconLabel => 'Using default icon';
 
   @override
-  String get iconFormatsHint => 'Supported: svg, png, jpg, jpeg, webp, ico.';
+  String get iconFormatsHint => 'Supported: png, jpg, jpeg, webp, ico.';
 
   @override
   String get includedManagersLabel => 'Included managers';

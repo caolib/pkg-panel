@@ -159,7 +159,7 @@
   "iconLabel": "Icon",
   "iconNotSet": "No icon selected",
   "defaultIconLabel": "Using default icon",
-  "iconFormatsHint": "Supported: svg, png, jpg, jpeg, webp, ico.",
+  "iconFormatsHint": "Supported: png, jpg, jpeg, webp, ico.",
   "includedManagersLabel": "Included managers",
   "includedPackagesLabel": "Included installed packages",
   "noLocalPackages": "No installed packages yet",

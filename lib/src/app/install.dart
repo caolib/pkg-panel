@@ -470,22 +470,19 @@ class _SearchPackageListTile extends StatelessWidget {
   List<Widget> _searchManagerIcons(BuildContext context) {
     return package.installOptions
         .map(
-          (option) => Opacity(
-            opacity: option.isInstalled ? 1 : 0.82,
-            child: Tooltip(
-              message: option.isInstalled
-                  ? context.l10n.packageAlreadyInstalled(
-                      controller.displayNameForManagerId(option.managerId),
-                    )
-                  : controller.displayNameForManagerId(option.managerId),
-              child: _ManagerIcon(
-                managerId: option.managerId,
-                customIconPath: controller.customManagerIconPath(
-                  option.managerId,
-                ),
-                fallbackIcon: _managerIcon(option.managerId),
-                fallbackColor: _managerAccent(option.managerId),
+          (option) => Tooltip(
+            message: option.isInstalled
+                ? context.l10n.packageAlreadyInstalled(
+                    controller.displayNameForManagerId(option.managerId),
+                  )
+                : controller.displayNameForManagerId(option.managerId),
+            child: _ManagerIcon(
+              managerId: option.managerId,
+              customIconPath: controller.customManagerIconPath(
+                option.managerId,
               ),
+              fallbackIcon: _managerIcon(option.managerId),
+              fallbackColor: _managerAccent(option.managerId),
             ),
           ),
         )
@@ -700,13 +697,13 @@ String? _managerSvgAsset(String managerId) {
 }
 
 const Map<String, String> _managerIconAssets = <String, String>{
-  'bun': 'assets/package_icons/bun.svg',
+  'bun': 'assets/package_icons/bun.png',
   'cargo': 'assets/package_icons/cargo.png',
-  'choco': 'assets/package_icons/chocolatey.svg',
-  'npm': 'assets/package_icons/npm.svg',
-  'pip': 'assets/package_icons/python.svg',
-  'pnpm': 'assets/package_icons/pnpm.svg',
-  'uv': 'assets/package_icons/uv.svg',
+  'choco': 'assets/package_icons/chocolatey.png',
+  'npm': 'assets/package_icons/npm.png',
+  'pip': 'assets/package_icons/python.png',
+  'pnpm': 'assets/package_icons/pnpm.png',
+  'uv': 'assets/package_icons/uv.png',
   'winget': 'assets/package_icons/winget.ico',
   'yarn': 'assets/package_icons/yarn.png',
 };

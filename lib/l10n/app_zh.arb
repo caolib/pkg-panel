@@ -301,7 +301,7 @@
   "iconLabel": "图标",
   "iconNotSet": "未设置图标",
   "defaultIconLabel": "使用默认图标",
-  "iconFormatsHint": "支持 svg、png、jpg、jpeg、webp、ico。",
+  "iconFormatsHint": "支持 png、jpg、jpeg、webp、ico。",
   "includedManagersLabel": "包含的包管理器",
   "includedPackagesLabel": "包含的单个本地包",
   "noLocalPackages": "暂无本地包",
