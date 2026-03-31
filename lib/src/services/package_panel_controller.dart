@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../models/app_theme_palette.dart';
 import '../models/package_models.dart';
 import 'app_update_service.dart';
 import 'package_adapters.dart';
@@ -39,7 +40,9 @@ class PackagePanelController extends ChangeNotifier {
     Map<String, String>? initialCustomManagerIconPaths,
     Map<String, String>? initialCustomManagerDisplayNames,
     Locale? initialLocale,
+    String? initialThemePaletteId,
     ThemeMode? initialThemeMode,
+    int? initialCustomThemeSeedColorValue,
     bool? initialAutoCheckAppUpdates,
     bool? initialUseGithubMirrorForDownloads,
     String? initialGithubMirrorBaseUrl,
@@ -77,6 +80,10 @@ class PackagePanelController extends ChangeNotifier {
          initialCustomManagerDisplayNames ?? const <String, String>{},
        ),
        _locale = _normalizeLocale(initialLocale),
+       _themePaletteId = _normalizeThemePaletteId(initialThemePaletteId),
+       _customThemeSeedColor = _normalizeThemeSeedColor(
+         initialCustomThemeSeedColorValue,
+       ),
        _themeMode = initialThemeMode ?? ThemeMode.system,
        _autoCheckAppUpdates = initialAutoCheckAppUpdates ?? true,
        _useGithubMirrorForDownloads =
@@ -141,6 +148,8 @@ class PackagePanelController extends ChangeNotifier {
   bool _hasInitializedManagerVisibility;
   bool _isCheckingAppUpdate = false;
   Locale _locale;
+  String _themePaletteId;
+  Color _customThemeSeedColor;
   ThemeMode _themeMode;
   bool _autoCheckAppUpdates;
   bool _useGithubMirrorForDownloads;
@@ -187,6 +196,16 @@ class PackagePanelController extends ChangeNotifier {
   bool get isSearchingPackages => _isSearchingPackages;
 
   Locale get locale => _locale;
+
+  String get themePaletteId => _themePaletteId;
+
+  Color get customThemeSeedColor => _customThemeSeedColor;
+
+  Color get activeThemeSeedColor =>
+      _themePaletteId == customAppThemePaletteId
+      ? _customThemeSeedColor
+      : (appThemePaletteById(_themePaletteId)?.seedColor ??
+            defaultCustomAppThemeSeedColor);
 
   ThemeMode get themeMode => _themeMode;
 
@@ -547,6 +566,27 @@ class PackagePanelController extends ChangeNotifier {
   Future<void> setLocale(Locale value) async {
     _locale = _normalizeLocale(value);
     await _settingsStore.saveLocaleCode(_locale.languageCode);
+    notifyListeners();
+  }
+
+  Future<void> setThemePaletteId(String value) async {
+    _themePaletteId = _normalizeThemePaletteId(value);
+    await _settingsStore.saveThemePaletteId(_themePaletteId);
+    notifyListeners();
+  }
+
+  Future<void> setCustomThemeSeedColor(
+    Color value, {
+    bool selectCustomPalette = false,
+  }) async {
+    _customThemeSeedColor = _normalizeThemeSeedColor(value.toARGB32());
+    await _settingsStore.saveCustomThemeSeedColorValue(
+      _customThemeSeedColor.toARGB32(),
+    );
+    if (selectCustomPalette) {
+      _themePaletteId = customAppThemePaletteId;
+      await _settingsStore.saveThemePaletteId(_themePaletteId);
+    }
     notifyListeners();
   }
 
@@ -1766,6 +1806,12 @@ class PackagePanelController extends ChangeNotifier {
       _locale = _normalizeLocale(
         Locale(await _settingsStore.loadLocaleCode() ?? _locale.languageCode),
       );
+      _themePaletteId = _normalizeThemePaletteId(
+        await _settingsStore.loadThemePaletteId(),
+      );
+      _customThemeSeedColor = _normalizeThemeSeedColor(
+        await _settingsStore.loadCustomThemeSeedColorValue(),
+      );
       _themeMode = _parseThemeModeName(
         await _settingsStore.loadThemeModeName(),
         fallback: _themeMode,
@@ -1792,7 +1838,10 @@ class PackagePanelController extends ChangeNotifier {
         .loadCustomManagerDisplayNames();
     final savedManagerOrderIds = await _settingsStore.loadManagerOrderIds();
     final savedLocaleCode = await _settingsStore.loadLocaleCode();
+    final savedThemePaletteId = await _settingsStore.loadThemePaletteId();
     final savedThemeModeName = await _settingsStore.loadThemeModeName();
+    final savedCustomThemeSeedColorValue = await _settingsStore
+        .loadCustomThemeSeedColorValue();
     final savedAutoCheckAppUpdates = await _settingsStore
         .loadAutoCheckAppUpdates();
     final savedUseGithubMirrorForDownloads = await _settingsStore
@@ -1838,6 +1887,10 @@ class PackagePanelController extends ChangeNotifier {
 
     _locale = _normalizeLocale(
       Locale(savedLocaleCode?.trim().isEmpty ?? true ? 'zh' : savedLocaleCode!),
+    );
+    _themePaletteId = _normalizeThemePaletteId(savedThemePaletteId);
+    _customThemeSeedColor = _normalizeThemeSeedColor(
+      savedCustomThemeSeedColorValue,
     );
     _themeMode = _parseThemeModeName(savedThemeModeName);
     _autoCheckAppUpdates = savedAutoCheckAppUpdates;
@@ -2336,6 +2389,22 @@ class PackagePanelController extends ChangeNotifier {
       'system' => ThemeMode.system,
       _ => fallback ?? ThemeMode.system,
     };
+  }
+
+  static String _normalizeThemePaletteId(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    if (normalized == customAppThemePaletteId) {
+      return customAppThemePaletteId;
+    }
+    return appThemePaletteById(normalized ?? '')?.id ?? defaultAppThemePaletteId;
+  }
+
+  static Color _normalizeThemeSeedColor(int? value) {
+    if (value == null) {
+      return defaultCustomAppThemeSeedColor;
+    }
+    final normalizedValue = (value & 0x00FFFFFF) | 0xFF000000;
+    return Color(normalizedValue);
   }
 
   static Locale _normalizeLocale(Locale? value) {

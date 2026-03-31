@@ -194,6 +194,108 @@ abstract class AppLocalizations {
   /// **'深色'**
   String get themeModeDark;
 
+  /// No description provided for @colorThemeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色主题'**
+  String get colorThemeTitle;
+
+  /// No description provided for @colorThemeDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'预设主题提供多组固定配色；自定义主题会用一个 seed 色同时生成浅色与深色方案。'**
+  String get colorThemeDescription;
+
+  /// No description provided for @themePaletteTeal.
+  ///
+  /// In zh, this message translates to:
+  /// **'青绿'**
+  String get themePaletteTeal;
+
+  /// No description provided for @themePaletteOcean.
+  ///
+  /// In zh, this message translates to:
+  /// **'海蓝'**
+  String get themePaletteOcean;
+
+  /// No description provided for @themePaletteSunset.
+  ///
+  /// In zh, this message translates to:
+  /// **'日落橙'**
+  String get themePaletteSunset;
+
+  /// No description provided for @themePaletteForest.
+  ///
+  /// In zh, this message translates to:
+  /// **'森林绿'**
+  String get themePaletteForest;
+
+  /// No description provided for @themePaletteBerry.
+  ///
+  /// In zh, this message translates to:
+  /// **'莓果粉'**
+  String get themePaletteBerry;
+
+  /// No description provided for @themePaletteSlate.
+  ///
+  /// In zh, this message translates to:
+  /// **'岩板灰'**
+  String get themePaletteSlate;
+
+  /// No description provided for @themePaletteCustom.
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义'**
+  String get themePaletteCustom;
+
+  /// No description provided for @buttonCustomizeTheme.
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义颜色'**
+  String get buttonCustomizeTheme;
+
+  /// No description provided for @customThemeDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置自定义主题颜色'**
+  String get customThemeDialogTitle;
+
+  /// No description provided for @customThemeUpdated.
+  ///
+  /// In zh, this message translates to:
+  /// **'主题颜色已更新为 {hex}。'**
+  String customThemeUpdated(String hex);
+
+  /// No description provided for @colorPreviewLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'主题预览'**
+  String get colorPreviewLabel;
+
+  /// No description provided for @colorHexLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'HEX 颜色'**
+  String get colorHexLabel;
+
+  /// No description provided for @colorHexHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如 #0F766E'**
+  String get colorHexHint;
+
+  /// No description provided for @colorHexInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入形如 #RRGGBB 的颜色值。'**
+  String get colorHexInvalid;
+
+  /// No description provided for @quickColorTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'快捷颜色'**
+  String get quickColorTitle;
+
   /// No description provided for @autoCheckUpdatesTitle.
   ///
   /// In zh, this message translates to:

@@ -16,6 +16,30 @@
   "themeModeSystem": "系统",
   "themeModeLight": "浅色",
   "themeModeDark": "深色",
+  "colorThemeTitle": "颜色主题",
+  "colorThemeDescription": "预设主题提供多组固定配色；自定义主题会用一个 seed 色同时生成浅色与深色方案。",
+  "themePaletteTeal": "青绿",
+  "themePaletteOcean": "海蓝",
+  "themePaletteSunset": "日落橙",
+  "themePaletteForest": "森林绿",
+  "themePaletteBerry": "莓果粉",
+  "themePaletteSlate": "岩板灰",
+  "themePaletteCustom": "自定义",
+  "buttonCustomizeTheme": "自定义颜色",
+  "customThemeDialogTitle": "设置自定义主题颜色",
+  "customThemeUpdated": "主题颜色已更新为 {hex}。",
+  "@customThemeUpdated": {
+    "placeholders": {
+      "hex": {
+        "type": "String"
+      }
+    }
+  },
+  "colorPreviewLabel": "主题预览",
+  "colorHexLabel": "HEX 颜色",
+  "colorHexHint": "例如 #0F766E",
+  "colorHexInvalid": "请输入形如 #RRGGBB 的颜色值。",
+  "quickColorTitle": "快捷颜色",
   "autoCheckUpdatesTitle": "自动检查更新",
   "autoCheckUpdatesSubtitle": "开启后，每次启动应用时都会检查 GitHub Release。",
   "githubMirrorTitle": "GitHub 镜像下载",

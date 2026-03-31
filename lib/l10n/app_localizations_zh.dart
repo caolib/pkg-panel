@@ -57,6 +57,60 @@ class AppLocalizationsZh extends AppLocalizations {
   String get themeModeDark => '深色';
 
   @override
+  String get colorThemeTitle => '颜色主题';
+
+  @override
+  String get colorThemeDescription =>
+      '预设主题提供多组固定配色；自定义主题会用一个 seed 色同时生成浅色与深色方案。';
+
+  @override
+  String get themePaletteTeal => '青绿';
+
+  @override
+  String get themePaletteOcean => '海蓝';
+
+  @override
+  String get themePaletteSunset => '日落橙';
+
+  @override
+  String get themePaletteForest => '森林绿';
+
+  @override
+  String get themePaletteBerry => '莓果粉';
+
+  @override
+  String get themePaletteSlate => '岩板灰';
+
+  @override
+  String get themePaletteCustom => '自定义';
+
+  @override
+  String get buttonCustomizeTheme => '自定义颜色';
+
+  @override
+  String get customThemeDialogTitle => '设置自定义主题颜色';
+
+  @override
+  String customThemeUpdated(String hex) {
+    return '主题颜色已更新为 $hex。';
+  }
+
+  @override
+  String get colorPreviewLabel => '主题预览';
+
+  @override
+  String get colorHexLabel => 'HEX 颜色';
+
+  @override
+  String get colorHexHint => '例如 #0F766E';
+
+  @override
+  String get colorHexInvalid => '请输入形如 #RRGGBB 的颜色值。';
+
+  @override
+  String get quickColorTitle => '快捷颜色';
+
+  @override
   String get autoCheckUpdatesTitle => '自动检查更新';
 
   @override

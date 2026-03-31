@@ -58,6 +58,60 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeModeDark => 'Dark';
 
   @override
+  String get colorThemeTitle => 'Color theme';
+
+  @override
+  String get colorThemeDescription =>
+      'Preset themes provide curated palettes. Custom theme mode uses one seed color to generate both light and dark schemes.';
+
+  @override
+  String get themePaletteTeal => 'Teal';
+
+  @override
+  String get themePaletteOcean => 'Ocean';
+
+  @override
+  String get themePaletteSunset => 'Sunset';
+
+  @override
+  String get themePaletteForest => 'Forest';
+
+  @override
+  String get themePaletteBerry => 'Berry';
+
+  @override
+  String get themePaletteSlate => 'Slate';
+
+  @override
+  String get themePaletteCustom => 'Custom';
+
+  @override
+  String get buttonCustomizeTheme => 'Customize color';
+
+  @override
+  String get customThemeDialogTitle => 'Set custom theme color';
+
+  @override
+  String customThemeUpdated(String hex) {
+    return 'Theme color updated to $hex.';
+  }
+
+  @override
+  String get colorPreviewLabel => 'Theme preview';
+
+  @override
+  String get colorHexLabel => 'HEX color';
+
+  @override
+  String get colorHexHint => 'For example: #0F766E';
+
+  @override
+  String get colorHexInvalid => 'Enter a color in the form #RRGGBB.';
+
+  @override
+  String get quickColorTitle => 'Quick colors';
+
+  @override
   String get autoCheckUpdatesTitle => 'Check for updates automatically';
 
   @override

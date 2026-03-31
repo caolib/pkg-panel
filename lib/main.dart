@@ -25,7 +25,10 @@ Future<void> main() async {
   final initialCustomManagerDisplayNames = await managerSettingsStore
       .loadCustomManagerDisplayNames();
   final initialLocaleCode = await managerSettingsStore.loadLocaleCode();
+  final initialThemePaletteId = await managerSettingsStore.loadThemePaletteId();
   final initialThemeModeName = await managerSettingsStore.loadThemeModeName();
+  final initialCustomThemeSeedColorValue = await managerSettingsStore
+      .loadCustomThemeSeedColorValue();
   final initialAutoCheckAppUpdates = await managerSettingsStore
       .loadAutoCheckAppUpdates();
   final initialUseGithubMirrorForDownloads = await managerSettingsStore
@@ -58,11 +61,13 @@ Future<void> main() async {
       'en' => const Locale('en'),
       _ => const Locale('zh'),
     },
+    initialThemePaletteId: initialThemePaletteId,
     initialThemeMode: switch (initialThemeModeName) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
     },
+    initialCustomThemeSeedColorValue: initialCustomThemeSeedColorValue,
     initialAutoCheckAppUpdates: initialAutoCheckAppUpdates,
     initialUseGithubMirrorForDownloads: initialUseGithubMirrorForDownloads,
     initialGithubMirrorBaseUrl: initialGithubMirrorBaseUrl,

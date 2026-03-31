@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_localizations.dart';
 import 'localization.dart';
+import 'models/app_theme_palette.dart';
 import 'models/package_models.dart';
 import 'services/app_update_service.dart';
 import 'services/external_link_opener.dart';
@@ -195,12 +196,14 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
           themeMode: themeMode,
           theme: _buildTheme(
             brightness: Brightness.light,
+            seedColor: widget.controller.activeThemeSeedColor,
             customFontFamily: widget.controller.customFontFamily,
             customFallbackFontFamilies:
                 widget.controller.customFallbackFontFamilies,
           ),
           darkTheme: _buildTheme(
             brightness: Brightness.dark,
+            seedColor: widget.controller.activeThemeSeedColor,
             customFontFamily: widget.controller.customFontFamily,
             customFallbackFontFamilies:
                 widget.controller.customFallbackFontFamilies,
@@ -217,59 +220,31 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
 
 ThemeData _buildTheme({
   required Brightness brightness,
+  required Color seedColor,
   required String? customFontFamily,
   required List<String> customFallbackFontFamilies,
 }) {
-  const seed = Color(0xFF0F766E);
-  const darkBase = Color(0xFF202020);
   final primaryFont = customFontFamily?.trim().isNotEmpty == true
       ? customFontFamily!.trim()
       : _defaultPrimaryFontFamily;
   final fallbackFonts = customFallbackFontFamilies.isEmpty
       ? _defaultFallbackFontFamilies
       : customFallbackFontFamilies;
-  final colorScheme = brightness == Brightness.dark
-      ? const ColorScheme(
-          brightness: Brightness.dark,
-          primary: Color(0xFFE6E6E6),
-          onPrimary: Color(0xFF202020),
-          primaryContainer: Color(0xFF2C2C2C),
-          onPrimaryContainer: Color(0xFFF2F2F2),
-          secondary: Color(0xFFD0D0D0),
-          onSecondary: Color(0xFF202020),
-          secondaryContainer: Color(0xFF303030),
-          onSecondaryContainer: Color(0xFFEAEAEA),
-          tertiary: Color(0xFFC8C8C8),
-          onTertiary: Color(0xFF202020),
-          tertiaryContainer: Color(0xFF343434),
-          onTertiaryContainer: Color(0xFFEAEAEA),
-          error: Color(0xFFFFB4AB),
-          onError: Color(0xFF690005),
-          errorContainer: Color(0xFF93000A),
-          onErrorContainer: Color(0xFFFFDAD6),
-          surface: Color(0xFF262626),
-          onSurface: Color(0xFFEAEAEA),
-          surfaceContainerLowest: Color(0xFF202020),
-          surfaceContainerLow: Color(0xFF242424),
-          surfaceContainer: Color(0xFF2A2A2A),
-          surfaceContainerHigh: Color(0xFF303030),
-          surfaceContainerHighest: Color(0xFF363636),
-          onSurfaceVariant: Color(0xFFB8B8B8),
-          outline: Color(0xFF7A7A7A),
-          outlineVariant: Color(0xFF3A3A3A),
-          shadow: Colors.black,
-          scrim: Colors.black,
-          inverseSurface: Color(0xFFEAEAEA),
-          onInverseSurface: Color(0xFF202020),
-          inversePrimary: Color(0xFF3A3A3A),
-          surfaceTint: Color(0xFFE0E0E0),
-        )
-      : ColorScheme.fromSeed(seedColor: seed, brightness: brightness);
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: seedColor,
+    brightness: brightness,
+  );
   final baseTheme = ThemeData(useMaterial3: true, brightness: brightness);
   final baseTextTheme = baseTheme.textTheme;
   final scaffoldBackgroundColor = brightness == Brightness.dark
-      ? darkBase
-      : const Color(0xFFF3F3F3);
+      ? Color.alphaBlend(
+          colorScheme.primary.withAlpha(18),
+          const Color(0xFF18181B),
+        )
+      : Color.alphaBlend(
+          colorScheme.primary.withAlpha(10),
+          const Color(0xFFF7F7F7),
+        );
 
   return ThemeData(
     useMaterial3: true,
@@ -287,6 +262,13 @@ ThemeData _buildTheme({
       primaryFont: primaryFont,
       fallbackFonts: fallbackFonts,
     ),
+    appBarTheme: AppBarThemeData(
+      centerTitle: false,
+      backgroundColor: colorScheme.surface,
+      foregroundColor: colorScheme.onSurface,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+    ),
     cardTheme: CardThemeData(
       elevation: 0,
       margin: EdgeInsets.zero,
@@ -295,6 +277,17 @@ ThemeData _buildTheme({
         borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: colorScheme.outlineVariant),
       ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: colorScheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    ),
+    tabBarTheme: TabBarThemeData(
+      indicatorColor: colorScheme.primary,
+      labelColor: colorScheme.primary,
+      unselectedLabelColor: colorScheme.onSurfaceVariant,
+      dividerColor: colorScheme.outlineVariant,
     ),
     searchBarTheme: SearchBarThemeData(
       elevation: const WidgetStatePropertyAll<double>(0),
@@ -309,6 +302,24 @@ ThemeData _buildTheme({
       padding: const WidgetStatePropertyAll<EdgeInsets>(
         EdgeInsets.symmetric(horizontal: 14),
       ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        foregroundColor: colorScheme.onPrimary,
+        backgroundColor: colorScheme.primary,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: colorScheme.primary,
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+    ),
+    chipTheme: baseTheme.chipTheme.copyWith(
+      selectedColor: colorScheme.secondaryContainer,
+      checkmarkColor: colorScheme.onSecondaryContainer,
+      side: BorderSide(color: colorScheme.outlineVariant),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
   );
 }
@@ -345,6 +356,53 @@ TextTheme _withFontStack(
     labelMedium: apply(textTheme.labelMedium),
     labelSmall: apply(textTheme.labelSmall),
   );
+}
+
+String _themePaletteLabel(BuildContext context, String paletteId) {
+  final l10n = context.l10n;
+  return switch (paletteId) {
+    defaultAppThemePaletteId => l10n.themePaletteTeal,
+    'ocean' => l10n.themePaletteOcean,
+    'sunset' => l10n.themePaletteSunset,
+    'forest' => l10n.themePaletteForest,
+    'berry' => l10n.themePaletteBerry,
+    'slate' => l10n.themePaletteSlate,
+    customAppThemePaletteId => l10n.themePaletteCustom,
+    _ => paletteId,
+  };
+}
+
+String _formatThemeSeedColorHex(Color color) {
+  final value = color.toARGB32() & 0x00FFFFFF;
+  return '#${value.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
+Color? _parseThemeSeedColorHex(String value) {
+  final normalized = value.trim().replaceAll('#', '').replaceAll('0x', '');
+  if (normalized.length != 6) {
+    return null;
+  }
+  final parsed = int.tryParse(normalized, radix: 16);
+  if (parsed == null) {
+    return null;
+  }
+  return Color(0xFF000000 | parsed);
+}
+
+List<Color> _themePreviewColorsForPalette({
+  required String paletteId,
+  required Color customSeedColor,
+}) {
+  if (paletteId == customAppThemePaletteId) {
+    final lightScheme = ColorScheme.fromSeed(seedColor: customSeedColor);
+    return <Color>[
+      customSeedColor,
+      lightScheme.primaryContainer,
+      lightScheme.secondaryContainer,
+    ];
+  }
+  return appThemePaletteById(paletteId)?.previewColors ??
+      appThemePaletteById(defaultAppThemePaletteId)!.previewColors;
 }
 
 class PackagePanelHome extends StatefulWidget {
@@ -2993,6 +3051,165 @@ class PackageSettingsPage extends StatelessWidget {
     );
   }
 
+  Future<void> _editCustomThemeSeedColor(BuildContext context) async {
+    final color = await showDialog<Color>(
+      context: context,
+      builder: (dialogContext) => _ThemeSeedColorDialog(
+        initialColor: controller.customThemeSeedColor,
+      ),
+    );
+    if (color == null || !context.mounted) {
+      return;
+    }
+
+    await controller.setCustomThemeSeedColor(color, selectCustomPalette: true);
+    if (!context.mounted) {
+      return;
+    }
+
+    _showCompactSnackBar(
+      context,
+      context.l10n.customThemeUpdated(_formatThemeSeedColorHex(color)),
+    );
+  }
+
+  Widget _buildAppearanceTab(BuildContext context, ThemeData theme) {
+    final l10n = context.l10n;
+    final paletteIds = <String>[
+      ...appThemePalettes.map((palette) => palette.id),
+      customAppThemePaletteId,
+    ];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              l10n.colorThemeTitle,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              l10n.colorThemeDescription,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      FilledButton.tonalIcon(
+                        onPressed: () => _editCustomThemeSeedColor(context),
+                        icon: const Icon(Icons.palette_outlined),
+                        label: Text(l10n.buttonCustomizeTheme),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: paletteIds
+                        .map((paletteId) => _ThemePaletteOptionCard(
+                              label: _themePaletteLabel(context, paletteId),
+                              detail: paletteId == customAppThemePaletteId
+                                  ? _formatThemeSeedColorHex(
+                                      controller.customThemeSeedColor,
+                                    )
+                                  : null,
+                              previewColors: _themePreviewColorsForPalette(
+                                paletteId: paletteId,
+                                customSeedColor: controller.customThemeSeedColor,
+                              ),
+                              selected: controller.themePaletteId == paletteId,
+                              onTap: () => unawaited(
+                                controller.setThemePaletteId(paletteId),
+                              ),
+                            ))
+                        .toList(growable: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              l10n.fontStackTitle,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _currentFontFamilyStack().join(', '),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: () => _editFontFamilyStack(context),
+                        child: Text(l10n.buttonSetFont),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.fontStackDescription,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: theme.colorScheme.outlineVariant),
+                    ),
+                    child: Text(l10n.fontPreview),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3592,82 +3809,7 @@ class PackageSettingsPage extends StatelessWidget {
                         ),
                       ],
                     ),
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            Text(
-                                              l10n.fontStackTitle,
-                                              style: theme.textTheme.titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              _currentFontFamilyStack().join(
-                                                ', ',
-                                              ),
-                                              style: theme.textTheme.bodyMedium
-                                                  ?.copyWith(
-                                                    color: theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                                  ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      FilledButton.tonal(
-                                        onPressed: () =>
-                                            _editFontFamilyStack(context),
-                                        child: Text(l10n.buttonSetFont),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    l10n.fontStackDescription,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: theme
-                                          .colorScheme
-                                          .surfaceContainerLowest,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: theme.colorScheme.outlineVariant,
-                                      ),
-                                    ),
-                                    child: Text(l10n.fontPreview),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _buildAppearanceTab(context, theme),
                     SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                       child: _AboutAppCard(
@@ -3682,6 +3824,305 @@ class PackageSettingsPage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ThemePaletteOptionCard extends StatelessWidget {
+  const _ThemePaletteOptionCard({
+    required this.label,
+    required this.previewColors,
+    required this.selected,
+    required this.onTap,
+    this.detail,
+  });
+
+  final String label;
+  final String? detail;
+  final List<Color> previewColors;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cardColor = selected
+        ? theme.colorScheme.secondaryContainer
+        : theme.colorScheme.surfaceContainerLowest;
+    final borderColor = selected
+        ? theme.colorScheme.primary
+        : theme.colorScheme.outlineVariant;
+
+    return SizedBox(
+      width: 196,
+      child: Material(
+        color: cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: borderColor, width: selected ? 1.4 : 1),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    for (var i = 0; i < previewColors.length; i++)
+                      Transform.translate(
+                        offset: Offset(i == 0 ? 0 : -10.0 * i, 0),
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: previewColors[i],
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: theme.colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    const Spacer(),
+                    Icon(
+                      selected
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      size: 18,
+                      color: selected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (detail != null) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    detail!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThemeSeedColorDialog extends StatefulWidget {
+  const _ThemeSeedColorDialog({required this.initialColor});
+
+  final Color initialColor;
+
+  @override
+  State<_ThemeSeedColorDialog> createState() => _ThemeSeedColorDialogState();
+}
+
+class _ThemeSeedColorDialogState extends State<_ThemeSeedColorDialog> {
+  late final TextEditingController _hexController;
+  Color? _candidateColor;
+
+  @override
+  void initState() {
+    super.initState();
+    _hexController = TextEditingController(
+      text: _formatThemeSeedColorHex(widget.initialColor),
+    );
+    _candidateColor = widget.initialColor;
+  }
+
+  @override
+  void dispose() {
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  void _applyColor(Color color) {
+    setState(() {
+      _candidateColor = color;
+      _hexController.value = TextEditingValue(
+        text: _formatThemeSeedColorHex(color),
+        selection: TextSelection.collapsed(
+          offset: _formatThemeSeedColorHex(color).length,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final previewColor = _candidateColor ?? widget.initialColor;
+    final previewScheme = ColorScheme.fromSeed(seedColor: previewColor);
+    final quickColors = <Color>[
+      for (final palette in appThemePalettes) palette.seedColor,
+      defaultCustomAppThemeSeedColor,
+    ];
+
+    return AlertDialog(
+      title: Text(l10n.customThemeDialogTitle),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: previewColor,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          l10n.colorPreviewLabel,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _formatThemeSeedColorHex(previewColor),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      for (final color in <Color>[
+                        previewScheme.primary,
+                        previewScheme.secondary,
+                        previewScheme.tertiary,
+                      ])
+                        Container(
+                          width: 18,
+                          height: 18,
+                          margin: const EdgeInsets.only(left: 6),
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _hexController,
+              autofocus: true,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.allow(RegExp(r'[#0-9a-fA-F]')),
+                LengthLimitingTextInputFormatter(7),
+              ],
+              decoration: InputDecoration(
+                labelText: l10n.colorHexLabel,
+                border: const OutlineInputBorder(),
+                hintText: l10n.colorHexHint,
+                errorText: _candidateColor == null
+                    ? l10n.colorHexInvalid
+                    : null,
+              ),
+              onChanged: (value) {
+                setState(() {
+                  _candidateColor = _parseThemeSeedColorHex(value);
+                });
+              },
+            ),
+            const SizedBox(height: 14),
+            Text(
+              l10n.quickColorTitle,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: quickColors
+                  .map(
+                    (color) => InkWell(
+                      onTap: () => _applyColor(color),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: previewColor.toARGB32() == color.toARGB32()
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.outlineVariant,
+                            width:
+                                previewColor.toARGB32() == color.toARGB32()
+                                ? 2.2
+                                : 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.buttonCancel),
+        ),
+        TextButton(
+          onPressed: () =>
+              Navigator.of(context).pop(defaultCustomAppThemeSeedColor),
+          child: Text(l10n.buttonRestoreDefault),
+        ),
+        FilledButton(
+          onPressed: _candidateColor == null
+              ? null
+              : () => Navigator.of(context).pop(_candidateColor),
+          child: Text(l10n.buttonSave),
+        ),
+      ],
     );
   }
 }

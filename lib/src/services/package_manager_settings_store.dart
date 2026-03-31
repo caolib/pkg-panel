@@ -308,6 +308,53 @@ class PackageManagerSettingsStore {
     }
   }
 
+  Future<String?> loadThemePaletteId() async {
+    try {
+      final decoded = await _loadSettings();
+      final value = '${decoded?['themePaletteId'] ?? ''}'.trim().toLowerCase();
+      return value.isEmpty ? null : value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveThemePaletteId(String themePaletteId) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['themePaletteId'] = themePaletteId.trim().toLowerCase();
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
+  Future<int?> loadCustomThemeSeedColorValue() async {
+    try {
+      final decoded = await _loadSettings();
+      final value = decoded?['customThemeSeedColor'];
+      if (value is int) {
+        return value;
+      }
+      final normalized = '$value'.trim();
+      if (normalized.isEmpty) {
+        return null;
+      }
+      return int.tryParse(normalized);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveCustomThemeSeedColorValue(int colorValue) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['customThemeSeedColor'] = colorValue;
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
   Future<bool> loadAutoCheckAppUpdates() async {
     try {
       final decoded = await _loadSettings();
