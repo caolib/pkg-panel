@@ -288,6 +288,26 @@ class PackageManagerSettingsStore {
     }
   }
 
+  Future<String?> loadLocaleCode() async {
+    try {
+      final decoded = await _loadSettings();
+      final value = '${decoded?['localeCode'] ?? ''}'.trim().toLowerCase();
+      return value.isEmpty ? null : value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveLocaleCode(String localeCode) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['localeCode'] = localeCode.trim().toLowerCase();
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
   Future<bool> loadAutoCheckAppUpdates() async {
     try {
       final decoded = await _loadSettings();

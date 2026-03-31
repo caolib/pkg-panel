@@ -24,6 +24,7 @@ Future<void> main() async {
       .loadCustomManagerIconPaths();
   final initialCustomManagerDisplayNames = await managerSettingsStore
       .loadCustomManagerDisplayNames();
+  final initialLocaleCode = await managerSettingsStore.loadLocaleCode();
   final initialThemeModeName = await managerSettingsStore.loadThemeModeName();
   final initialAutoCheckAppUpdates = await managerSettingsStore
       .loadAutoCheckAppUpdates();
@@ -53,6 +54,10 @@ Future<void> main() async {
     initialManagerOrderIds: initialManagerOrderIds,
     initialCustomManagerIconPaths: initialCustomManagerIconPaths,
     initialCustomManagerDisplayNames: initialCustomManagerDisplayNames,
+    initialLocale: switch (initialLocaleCode) {
+      'en' => const Locale('en'),
+      _ => const Locale('zh'),
+    },
     initialThemeMode: switch (initialThemeModeName) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,

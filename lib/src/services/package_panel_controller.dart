@@ -38,6 +38,7 @@ class PackagePanelController extends ChangeNotifier {
     Set<String>? initialManuallyHiddenManagerIds,
     Map<String, String>? initialCustomManagerIconPaths,
     Map<String, String>? initialCustomManagerDisplayNames,
+    Locale? initialLocale,
     ThemeMode? initialThemeMode,
     bool? initialAutoCheckAppUpdates,
     bool? initialUseGithubMirrorForDownloads,
@@ -75,6 +76,7 @@ class PackagePanelController extends ChangeNotifier {
        _customManagerDisplayNames = Map<String, String>.from(
          initialCustomManagerDisplayNames ?? const <String, String>{},
        ),
+       _locale = _normalizeLocale(initialLocale),
        _themeMode = initialThemeMode ?? ThemeMode.system,
        _autoCheckAppUpdates = initialAutoCheckAppUpdates ?? true,
        _useGithubMirrorForDownloads =
@@ -138,6 +140,7 @@ class PackagePanelController extends ChangeNotifier {
   bool _hasTriggeredInitialRefresh = false;
   bool _hasInitializedManagerVisibility;
   bool _isCheckingAppUpdate = false;
+  Locale _locale;
   ThemeMode _themeMode;
   bool _autoCheckAppUpdates;
   bool _useGithubMirrorForDownloads;
@@ -182,6 +185,8 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   bool get isSearchingPackages => _isSearchingPackages;
+
+  Locale get locale => _locale;
 
   ThemeMode get themeMode => _themeMode;
 
@@ -537,6 +542,12 @@ class PackagePanelController extends ChangeNotifier {
 
   String displayNameForPackage(ManagedPackage package) {
     return displayNameForManagerId(package.managerId);
+  }
+
+  Future<void> setLocale(Locale value) async {
+    _locale = _normalizeLocale(value);
+    await _settingsStore.saveLocaleCode(_locale.languageCode);
+    notifyListeners();
   }
 
   Future<void> setThemeMode(ThemeMode value) async {
@@ -1752,6 +1763,9 @@ class PackagePanelController extends ChangeNotifier {
       final savedCustomFontFamily = await _settingsStore.loadCustomFontFamily();
       final savedFallbackFonts = await _settingsStore
           .loadCustomFallbackFontFamilies();
+      _locale = _normalizeLocale(
+        Locale(await _settingsStore.loadLocaleCode() ?? _locale.languageCode),
+      );
       _themeMode = _parseThemeModeName(
         await _settingsStore.loadThemeModeName(),
         fallback: _themeMode,
@@ -1777,6 +1791,7 @@ class PackagePanelController extends ChangeNotifier {
     final savedCustomManagerDisplayNames = await _settingsStore
         .loadCustomManagerDisplayNames();
     final savedManagerOrderIds = await _settingsStore.loadManagerOrderIds();
+    final savedLocaleCode = await _settingsStore.loadLocaleCode();
     final savedThemeModeName = await _settingsStore.loadThemeModeName();
     final savedAutoCheckAppUpdates = await _settingsStore
         .loadAutoCheckAppUpdates();
@@ -1821,6 +1836,9 @@ class PackagePanelController extends ChangeNotifier {
       ..addAll(savedCustomManagerDisplayNames);
     _applyManagerOrder(savedManagerOrderIds);
 
+    _locale = _normalizeLocale(
+      Locale(savedLocaleCode?.trim().isEmpty ?? true ? 'zh' : savedLocaleCode!),
+    );
     _themeMode = _parseThemeModeName(savedThemeModeName);
     _autoCheckAppUpdates = savedAutoCheckAppUpdates;
     _useGithubMirrorForDownloads = savedUseGithubMirrorForDownloads;
@@ -2317,6 +2335,13 @@ class PackagePanelController extends ChangeNotifier {
       'dark' => ThemeMode.dark,
       'system' => ThemeMode.system,
       _ => fallback ?? ThemeMode.system,
+    };
+  }
+
+  static Locale _normalizeLocale(Locale? value) {
+    return switch (value?.languageCode.trim().toLowerCase()) {
+      'en' => const Locale('en'),
+      _ => const Locale('zh'),
     };
   }
 

@@ -19,5 +19,4 @@ There is no established git history in this repository yet, so use short imperat
 Do not hardcode machine-specific paths or package-manager state. Keep command execution inside `ShellExecutor`, and treat external command output as untrusted input that must be parsed defensively.
 
 ## Agent Workflow
-Do not run `dart format`, `flutter test`, or `flutter analyze` automatically after completing a task unless the user explicitly asks for those checks.
 After completing all requested tasks, use command `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\notify.ps1 '任务完成'` to notify the user that the work is finished.

@@ -8,11 +8,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../l10n/app_localizations.dart';
+import 'localization.dart';
 import 'models/package_models.dart';
 import 'services/app_update_service.dart';
-import 'services/package_panel_controller.dart';
 import 'services/external_link_opener.dart';
 import 'services/local_file_picker.dart';
+import 'services/package_panel_controller.dart';
 import 'services/window_theme_sync.dart';
 import 'widgets/linkified_selectable_text.dart';
 import 'widgets/local_icon_image.dart';
@@ -22,7 +24,6 @@ void runPkgPanel(PackagePanelController controller) {
 }
 
 const String _appDisplayName = 'Pkg Panel';
-const String _appTagline = '一个管理各种包管理器的面板。';
 const String _appAuthor = 'caolib';
 const String _appAuthorUrl = 'https://github.com/caolib';
 const String _appRepositoryUrl = 'https://github.com/caolib/pkg-panel';
@@ -94,6 +95,30 @@ String _formatUiError(Object error) {
       .replaceFirst('HttpException: ', '');
 }
 
+bool _isQueuedStatus(String? statusLabel) {
+  final normalized = statusLabel?.trim();
+  return normalized == '排队中' || normalized == 'Queued';
+}
+
+String _localizedCommandStatus(BuildContext context, RunningCommandInfo command) {
+  final l10n = context.l10n;
+  if (command.isCancelling) {
+    return l10n.commandCancelling;
+  }
+  if (_isQueuedStatus(command.statusLabel)) {
+    return l10n.commandStatusQueued;
+  }
+  return command.statusLabel ?? l10n.commandNotCancelable;
+}
+
+String _homeFilterGroupDisplayName(BuildContext context, HomeFilterGroup group) {
+  return switch (group.kind) {
+    HomeFilterGroupKind.all => context.l10n.homeFilterGroupAll,
+    HomeFilterGroupKind.updates => context.l10n.homeFilterGroupUpdates,
+    HomeFilterGroupKind.custom => group.displayName,
+  };
+}
+
 class PkgPanelApp extends StatefulWidget {
   const PkgPanelApp({
     super.key,
@@ -163,7 +188,10 @@ class _PkgPanelAppState extends State<PkgPanelApp> {
         _scheduleWindowThemeSync(themeMode);
         return MaterialApp(
           debugShowCheckedModeBanner: false,
-          title: '包管理面板',
+          onGenerateTitle: (context) => context.l10n.appTitle,
+          locale: widget.controller.locale,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           themeMode: themeMode,
           theme: _buildTheme(
             brightness: Brightness.light,
@@ -395,10 +423,10 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                     children: <Widget>[
                       TabBar(
                         controller: _tabController,
-                        tabs: const <Widget>[
-                          Tab(text: '本地'),
-                          Tab(text: '安装'),
-                          Tab(text: '设置'),
+                        tabs: <Widget>[
+                          Tab(text: context.l10n.tabLocal),
+                          Tab(text: context.l10n.tabInstall),
+                          Tab(text: context.l10n.tabSettings),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -475,7 +503,10 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
       return;
     }
 
-    _showCompactSnackBar(context, cancelled ? '已发送取消请求。' : '当前命令无法取消。');
+    _showCompactSnackBar(
+      context,
+      cancelled ? context.l10n.cancelRequested : context.l10n.commandCannotCancel,
+    );
   }
 
   Future<void> _confirmAndRunCommand(PackageCommand command) async {
@@ -496,16 +527,18 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
 
     _showCompactSnackBar(
       context,
-      result.wasCancelled ? '已取消：${command.command}' : command.command,
+      result.wasCancelled
+          ? context.l10n.commandCancelled(command.command)
+          : command.command,
     );
 
     if (!result.isSuccess && !result.wasCancelled) {
       await showDialog<void>(
         context: context,
         builder: (context) => _CommandOutputDialog(
-          title: '命令执行失败',
+          title: context.l10n.commandFailedTitle,
           output: result.combinedOutput.isEmpty
-              ? '没有输出内容。'
+              ? context.l10n.noOutput
               : result.combinedOutput,
         ),
       );
@@ -523,12 +556,12 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
       final prompt =
           widget.controller
               .batchLatestVersionPrerequisitePromptForSelectedManager() ??
-          '批量检查更新前需要先安装依赖命令，是否现在安装？';
+          context.l10n.batchPrerequisitePrompt;
       final shouldInstall =
           await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('需要先安装依赖'),
+              title: Text(context.l10n.batchPrerequisiteTitle),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -541,11 +574,11 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
               actions: <Widget>[
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('取消'),
+                  child: Text(context.l10n.buttonCancel),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('安装'),
+                  child: Text(context.l10n.buttonInstall),
                 ),
               ],
             ),
@@ -562,16 +595,16 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
       _showCompactSnackBar(
         context,
         result.wasCancelled
-            ? '已取消：${prerequisiteCommand.command}'
+            ? context.l10n.commandCancelled(prerequisiteCommand.command)
             : prerequisiteCommand.command,
       );
       if (!result.isSuccess && !result.wasCancelled) {
         await showDialog<void>(
           context: context,
           builder: (context) => _CommandOutputDialog(
-            title: '命令执行失败',
+            title: context.l10n.commandFailedTitle,
             output: result.combinedOutput.isEmpty
-                ? '没有输出内容。'
+                ? context.l10n.noOutput
                 : result.combinedOutput,
           ),
         );
@@ -587,15 +620,17 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   }
 
   Future<void> _showLoadErrorsDialog() async {
-    final output = _buildLoadErrorOutput(widget.controller);
+    final output = _buildLoadErrorOutput(context, widget.controller);
     if (output == null || !mounted) {
       return;
     }
 
     await showDialog<void>(
       context: context,
-      builder: (context) =>
-          _CommandOutputDialog(title: '加载错误详情', output: output),
+      builder: (context) => _CommandOutputDialog(
+        title: context.l10n.loadErrorsTitle,
+        output: output,
+      ),
     );
   }
 }
@@ -609,13 +644,14 @@ class _RunningCommandToast extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final queuedCount = commands
-        .where((command) => command.statusLabel == '排队中')
+        .where((command) => _isQueuedStatus(command.statusLabel))
         .length;
     final runningCount = commands.length - queuedCount;
     final title = queuedCount == 0
-        ? '正在执行命令 ($runningCount)'
-        : '命令队列 ($runningCount 运行中，$queuedCount 排队中)';
+        ? l10n.runningCommandsTitle(runningCount)
+        : l10n.commandQueueTitle(runningCount, queuedCount);
     return RepaintBoundary(
       child: Material(
         color: Colors.transparent,
@@ -722,7 +758,7 @@ class _RunningCommandToast extends StatelessWidget {
                                           ),
                                         )
                                       : IconButton(
-                                          tooltip: '取消此命令',
+                                          tooltip: l10n.commandCancelTooltip,
                                           onPressed: () =>
                                               onCancelCommand?.call(command),
                                           icon: const Icon(
@@ -733,9 +769,7 @@ class _RunningCommandToast extends StatelessWidget {
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8),
                                     child: Text(
-                                      command.isCancelling
-                                          ? '正在取消...'
-                                          : command.statusLabel ?? '不可取消',
+                                      _localizedCommandStatus(context, command),
                                       style: theme.textTheme.bodySmall
                                           ?.copyWith(
                                             color: theme
@@ -779,6 +813,7 @@ class _ActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final batchCommand = controller.batchUpdateCommandForSelectedManager();
     final canBatchCheckLatest =
         controller.canBatchCheckLatestForSelectedManager;
@@ -802,13 +837,13 @@ class _ActionBar extends StatelessWidget {
               child: SearchBar(
                 controller: searchController,
                 constraints: const BoxConstraints(minHeight: 44, maxHeight: 44),
-                hintText: '搜索本地包',
+                hintText: l10n.searchLocalHint,
                 leading: const Icon(Icons.search),
                 onChanged: controller.setSearchQuery,
                 trailing: <Widget>[
                   if (searchController.text.isNotEmpty)
                     IconButton(
-                      tooltip: '清空',
+                      tooltip: l10n.clearTooltip,
                       onPressed: () {
                         searchController.clear();
                         controller.setSearchQuery('');
@@ -829,13 +864,13 @@ class _ActionBar extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.sync),
-              label: const Text('刷新'),
+              label: Text(l10n.buttonRefresh),
             ),
             if (hasLoadErrors)
               FilledButton.tonalIcon(
                 onPressed: onShowLoadErrors,
                 icon: const Icon(Icons.error_outline),
-                label: Text('查看加载错误 (${controller.errorManagers})'),
+                label: Text(l10n.viewLoadErrorsButton(controller.errorManagers)),
               ),
             if (canBatchCheckLatest)
               FilledButton.tonalIcon(
@@ -847,19 +882,19 @@ class _ActionBar extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.find_replace_outlined),
-                label: const Text('检查更新'),
+                label: Text(l10n.buttonCheckUpdates),
               ),
             if (showBatchUpdate)
               FilledButton.tonalIcon(
-                onPressed: controller.isBusy(batchCommand!.busyKey)
+                onPressed: controller.isBusy(batchCommand.busyKey)
                     ? null
                     : onBatchUpdate,
                 icon: const Icon(Icons.system_update_alt),
-                label: const Text('批量更新'),
+                label: Text(l10n.buttonBatchUpdate),
               ),
             Chip(
               avatar: const Icon(Icons.inventory_2_outlined, size: 18),
-              label: Text('当前 $visibleCount 个包'),
+              label: Text(l10n.visiblePackageCount(visibleCount)),
             ),
           ],
         ),
@@ -875,6 +910,7 @@ class _ManagerFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Wrap(
       spacing: 10,
       runSpacing: 10,
@@ -895,7 +931,7 @@ class _ManagerFilterBar extends StatelessWidget {
                 ? controller.selectedManagerId == null
                 : controller.selectedManagerId == group.id,
             showCheckmark: false,
-            label: Text(group.displayName),
+            label: Text(_homeFilterGroupDisplayName(context, group)),
             avatar: avatar,
             onSelected: (_) => controller.selectManager(group.id),
           );
@@ -903,7 +939,9 @@ class _ManagerFilterBar extends StatelessWidget {
         ...controller.visibleSnapshots.map((snapshot) {
           final label = switch (snapshot.loadState) {
             ManagerLoadState.error =>
-              '${controller.displayNameForManagerId(snapshot.manager.id)} (加载失败)',
+              l10n.managerLoadFailedSuffix(
+                controller.displayNameForManagerId(snapshot.manager.id),
+              ),
             ManagerLoadState.loading => controller.displayNameForManagerId(
               snapshot.manager.id,
             ),
@@ -1016,6 +1054,7 @@ class _PackageHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final style = Theme.of(context).textTheme.labelMedium?.copyWith(
       color: Theme.of(context).colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w700,
@@ -1027,22 +1066,22 @@ class _PackageHeaderRow extends StatelessWidget {
       child: compact
           ? Row(
               children: <Widget>[
-                Text('包列表', style: style),
+                Text(l10n.packageListHeader, style: style),
                 const Spacer(),
                 Text(
                   selectedCount > 1
-                      ? '$count 项 · 已选 $selectedCount'
-                      : '$count 项',
+                      ? l10n.countSelectedLabel(count, selectedCount)
+                      : l10n.countLabel(count),
                   style: style,
                 ),
               ],
             )
           : Row(
               children: <Widget>[
-                Expanded(flex: 5, child: Text('包名', style: style)),
-                Expanded(flex: 2, child: Text('当前版本', style: style)),
-                Expanded(flex: 2, child: Text('最新版本', style: style)),
-                Expanded(flex: 8, child: Text('附加信息', style: style)),
+                Expanded(flex: 5, child: Text(l10n.packageNameColumn, style: style)),
+                Expanded(flex: 2, child: Text(l10n.currentVersionColumn, style: style)),
+                Expanded(flex: 2, child: Text(l10n.latestVersionColumn, style: style)),
+                Expanded(flex: 8, child: Text(l10n.extraInfoColumn, style: style)),
               ],
             ),
     );
@@ -1082,7 +1121,7 @@ class _PackageListTile extends StatelessWidget {
     final isRemoving =
         removeCommand != null && controller.isBusy(removeCommand.busyKey);
     final accent = _managerAccent(package.managerId);
-    final extra = _extraLine(package);
+    final extra = _extraLine(context, package);
     final isSelected = controller.isPackageSelected(package);
     final theme = Theme.of(context);
     final rowContent = compact
@@ -1109,7 +1148,7 @@ class _PackageListTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _compactSummaryLine(package),
+                      _compactSummaryLine(context, package),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -1256,20 +1295,21 @@ class _PackageListTile extends StatelessWidget {
     required PackageCommand? updateCommand,
     required PackageCommand? removeCommand,
   }) async {
+    final l10n = context.l10n;
     controller.selectPackageForContextMenu(package);
 
     final items = <_ContextMenuActionItem>[
       if (canViewDetails)
         _ContextMenuActionItem(
           icon: Icons.info_outline,
-          label: '查看详情',
+          label: l10n.viewDetailsAction,
           enabled: !isLoadingDetails,
           onPressed: () => _openPackageDetails(context),
         ),
       if (canCheckLatest)
         _ContextMenuActionItem(
           icon: Icons.find_replace_outlined,
-          label: '检查更新',
+          label: l10n.checkUpdatesAction,
           enabled: !isCheckingLatest,
           onPressed: () async {
             final latestVersion = await controller.checkLatestVersion(package);
@@ -1281,8 +1321,11 @@ class _PackageListTile extends StatelessWidget {
               _showCompactSnackBar(
                 context,
                 isLatest
-                    ? '${package.name} 已经是最新版本。'
-                    : '${package.name} 有新版本：$latestVersion',
+                    ? context.l10n.packageAlreadyLatest(package.name)
+                    : context.l10n.packageNewVersionFound(
+                        package.name,
+                        latestVersion,
+                      ),
               );
             } else {
               final recentError = controller.activity
@@ -1298,8 +1341,11 @@ class _PackageListTile extends StatelessWidget {
               _showCompactSnackBar(
                 context,
                 recentError != null
-                    ? '检查 ${package.name} 失败：${recentError.message}'
-                    : '检查 ${package.name} 失败，请查看活动日志。',
+                    ? context.l10n.packageCheckFailed(
+                        package.name,
+                        recentError.message,
+                      )
+                    : context.l10n.packageCheckFailedFallback(package.name),
               );
             }
           },
@@ -1307,14 +1353,14 @@ class _PackageListTile extends StatelessWidget {
       if (updateCommand != null)
         _ContextMenuActionItem(
           icon: Icons.system_update_alt,
-          label: package.hasUpdate ? '升级' : '更新',
+          label: package.hasUpdate ? l10n.upgradeAction : l10n.updateAction,
           enabled: !isUpdating,
           onPressed: () => onRunAction(updateCommand),
         ),
       if (canInstallSpecificVersion)
         _ContextMenuActionItem(
           icon: Icons.pin_outlined,
-          label: '安装特定版本',
+          label: l10n.installSpecificVersionAction,
           enabled: !isInstallingSpecificVersion,
           onPressed: () => _showSpecificVersionInstallDialog(
             context: context,
@@ -1326,7 +1372,7 @@ class _PackageListTile extends StatelessWidget {
       if (removeCommand != null)
         _ContextMenuActionItem(
           icon: Icons.delete_outline,
-          label: '删除',
+          label: l10n.removeAction,
           enabled: !isRemoving,
           onPressed: () => onRunAction(removeCommand),
         ),
@@ -1573,6 +1619,7 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
@@ -1612,13 +1659,13 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
                       ),
                       child: switch (snapshot.connectionState) {
                         ConnectionState.waiting ||
-                        ConnectionState.active => const Center(
+                        ConnectionState.active => Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
-                              CircularProgressIndicator(),
-                              SizedBox(height: 16),
-                              Text('正在加载详情...'),
+                              const CircularProgressIndicator(),
+                              const SizedBox(height: 16),
+                              Text(l10n.loadingDetails),
                             ],
                           ),
                         ),
@@ -1633,7 +1680,7 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
                           ),
                         _ => Center(
                           child: Text(
-                            '详情加载失败或没有返回内容。',
+                            l10n.detailsUnavailable,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -1649,7 +1696,7 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
                 alignment: Alignment.centerRight,
                 child: FilledButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('关闭'),
+                  child: Text(l10n.buttonClose),
                 ),
               ),
             ],
@@ -1747,13 +1794,14 @@ class _CommandDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('确认执行命令'),
+      title: Text(l10n.confirmRunCommandTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text('将执行下面的命令：'),
+          Text(l10n.confirmRunCommandBody),
           const SizedBox(height: 12),
           _CommandPreview(command: command.command),
         ],
@@ -1761,11 +1809,11 @@ class _CommandDialog extends StatelessWidget {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('取消'),
+          child: Text(l10n.buttonCancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('执行'),
+          child: Text(l10n.buttonRun),
         ),
       ],
     );
@@ -1780,6 +1828,7 @@ class _CommandOutputDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
       title: Text(title),
       content: SizedBox(width: 720, child: _CommandPreview(command: output)),
@@ -1790,21 +1839,24 @@ class _CommandOutputDialog extends StatelessWidget {
             if (!context.mounted) {
               return;
             }
-            _showCompactSnackBar(context, '已复制到剪贴板。');
+            _showCompactSnackBar(context, l10n.copyToClipboardSuccess);
           },
           icon: const Icon(Icons.copy_all_outlined),
-          label: const Text('复制'),
+          label: Text(l10n.buttonCopy),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
+          child: Text(l10n.buttonClose),
         ),
       ],
     );
   }
 }
 
-String? _buildLoadErrorOutput(PackagePanelController controller) {
+String? _buildLoadErrorOutput(
+  BuildContext context,
+  PackagePanelController controller,
+) {
   final failedSnapshots = controller.visibleSnapshots
       .where((snapshot) => snapshot.loadState == ManagerLoadState.error)
       .toList(growable: false);
@@ -1821,7 +1873,7 @@ String? _buildLoadErrorOutput(PackagePanelController controller) {
         return [
           '[$managerName]',
           errorOutput == null || errorOutput.isEmpty
-              ? '没有返回错误输出。'
+              ? context.l10n.noErrorOutput
               : errorOutput,
         ].join('\n');
       })
@@ -1962,6 +2014,7 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final viewportHeight = MediaQuery.sizeOf(context).height;
     final contentMaxHeight = _showVersionSearch
         ? (viewportHeight - 210).clamp(320.0, 560.0)
@@ -1978,7 +2031,7 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
     final command = _currentCommand();
 
     return AlertDialog(
-      title: Text('使用 $managerName 安装'),
+      title: Text(l10n.installWithManager(managerName)),
       content: SizedBox(
         width: 560,
         child: ConstrainedBox(
@@ -2001,10 +2054,10 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                       const SizedBox(height: 8),
                       Text(
                         typedVersion.isNotEmpty
-                            ? '当前将安装版本 $typedVersion。'
+                            ? l10n.installDialogVersionSelected(typedVersion)
                             : _installLatest
-                            ? '当前将显式安装 @latest。'
-                            : '当前将执行默认安装命令。',
+                            ? l10n.installDialogLatestSelected
+                            : l10n.installDialogDefaultSelected,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -2015,8 +2068,8 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                           value: _installLatest,
                           contentPadding: EdgeInsets.zero,
                           controlAffinity: ListTileControlAffinity.leading,
-                          title: const Text('安装最新'),
-                          subtitle: const Text('使用 @latest 形式安装'),
+                          title: Text(l10n.installLatestTitle),
+                          subtitle: Text(l10n.installLatestSubtitle),
                           onChanged: (value) {
                             setState(() {
                               _installLatest = value ?? false;
@@ -2035,7 +2088,7 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                           child: OutlinedButton.icon(
                             onPressed: _startVersionSearch,
                             icon: const Icon(Icons.manage_search_outlined),
-                            label: const Text('安装特定版本'),
+                            label: Text(l10n.installSpecificVersionAction),
                           ),
                         ),
                       ],
@@ -2044,16 +2097,16 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                         TextField(
                           controller: _versionController,
                           autofocus: true,
-                          decoration: const InputDecoration(
+                          decoration: InputDecoration(
                             border: OutlineInputBorder(),
-                            hintText: '输入版本号快速筛选，例如 1.2.3',
+                            hintText: l10n.versionSearchHint,
                           ),
                           onChanged: (_) => setState(() {}),
                         ),
                       ],
                       if (command != null) ...<Widget>[
                         const SizedBox(height: 12),
-                        Text('将要执行的命令', style: theme.textTheme.labelLarge),
+                        Text(l10n.pendingCommandLabel, style: theme.textTheme.labelLarge),
                         const SizedBox(height: 8),
                         _CommandPreview(command: command.command),
                       ],
@@ -2075,7 +2128,9 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                       if (snapshot.hasError) {
                         return _buildInstallVersionStatus(
                           context,
-                          message: '读取版本列表失败：${snapshot.error}',
+                          message: l10n.loadVersionListFailed('${
+                            snapshot.error
+                          }'),
                         );
                       }
 
@@ -2112,12 +2167,21 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                             const SizedBox(height: 12),
                           Text(
                             result.versions.isEmpty
-                                ? '当前命令没有返回可用版本列表。'
+                                ? l10n.noAvailableVersionList
                                 : visibleVersions.isTruncated
                                 ? _versionController.text.trim().isEmpty
-                                      ? '共 ${visibleVersions.matchedCount} 个可选版本，仅显示最新 $_maxVisibleInstallVersions 个，请输入版本号缩小范围。'
-                                      : '匹配 ${visibleVersions.matchedCount} 个版本，仅显示前 $_maxVisibleInstallVersions 个，请继续输入缩小范围。'
-                                : '共 ${visibleVersions.matchedCount} 个可选版本',
+                                      ? l10n.availableVersionListTruncated(
+                                          visibleVersions.matchedCount,
+                                          _maxVisibleInstallVersions,
+                                        )
+                                      : l10n
+                                            .availableVersionListTruncatedFiltered(
+                                              visibleVersions.matchedCount,
+                                              _maxVisibleInstallVersions,
+                                            )
+                                : l10n.availableVersionListCount(
+                                    visibleVersions.matchedCount,
+                                  ),
                             style: theme.textTheme.labelLarge,
                           ),
                           const SizedBox(height: 8),
@@ -2127,8 +2191,8 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                                     context,
                                     message:
                                         _versionController.text.trim().isEmpty
-                                        ? '没有可显示的版本。'
-                                        : '没有匹配的版本，确定时会直接使用输入框里的版本号。',
+                                        ? l10n.noDisplayableVersions
+                                        : l10n.noMatchedVersionsUseTypedValue,
                                   )
                                 : ListView.separated(
                                     itemCount: visibleVersions.items.length,
@@ -2169,13 +2233,13 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(l10n.buttonCancel),
         ),
         FilledButton(
           onPressed: command == null
               ? null
               : () => Navigator.of(context).pop(command),
-          child: const Text('确定'),
+          child: Text(l10n.buttonConfirm),
         ),
       ],
     );
@@ -2217,12 +2281,13 @@ class _InstallSpecificVersionDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final filter = _filterController.text.trim();
     final managerName = widget.controller.displayNameForManagerId(
       widget.option.managerId,
     );
     return AlertDialog(
-      title: const Text('安装特定版本'),
+      title: Text(l10n.specificVersionDialogTitle),
       content: SizedBox(
         width: 560,
         height: 460,
@@ -2235,7 +2300,7 @@ class _InstallSpecificVersionDialogState
             ),
             const SizedBox(height: 8),
             Text(
-              '选择一个可用版本，或直接输入版本号执行安装。',
+              l10n.specificVersionDialogDescription,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -2244,9 +2309,9 @@ class _InstallSpecificVersionDialogState
             TextField(
               controller: _filterController,
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: OutlineInputBorder(),
-                hintText: '输入版本号快速筛选，例如 1.2.3',
+                hintText: l10n.versionSearchHint,
               ),
               onChanged: (_) => setState(() {}),
               onSubmitted: (value) {
@@ -2271,7 +2336,7 @@ class _InstallSpecificVersionDialogState
                   if (snapshot.hasError) {
                     return _buildInstallVersionStatus(
                       context,
-                      message: '读取版本列表失败：${snapshot.error}',
+                      message: l10n.loadVersionListFailed('${snapshot.error}'),
                     );
                   }
 
@@ -2306,12 +2371,20 @@ class _InstallSpecificVersionDialogState
                         const SizedBox(height: 12),
                       Text(
                         result.versions.isEmpty
-                            ? '当前命令没有返回可用版本列表。'
+                            ? l10n.noAvailableVersionList
                             : visibleVersions.isTruncated
                             ? filter.isEmpty
-                                  ? '共 ${visibleVersions.matchedCount} 个可选版本，仅显示最新 $_maxVisibleInstallVersions 个，请输入版本号缩小范围。'
-                                  : '匹配 ${visibleVersions.matchedCount} 个版本，仅显示前 $_maxVisibleInstallVersions 个，请继续输入缩小范围。'
-                            : '共 ${visibleVersions.matchedCount} 个可选版本',
+                                  ? l10n.availableVersionListTruncated(
+                                      visibleVersions.matchedCount,
+                                      _maxVisibleInstallVersions,
+                                    )
+                                  : l10n.availableVersionListTruncatedFiltered(
+                                      visibleVersions.matchedCount,
+                                      _maxVisibleInstallVersions,
+                                    )
+                            : l10n.availableVersionListCount(
+                                visibleVersions.matchedCount,
+                              ),
                         style: theme.textTheme.labelLarge,
                       ),
                       const SizedBox(height: 8),
@@ -2320,8 +2393,8 @@ class _InstallSpecificVersionDialogState
                             ? _buildInstallVersionStatus(
                                 context,
                                 message: filter.isEmpty
-                                    ? '没有可显示的版本。'
-                                    : '没有匹配的版本，可以直接使用下方按钮安装输入值。',
+                                    ? l10n.noDisplayableVersions
+                                    : l10n.noMatchedVersionsCanInstallTyped,
                               )
                             : ListView.separated(
                                 itemCount: visibleVersions.items.length,
@@ -2356,13 +2429,13 @@ class _InstallSpecificVersionDialogState
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(l10n.buttonCancel),
         ),
         FilledButton(
           onPressed: filter.isEmpty
               ? null
               : () => Navigator.of(context).pop(filter),
-          child: const Text('安装输入版本'),
+          child: Text(l10n.buttonInstallInputVersion),
         ),
       ],
     );
@@ -2486,6 +2559,7 @@ class _EmptyPackages extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -2505,17 +2579,17 @@ class _EmptyPackages extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             hasManagersLoading
-                ? '正在刷新包管理器...'
+                ? l10n.emptyLoadingManagers
                 : hasVisibleManagers
-                ? '没有匹配的包'
-                : '暂未启用包管理器',
+                ? l10n.emptyNoMatchingPackages
+                : l10n.emptyNoEnabledManagers,
             style: Theme.of(
               context,
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
-            _description,
+            _description(context),
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -2526,7 +2600,7 @@ class _EmptyPackages extends StatelessWidget {
               child: FilledButton.tonalIcon(
                 onPressed: onShowLoadErrors,
                 icon: const Icon(Icons.terminal_outlined),
-                label: Text('查看加载错误 ($errorManagerCount)'),
+                label: Text(l10n.viewLoadErrorsButton(errorManagerCount)),
               ),
             ),
           if (!hasManagersLoading && !hasVisibleManagers)
@@ -2535,7 +2609,7 @@ class _EmptyPackages extends StatelessWidget {
               child: FilledButton.tonalIcon(
                 onPressed: onOpenSettings,
                 icon: const Icon(Icons.tune),
-                label: const Text('打开设置'),
+                label: Text(l10n.buttonOpenSettings),
               ),
             ),
         ],
@@ -2543,14 +2617,17 @@ class _EmptyPackages extends StatelessWidget {
     );
   }
 
-  String get _description {
+  String _description(BuildContext context) {
+    final l10n = context.l10n;
     if (!hasVisibleManagers) {
-      return '当前没有启用任何包管理器，请先到设置中选择要展示的项。';
+      return l10n.emptyNoEnabledManagersDescription;
     }
     if (errorManagerCount > 0) {
-      return '有 $errorManagerCount 个包管理器加载失败，可以打开错误详情查看完整输出。';
+      return l10n.emptyManagersLoadErrorDescription(errorManagerCount);
     }
-    return searchQuery.isEmpty ? '可以先点击“刷新”。' : '没有找到“$searchQuery”的结果。';
+    return searchQuery.isEmpty
+        ? l10n.emptyClickRefresh
+        : l10n.emptyNoSearchResult(searchQuery);
   }
 }
 
@@ -2579,15 +2656,19 @@ class PackageSettingsPage extends StatelessWidget {
     'JetBrains Mono',
   ];
 
-  String? _managerCustomizationSummary(PackageManagerVisibilityState state) {
+  String? _managerCustomizationSummary(
+    BuildContext context,
+    PackageManagerVisibilityState state,
+  ) {
+    final l10n = context.l10n;
     final parts = <String>[];
     final customName = controller.customManagerDisplayName(state.manager.id);
     if (customName != null &&
         customName.trim() != state.manager.displayName.trim()) {
-      parts.add('原名: ${state.manager.displayName}');
+      parts.add(l10n.managerOriginalName(state.manager.displayName));
     }
     if (controller.customManagerIconPath(state.manager.id) != null) {
-      parts.add('已设置自定义图标');
+      parts.add(l10n.managerCustomIconSet);
     }
     if (parts.isEmpty) {
       return null;
@@ -2595,14 +2676,18 @@ class PackageSettingsPage extends StatelessWidget {
     return parts.join(' · ');
   }
 
-  String _homeFilterGroupSummary(HomeFilterGroup group) {
+  String _homeFilterGroupSummary(BuildContext context, HomeFilterGroup group) {
+    final l10n = context.l10n;
     return switch (group.kind) {
-      HomeFilterGroupKind.all => '显示全部本地包',
-      HomeFilterGroupKind.updates => '仅显示有更新的本地包',
+      HomeFilterGroupKind.all => l10n.homeFilterSummaryAll,
+      HomeFilterGroupKind.updates => l10n.homeFilterSummaryUpdates,
       HomeFilterGroupKind.custom => [
-        if (group.managerIds.isNotEmpty) '${group.managerIds.length} 个包管理器',
-        if (group.packageKeys.isNotEmpty) '${group.packageKeys.length} 个单包',
-        if (group.managerIds.isEmpty && group.packageKeys.isEmpty) '未配置成员',
+        if (group.managerIds.isNotEmpty)
+          l10n.homeFilterSummaryManagers(group.managerIds.length),
+        if (group.packageKeys.isNotEmpty)
+          l10n.homeFilterSummaryPackages(group.packageKeys.length),
+        if (group.managerIds.isEmpty && group.packageKeys.isEmpty)
+          l10n.homeFilterSummaryUnconfigured,
       ].join(' · '),
     };
   }
@@ -2626,7 +2711,10 @@ class PackageSettingsPage extends StatelessWidget {
 
     _showCompactSnackBar(
       context,
-      '${result.managerName} 已更新${result.changedParts.join('、')}。',
+      context.l10n.managerUpdatedMessage(
+        result.managerName,
+        result.changedParts.join(' / '),
+      ),
     );
   }
 
@@ -2653,7 +2741,10 @@ class PackageSettingsPage extends StatelessWidget {
       return;
     }
 
-    _showCompactSnackBar(context, '${draft.displayName} 已添加。');
+    _showCompactSnackBar(
+      context,
+      context.l10n.groupAddedMessage(draft.displayName),
+    );
   }
 
   Future<void> _editHomeFilterGroup(
@@ -2677,7 +2768,12 @@ class PackageSettingsPage extends StatelessWidget {
       if (!context.mounted) {
         return;
       }
-      _showCompactSnackBar(context, '${group.displayName} 已删除。');
+      _showCompactSnackBar(
+        context,
+        context.l10n.groupDeletedMessage(
+          _homeFilterGroupDisplayName(context, group),
+        ),
+      );
       return;
     }
 
@@ -2694,7 +2790,10 @@ class PackageSettingsPage extends StatelessWidget {
       return;
     }
 
-    _showCompactSnackBar(context, '${result.displayName} 已更新。');
+    _showCompactSnackBar(
+      context,
+      context.l10n.groupUpdatedMessage(result.displayName),
+    );
   }
 
   List<String> _currentFontFamilyStack() {
@@ -2709,6 +2808,7 @@ class PackageSettingsPage extends StatelessWidget {
   }
 
   Future<void> _editFontFamilyStack(BuildContext context) async {
+    final l10n = context.l10n;
     final textController = TextEditingController(
       text: _currentFontFamilyStack().join(', '),
     );
@@ -2725,23 +2825,23 @@ class PackageSettingsPage extends StatelessWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('设置字体'),
+              title: Text(l10n.editFontStackTitle),
               content: SizedBox(
                 width: 620,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const Text('用英文逗号分隔。'),
+                    Text(l10n.commaSeparatedHint),
                     const SizedBox(height: 12),
                     TextField(
                       controller: textController,
                       autofocus: true,
                       minLines: 2,
                       maxLines: 4,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         border: OutlineInputBorder(),
-                        hintText: '例如 Cascadia Code, 汉仪有圆, Microsoft YaHei UI',
+                        hintText: l10n.fontStackInputHint,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -2776,16 +2876,16 @@ class PackageSettingsPage extends StatelessWidget {
               actions: <Widget>[
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('取消'),
+                  child: Text(l10n.buttonCancel),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(''),
-                  child: const Text('恢复默认'),
+                  child: Text(l10n.buttonRestoreDefault),
                 ),
                 FilledButton(
                   onPressed: () =>
                       Navigator.of(context).pop(textController.text),
-                  child: const Text('保存'),
+                  child: Text(l10n.buttonSave),
                 ),
               ],
             );
@@ -2805,19 +2905,109 @@ class PackageSettingsPage extends StatelessWidget {
     await controller.setFontFamilyStack(fonts);
   }
 
+  Widget _buildGeneralTab(BuildContext context, ThemeData theme) {
+    final l10n = context.l10n;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    l10n.languageTitle,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<Locale>(
+                    segments: <ButtonSegment<Locale>>[
+                      ButtonSegment<Locale>(
+                        value: const Locale('zh'),
+                        label: Text(l10n.languageChinese),
+                        icon: const Icon(Icons.translate_outlined),
+                      ),
+                      ButtonSegment<Locale>(
+                        value: const Locale('en'),
+                        label: Text(l10n.languageEnglish),
+                        icon: const Icon(Icons.language_outlined),
+                      ),
+                    ],
+                    selected: <Locale>{controller.locale},
+                    onSelectionChanged: (values) {
+                      unawaited(controller.setLocale(values.first));
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    l10n.themeModeTitle,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<ThemeMode>(
+                    segments: <ButtonSegment<ThemeMode>>[
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.system,
+                        label: Text(l10n.themeModeSystem),
+                        icon: const Icon(Icons.brightness_auto_outlined),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.light,
+                        label: Text(l10n.themeModeLight),
+                        icon: const Icon(Icons.light_mode_outlined),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.dark,
+                        label: Text(l10n.themeModeDark),
+                        icon: const Icon(Icons.dark_mode_outlined),
+                      ),
+                    ],
+                    selected: <ThemeMode>{controller.themeMode},
+                    onSelectionChanged: (values) {
+                      unawaited(controller.setThemeMode(values.first));
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: <Widget>[
-          const TabBar(
+          TabBar(
             tabs: <Widget>[
-              Tab(text: '包管理器'),
-              Tab(text: '外观'),
-              Tab(text: '关于'),
+              Tab(text: l10n.settingsTabGeneral),
+              Tab(text: l10n.settingsTabManagers),
+              Tab(text: l10n.settingsTabAppearance),
+              Tab(text: l10n.settingsTabAbout),
             ],
           ),
           const SizedBox(height: 16),
@@ -2829,6 +3019,7 @@ class PackageSettingsPage extends StatelessWidget {
                 final states = controller.managerVisibilityStates;
                 return TabBarView(
                   children: <Widget>[
+                    _buildGeneralTab(context, theme),
                     ListView(
                       padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                       children: <Widget>[
@@ -2839,7 +3030,7 @@ class PackageSettingsPage extends StatelessWidget {
                               child: Padding(
                                 padding: const EdgeInsets.only(top: 6),
                                 child: Text(
-                                  '可以自定义主页筛选组；刷新后未安装的包管理器会被禁用',
+                                  l10n.settingsManagersDescription,
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
@@ -2850,7 +3041,7 @@ class PackageSettingsPage extends StatelessWidget {
                             FilledButton.tonalIcon(
                               onPressed: () => _addHomeFilterGroup(context),
                               icon: const Icon(Icons.add),
-                              label: const Text('添加组'),
+                              label: Text(l10n.buttonAddGroup),
                             ),
                             const SizedBox(width: 12),
                             FilledButton.tonalIcon(
@@ -2870,7 +3061,7 @@ class PackageSettingsPage extends StatelessWidget {
                                       ),
                                     )
                                   : const Icon(Icons.refresh_outlined),
-                              label: const Text('刷新状态'),
+                              label: Text(l10n.buttonRefreshStatus),
                             ),
                           ],
                         ),
@@ -2902,7 +3093,7 @@ class PackageSettingsPage extends StatelessWidget {
                                     Expanded(
                                       flex: 4,
                                       child: Text(
-                                        '筛选组',
+                                        l10n.groupColumn,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
                                               fontWeight: FontWeight.w800,
@@ -2912,7 +3103,7 @@ class PackageSettingsPage extends StatelessWidget {
                                     Expanded(
                                       flex: 5,
                                       child: Text(
-                                        '说明',
+                                        l10n.descriptionColumn,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
                                               fontWeight: FontWeight.w800,
@@ -2922,7 +3113,7 @@ class PackageSettingsPage extends StatelessWidget {
                                     Expanded(
                                       flex: 2,
                                       child: Text(
-                                        '启用',
+                                        l10n.enabledColumn,
                                         textAlign: TextAlign.right,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
@@ -3016,7 +3207,10 @@ class PackageSettingsPage extends StatelessWidget {
                                                             .start,
                                                     children: <Widget>[
                                                       Text(
-                                                        group.displayName,
+                                                        _homeFilterGroupDisplayName(
+                                                          context,
+                                                          group,
+                                                        ),
                                                         style: theme
                                                             .textTheme
                                                             .titleMedium
@@ -3031,8 +3225,9 @@ class PackageSettingsPage extends StatelessWidget {
                                                         group.kind ==
                                                                 HomeFilterGroupKind
                                                                     .custom
-                                                            ? '自定义组'
-                                                            : '内置组',
+                                                            ? l10n.customGroupType
+                                                            : l10n
+                                                                  .builtinGroupType,
                                                         style: theme
                                                             .textTheme
                                                             .bodySmall
@@ -3056,8 +3251,8 @@ class PackageSettingsPage extends StatelessWidget {
                                               children: <Widget>[
                                                 Text(
                                                   group.isVisible
-                                                      ? '主页显示中'
-                                                      : '主页已隐藏',
+                                                      ? l10n.groupVisibleOnHome
+                                                      : l10n.groupHiddenOnHome,
                                                   style: theme
                                                       .textTheme
                                                       .bodyMedium
@@ -3076,6 +3271,7 @@ class PackageSettingsPage extends StatelessWidget {
                                                 const SizedBox(height: 2),
                                                 Text(
                                                   _homeFilterGroupSummary(
+                                                    context,
                                                     group,
                                                   ),
                                                   style: theme
@@ -3108,7 +3304,7 @@ class PackageSettingsPage extends StatelessWidget {
                                                       Icons.edit_outlined,
                                                       size: 18,
                                                     ),
-                                                    label: const Text('编辑'),
+                                                    label: Text(l10n.buttonEdit),
                                                   ),
                                                   const SizedBox(width: 8),
                                                   Switch(
@@ -3160,7 +3356,7 @@ class PackageSettingsPage extends StatelessWidget {
                                     Expanded(
                                       flex: 4,
                                       child: Text(
-                                        '包管理器',
+                                        l10n.packageManagerColumn,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
                                               fontWeight: FontWeight.w800,
@@ -3170,7 +3366,7 @@ class PackageSettingsPage extends StatelessWidget {
                                     Expanded(
                                       flex: 5,
                                       child: Text(
-                                        '状态',
+                                        l10n.statusColumn,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
                                               fontWeight: FontWeight.w800,
@@ -3180,7 +3376,7 @@ class PackageSettingsPage extends StatelessWidget {
                                     Expanded(
                                       flex: 2,
                                       child: Text(
-                                        '启用',
+                                        l10n.enabledColumn,
                                         textAlign: TextAlign.right,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
@@ -3280,11 +3476,13 @@ class PackageSettingsPage extends StatelessWidget {
                                                       ),
                                                       const SizedBox(height: 2),
                                                       if (_managerCustomizationSummary(
+                                                            context,
                                                             state,
                                                           ) !=
                                                           null) ...<Widget>[
                                                         Text(
                                                           _managerCustomizationSummary(
+                                                            context,
                                                             state,
                                                           )!,
                                                           maxLines: 1,
@@ -3317,8 +3515,8 @@ class PackageSettingsPage extends StatelessWidget {
                                               children: <Widget>[
                                                 Text(
                                                   state.isAvailable
-                                                      ? '已检测到'
-                                                      : '未检测到',
+                                                      ? l10n.managerDetected
+                                                      : l10n.managerNotDetected,
                                                   style: theme
                                                       .textTheme
                                                       .bodyMedium
@@ -3367,7 +3565,7 @@ class PackageSettingsPage extends StatelessWidget {
                                                       Icons.edit_outlined,
                                                       size: 18,
                                                     ),
-                                                    label: const Text('编辑'),
+                                                    label: Text(l10n.buttonEdit),
                                                   ),
                                                   const SizedBox(width: 8),
                                                   Switch(
@@ -3405,48 +3603,6 @@ class PackageSettingsPage extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  Text(
-                                    '主题模式',
-                                    style: theme.textTheme.titleMedium
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  SegmentedButton<ThemeMode>(
-                                    segments: const <ButtonSegment<ThemeMode>>[
-                                      ButtonSegment<ThemeMode>(
-                                        value: ThemeMode.system,
-                                        label: Text('系统'),
-                                        icon: Icon(
-                                          Icons.brightness_auto_outlined,
-                                        ),
-                                      ),
-                                      ButtonSegment<ThemeMode>(
-                                        value: ThemeMode.light,
-                                        label: Text('浅色'),
-                                        icon: Icon(Icons.light_mode_outlined),
-                                      ),
-                                      ButtonSegment<ThemeMode>(
-                                        value: ThemeMode.dark,
-                                        label: Text('深色'),
-                                        icon: Icon(Icons.dark_mode_outlined),
-                                      ),
-                                    ],
-                                    selected: <ThemeMode>{controller.themeMode},
-                                    onSelectionChanged: (values) {
-                                      controller.setThemeMode(values.first);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
                                   Row(
                                     children: <Widget>[
                                       Expanded(
@@ -3455,7 +3611,7 @@ class PackageSettingsPage extends StatelessWidget {
                                               CrossAxisAlignment.start,
                                           children: <Widget>[
                                             Text(
-                                              '字体栈',
+                                              l10n.fontStackTitle,
                                               style: theme.textTheme.titleMedium
                                                   ?.copyWith(
                                                     fontWeight: FontWeight.w700,
@@ -3479,13 +3635,13 @@ class PackageSettingsPage extends StatelessWidget {
                                       FilledButton.tonal(
                                         onPressed: () =>
                                             _editFontFamilyStack(context),
-                                        child: const Text('设置字体'),
+                                        child: Text(l10n.buttonSetFont),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
-                                    '第一个字体是主字体，其余字体会按顺序作为 fallback。',
+                                    l10n.fontStackDescription,
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: theme.colorScheme.onSurfaceVariant,
                                     ),
@@ -3503,9 +3659,7 @@ class PackageSettingsPage extends StatelessWidget {
                                         color: theme.colorScheme.outlineVariant,
                                       ),
                                     ),
-                                    child: const Text(
-                                      '字体预览：The quick brown fox jumps over the lazy dog. 敏捷的棕狐跳过了懒狗。',
-                                    ),
+                                    child: Text(l10n.fontPreview),
                                   ),
                                 ],
                               ),
@@ -3571,7 +3725,7 @@ class _HomeFilterGroupEditDialogState
   late String? _selectedIconPath;
   late Set<String> _selectedManagerIds;
   late Set<String> _selectedPackageKeys;
-  bool _isSaving = false;
+  final bool _isSaving = false;
 
   bool get _isCustomGroup =>
       widget.group == null || widget.group!.kind == HomeFilterGroupKind.custom;
@@ -3633,6 +3787,7 @@ class _HomeFilterGroupEditDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final managerStates = widget.controller.managerVisibilityStates;
     final packages =
         widget.controller.snapshots
@@ -3665,7 +3820,9 @@ class _HomeFilterGroupEditDialogState
 
     return AlertDialog(
       title: Text(
-        widget.group == null ? '添加筛选组' : '编辑 ${widget.group!.displayName}',
+        widget.group == null
+            ? l10n.dialogAddGroupTitle
+            : l10n.dialogEditGroupTitle(widget.group!.displayName),
       ),
       content: SizedBox(
         width: 720,
@@ -3677,15 +3834,15 @@ class _HomeFilterGroupEditDialogState
               TextField(
                 controller: _nameController,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '组名称',
+                decoration: InputDecoration(
+                  labelText: l10n.groupNameLabel,
                   border: OutlineInputBorder(),
-                  hintText: '例如 开发工具 / CLI / 常用',
+                  hintText: l10n.groupNameHint,
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                '图标',
+                l10n.iconLabel,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -3713,7 +3870,7 @@ class _HomeFilterGroupEditDialogState
                     if (hasIcon) const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _selectedIconPath ?? '未设置图标',
+                        _selectedIconPath ?? l10n.iconNotSet,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -3725,7 +3882,7 @@ class _HomeFilterGroupEditDialogState
                 ),
               ),
               const SizedBox(height: 8),
-              const Text('支持 svg、png、jpg、jpeg、webp、ico。'),
+              Text(l10n.iconFormatsHint),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -3734,7 +3891,11 @@ class _HomeFilterGroupEditDialogState
                   FilledButton.tonalIcon(
                     onPressed: _isSaving ? null : _pickIcon,
                     icon: const Icon(Icons.folder_open_outlined),
-                    label: Text(_selectedIconPath == null ? '选择图标' : '更换图标'),
+                    label: Text(
+                      _selectedIconPath == null
+                          ? l10n.buttonSelectIcon
+                          : l10n.buttonChangeIcon,
+                    ),
                   ),
                   if (_selectedIconPath != null)
                     TextButton(
@@ -3745,14 +3906,14 @@ class _HomeFilterGroupEditDialogState
                                 _selectedIconPath = null;
                               });
                             },
-                      child: const Text('移除图标'),
+                      child: Text(l10n.buttonRemoveIcon),
                     ),
                 ],
               ),
               const SizedBox(height: 20),
               if (_isCustomGroup) ...<Widget>[
                 Text(
-                  '包含的包管理器',
+                  l10n.includedManagersLabel,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -3795,7 +3956,7 @@ class _HomeFilterGroupEditDialogState
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  '包含的单个本地包',
+                  l10n.includedPackagesLabel,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -3803,10 +3964,10 @@ class _HomeFilterGroupEditDialogState
                 const SizedBox(height: 8),
                 TextField(
                   controller: _packageSearchController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search),
-                    hintText: '搜索本地包',
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: l10n.searchLocalHint,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -3820,7 +3981,9 @@ class _HomeFilterGroupEditDialogState
                   child: visiblePackages.isEmpty
                       ? Center(
                           child: Text(
-                            packageFilter.isEmpty ? '暂无本地包' : '没有匹配的包',
+                            packageFilter.isEmpty
+                                ? l10n.noLocalPackages
+                                : l10n.emptyNoMatchingPackages,
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),
@@ -3856,8 +4019,8 @@ class _HomeFilterGroupEditDialogState
               ] else ...<Widget>[
                 Text(
                   widget.group?.kind == HomeFilterGroupKind.all
-                      ? '这是内置“全部”筛选组，会显示所有本地包。'
-                      : '这是内置“更新”筛选组，会显示有更新的本地包。',
+                      ? l10n.builtinAllGroupHint
+                      : l10n.builtinUpdatesGroupHint,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -3879,15 +4042,15 @@ class _HomeFilterGroupEditDialogState
                 deleteGroup: true,
               ),
             ),
-            child: const Text('删除组'),
+            child: Text(l10n.buttonDeleteGroup),
           ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(l10n.buttonCancel),
         ),
         FilledButton(
           onPressed: _isSaving ? null : _save,
-          child: const Text('保存'),
+          child: Text(l10n.buttonSave),
         ),
       ],
     );
@@ -3948,6 +4111,7 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
       return;
     }
 
+    final l10n = context.l10n;
     final managerId = widget.state.manager.id;
     final originalDisplayName = widget.state.manager.displayName.trim();
     final currentCustomDisplayName = widget.controller
@@ -3968,27 +4132,27 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
           normalizedDisplayName == originalDisplayName) {
         if (currentCustomDisplayName != null) {
           await widget.controller.clearCustomManagerDisplayName(managerId);
-          changedParts.add('显示名称');
+          changedParts.add(l10n.changedDisplayName);
         }
       } else if (normalizedDisplayName != currentCustomDisplayName) {
         await widget.controller.setCustomManagerDisplayName(
           managerId,
           normalizedDisplayName,
         );
-        changedParts.add('显示名称');
+        changedParts.add(l10n.changedDisplayName);
       }
 
       if (nextIconPath == null || nextIconPath.isEmpty) {
         if (currentIconPath != null) {
           await widget.controller.clearCustomManagerIconPath(managerId);
-          changedParts.add('图标');
+          changedParts.add(l10n.changedIcon);
         }
       } else if (nextIconPath != currentIconPath) {
         await widget.controller.setCustomManagerIconPath(
           managerId,
           nextIconPath,
         );
-        changedParts.add('图标');
+        changedParts.add(l10n.changedIcon);
       }
 
       if (!mounted) {
@@ -4014,9 +4178,14 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final managerId = widget.state.manager.id;
     return AlertDialog(
-      title: Text('编辑 ${widget.controller.displayNameForManagerId(managerId)}'),
+      title: Text(
+        l10n.editManagerTitle(
+          widget.controller.displayNameForManagerId(managerId),
+        ),
+      ),
       content: SizedBox(
         width: 560,
         child: SingleChildScrollView(
@@ -4027,15 +4196,15 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
               TextField(
                 controller: _nameController,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: '显示名称',
+                decoration: InputDecoration(
+                  labelText: l10n.displayNameLabel,
                   border: OutlineInputBorder(),
-                  hintText: '输入新的显示名称',
+                  hintText: l10n.displayNameHint,
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                '图标',
+                l10n.iconLabel,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -4061,7 +4230,7 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _selectedIconPath ?? '使用默认图标',
+                        _selectedIconPath ?? l10n.defaultIconLabel,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -4073,7 +4242,7 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text('支持 svg、png、jpg、jpeg、webp、ico。'),
+              Text(l10n.iconFormatsHint),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -4082,7 +4251,11 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
                   FilledButton.tonalIcon(
                     onPressed: _isSaving ? null : _pickIcon,
                     icon: const Icon(Icons.folder_open_outlined),
-                    label: Text(_selectedIconPath == null ? '选择图标' : '更换图标'),
+                    label: Text(
+                      _selectedIconPath == null
+                          ? l10n.buttonSelectIcon
+                          : l10n.buttonChangeIcon,
+                    ),
                   ),
                   if (_selectedIconPath != null)
                     TextButton(
@@ -4093,7 +4266,7 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
                                 _selectedIconPath = null;
                               });
                             },
-                      child: const Text('恢复默认图标'),
+                      child: Text(l10n.buttonResetDefaultIcon),
                     ),
                 ],
               ),
@@ -4104,11 +4277,11 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(l10n.buttonCancel),
         ),
         FilledButton(
           onPressed: _isSaving ? null : _save,
-          child: Text(_isSaving ? '保存中...' : '保存'),
+          child: Text(_isSaving ? l10n.saveInProgress : l10n.buttonSave),
         ),
       ],
     );
@@ -4132,6 +4305,7 @@ class _AboutAppCard extends StatelessWidget {
   final PackagePanelController controller;
 
   Future<void> _editGithubMirrorBaseUrl(BuildContext context) async {
+    final l10n = context.l10n;
     final textController = TextEditingController(
       text: controller.githubMirrorBaseUrl,
     );
@@ -4139,30 +4313,30 @@ class _AboutAppCard extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('设置 GitHub 镜像地址'),
+          title: Text(l10n.editGithubMirrorTitle),
           content: SizedBox(
             width: 560,
             child: TextField(
               controller: textController,
               autofocus: true,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: OutlineInputBorder(),
-                hintText: '例如 https://ghproxy.net/',
+                hintText: l10n.githubMirrorHint,
               ),
             ),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('取消'),
+              child: Text(l10n.buttonCancel),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(''),
-              child: const Text('恢复默认'),
+              child: Text(l10n.buttonRestoreDefault),
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(textController.text),
-              child: const Text('保存'),
+              child: Text(l10n.buttonSave),
             ),
           ],
         );
@@ -4178,11 +4352,12 @@ class _AboutAppCard extends StatelessWidget {
     if (!context.mounted) {
       return;
     }
-    _showCompactSnackBar(context, '镜像地址已更新。');
+    _showCompactSnackBar(context, l10n.githubMirrorUpdated);
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -4190,7 +4365,7 @@ class _AboutAppCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              '关于',
+              l10n.aboutTitle,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -4217,7 +4392,7 @@ class _AboutAppCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: Text(
-                _appTagline,
+                l10n.appTagline,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -4246,8 +4421,8 @@ class _AboutAppCard extends StatelessWidget {
                         onChanged: (value) {
                           unawaited(controller.setAutoCheckAppUpdates(value));
                         },
-                        title: const Text('自动检查更新'),
-                        subtitle: const Text('开启后，每次启动应用时都会检查 GitHub Release。'),
+                        title: Text(l10n.autoCheckUpdatesTitle),
+                        subtitle: Text(l10n.autoCheckUpdatesSubtitle),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 4,
@@ -4275,8 +4450,8 @@ class _AboutAppCard extends StatelessWidget {
                                 ),
                               );
                             },
-                            title: const Text('GitHub 镜像下载'),
-                            subtitle: const Text('开启后，更新弹窗中的下载按钮会优先使用镜像。'),
+                            title: Text(l10n.githubMirrorTitle),
+                            subtitle: Text(l10n.githubMirrorSubtitle),
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 4,
@@ -4297,7 +4472,7 @@ class _AboutAppCard extends StatelessWidget {
                                         CrossAxisAlignment.start,
                                     children: <Widget>[
                                       Text(
-                                        '镜像地址',
+                                        l10n.githubMirrorBaseUrlLabel,
                                         style: theme.textTheme.titleSmall
                                             ?.copyWith(
                                               fontWeight: FontWeight.w700,
@@ -4321,7 +4496,7 @@ class _AboutAppCard extends StatelessWidget {
                                   onPressed: () =>
                                       _editGithubMirrorBaseUrl(context),
                                   icon: const Icon(Icons.edit_outlined),
-                                  label: const Text('编辑'),
+                                  label: Text(l10n.buttonEdit),
                                 ),
                               ],
                             ),
@@ -4352,7 +4527,7 @@ class _AboutMetaRow extends StatelessWidget {
       builder: (context, snapshot) {
         final packageInfo = snapshot.data;
         final versionLabel = packageInfo == null
-            ? '读取中...'
+            ? context.l10n.versionLoading
             : packageInfo.buildNumber.trim().isEmpty
             ? packageInfo.version
             : '${packageInfo.version}+${packageInfo.buildNumber}';
@@ -4392,7 +4567,7 @@ class _AboutMetaRow extends StatelessWidget {
                     onPressed: () =>
                         _openExternalLink(context, _appRepositoryUrl),
                     icon: const Icon(Icons.open_in_new),
-                    label: const Text('GitHub 仓库'),
+                    label: Text(context.l10n.buttonGitHubRepo),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 40),
                       padding: const EdgeInsets.symmetric(
@@ -4417,7 +4592,9 @@ class _AboutMetaRow extends StatelessWidget {
                           )
                         : const Icon(Icons.system_update_alt),
                     label: Text(
-                      controller.isCheckingAppUpdate ? '检查中...' : '检查更新',
+                      controller.isCheckingAppUpdate
+                          ? context.l10n.checkingUpdates
+                          : context.l10n.buttonCheckUpdates,
                     ),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 40),
@@ -4450,7 +4627,7 @@ Future<void> _openExternalLink(BuildContext context, String url) async {
       return;
     }
   }
-  _showCompactSnackBar(context, '无法打开链接：$url');
+  _showCompactSnackBar(context, context.l10n.openLinkFailed(url));
 }
 
 Future<void> _checkForAppUpdateWithUi(
@@ -4466,7 +4643,10 @@ Future<void> _checkForAppUpdateWithUi(
     if (!context.mounted || !showErrorMessage) {
       return;
     }
-    _showCompactSnackBar(context, '检查更新失败：${_formatUiError(error)}');
+    _showCompactSnackBar(
+      context,
+      context.l10n.checkUpdatesFailed(_formatUiError(error)),
+    );
     return;
   }
 
@@ -4475,7 +4655,10 @@ Future<void> _checkForAppUpdateWithUi(
   }
   if (!info.hasUpdate) {
     if (showAlreadyLatestMessage) {
-      _showCompactSnackBar(context, '当前已是最新版本：${info.currentDisplayVersion}');
+      _showCompactSnackBar(
+        context,
+        context.l10n.alreadyLatestVersion(info.currentDisplayVersion),
+      );
     }
     return;
   }
@@ -4486,17 +4669,17 @@ Future<void> _checkForAppUpdateWithUi(
   );
 }
 
-String _appReleaseAssetKindLabel(AppReleaseAssetKind kind) {
+String _appReleaseAssetKindLabel(BuildContext context, AppReleaseAssetKind kind) {
   return switch (kind) {
-    AppReleaseAssetKind.installer => '安装包',
-    AppReleaseAssetKind.portable => '绿色版',
-    AppReleaseAssetKind.other => '发行文件',
+    AppReleaseAssetKind.installer => context.l10n.releaseAssetInstaller,
+    AppReleaseAssetKind.portable => context.l10n.releaseAssetPortable,
+    AppReleaseAssetKind.other => context.l10n.releaseAssetOther,
   };
 }
 
 String _formatAppReleaseAssetSize(int bytes) {
   if (bytes <= 0) {
-    return '大小未知';
+    return '';
   }
   const units = <String>['B', 'KB', 'MB', 'GB'];
   var size = bytes.toDouble();
@@ -4509,17 +4692,24 @@ String _formatAppReleaseAssetSize(int bytes) {
   return '${size.toStringAsFixed(precision)} ${units[unitIndex]}';
 }
 
-String _buildDownloadProgressLabel(AppUpdateDownloadProgress? progress) {
+String _buildDownloadProgressLabel(
+  BuildContext context,
+  AppUpdateDownloadProgress? progress,
+) {
   if (progress == null) {
-    return '准备下载...';
+    return context.l10n.downloadPreparing;
   }
   final received = _formatAppReleaseAssetSize(progress.receivedBytes);
   final total = progress.totalBytes;
   final percent = progress.progress;
   if (total == null || total <= 0 || percent == null) {
-    return '已下载 $received';
+    return context.l10n.downloadedBytes(received);
   }
-  return '已下载 $received / ${_formatAppReleaseAssetSize(total)} · ${(percent * 100).toStringAsFixed(0)}%';
+  return context.l10n.downloadedProgress(
+    received,
+    _formatAppReleaseAssetSize(total),
+    (percent * 100).toStringAsFixed(0),
+  );
 }
 
 class _AppUpdateDialog extends StatefulWidget {
@@ -4554,12 +4744,15 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
       setState(() {
         _autoCheckDisabledInDialog = true;
       });
-      _showCompactSnackBar(context, '已关闭自动检查更新。');
+      _showCompactSnackBar(context, context.l10n.autoCheckDisabled);
     } catch (error) {
       if (!mounted) {
         return;
       }
-      _showCompactSnackBar(context, '关闭失败：${_formatUiError(error)}');
+      _showCompactSnackBar(
+        context,
+        context.l10n.disableAutoCheckFailed(_formatUiError(error)),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -4599,17 +4792,20 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
 
       final message = asset.startsInstaller
           ? result.startedInstaller
-                ? '安装包已启动。'
-                : '安装包已下载，但未能自动启动。'
+                ? context.l10n.installerStarted
+                : context.l10n.installerDownloadedNotStarted
           : result.openedLocation
-          ? '已下载并打开所在目录。'
-          : '已下载完成。';
+          ? context.l10n.downloadedAndOpenedFolder
+          : context.l10n.downloadCompleted;
       _showCompactSnackBar(context, message);
     } catch (error) {
       if (!mounted) {
         return;
       }
-      _showCompactSnackBar(context, '下载失败：${_formatUiError(error)}');
+      _showCompactSnackBar(
+        context,
+        context.l10n.downloadFailed(_formatUiError(error)),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -4623,12 +4819,13 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     final assets = widget.info.assets;
     final currentVersion = widget.info.currentVersion;
     final latestVersion = widget.info.latestVersion;
     final releaseNotes = widget.info.releaseBody.trim();
     return AlertDialog(
-      title: const Text('发现新版本'),
+      title: Text(l10n.updateAvailableTitle),
       content: SizedBox(
         width: 620,
         child: Column(
@@ -4641,22 +4838,15 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
                   color: theme.colorScheme.onSurface,
                 ),
                 children: <InlineSpan>[
-                  const TextSpan(text: '当前 '),
                   TextSpan(
-                    text: currentVersion,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const TextSpan(text: '  ->  最新 '),
-                  TextSpan(
-                    text: latestVersion,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    text: l10n.versionTransition(currentVersion, latestVersion),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
             Text(
-              '更新说明',
+              l10n.releaseNotesTitle,
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -4674,7 +4864,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
               child: SingleChildScrollView(
                 child: releaseNotes.isEmpty
                     ? Text(
-                        '该 Release 暂未提供更新说明。',
+                        l10n.releaseNotesEmpty,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -4688,7 +4878,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
             ),
             const SizedBox(height: 16),
             Text(
-              assets.isEmpty ? '未读取到发行文件，可前往 Release 页面查看。' : '可用发行文件',
+              assets.isEmpty ? l10n.releaseAssetsEmpty : l10n.releaseAssetsTitle,
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -4742,7 +4932,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              '${_appReleaseAssetKindLabel(asset.kind)} · ${_formatAppReleaseAssetSize(asset.size)}',
+                                              '${_appReleaseAssetKindLabel(context, asset.kind)} · ${_formatAppReleaseAssetSize(asset.size).isEmpty ? l10n.unknownSize : _formatAppReleaseAssetSize(asset.size)}',
                                               style: theme.textTheme.bodySmall
                                                   ?.copyWith(
                                                     color: theme
@@ -4778,10 +4968,10 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
                                         label: Text(
                                           _activeDownloadUrl ==
                                                   asset.downloadUrl
-                                              ? '下载中...'
+                                              ? l10n.searching
                                               : asset.startsInstaller
-                                              ? '下载并安装'
-                                              : '下载',
+                                              ? l10n.buttonDownloadAndInstall
+                                              : l10n.buttonDownload,
                                         ),
                                       ),
                                     ],
@@ -4797,6 +4987,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
                                     const SizedBox(height: 6),
                                     Text(
                                       _buildDownloadProgressLabel(
+                                        context,
                                         _downloadProgress,
                                       ),
                                       style: theme.textTheme.bodySmall
@@ -4824,17 +5015,21 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
             !_autoCheckDisabledInDialog)
           TextButton(
             onPressed: _isDisablingAutoCheck ? null : _disableAutoCheck,
-            child: Text(_isDisablingAutoCheck ? '处理中...' : '取消自动检查更新'),
+            child: Text(
+              _isDisablingAutoCheck
+                  ? l10n.processing
+                  : l10n.disableAutoCheckButton,
+            ),
           ),
         TextButton(
           onPressed: widget.info.releasePageUrl.trim().isEmpty
               ? null
               : () => _openExternalLink(context, widget.info.releasePageUrl),
-          child: const Text('打开 Release 页面'),
+          child: Text(l10n.buttonOpenReleasePage),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
+          child: Text(l10n.buttonClose),
         ),
       ],
     );
@@ -4883,16 +5078,18 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
 
     _showCompactSnackBar(
       context,
-      result.wasCancelled ? '已取消：${command.command}' : command.command,
+      result.wasCancelled
+          ? context.l10n.commandCancelled(command.command)
+          : command.command,
     );
 
     if (!result.isSuccess && !result.wasCancelled) {
       await showDialog<void>(
         context: context,
         builder: (context) => _CommandOutputDialog(
-          title: '命令执行失败',
+          title: context.l10n.commandFailedTitle,
           output: result.combinedOutput.isEmpty
-              ? '没有输出内容。'
+              ? context.l10n.noOutput
               : result.combinedOutput,
         ),
       );
@@ -4902,6 +5099,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = context.l10n;
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
@@ -4929,7 +5127,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                           minHeight: 44,
                           maxHeight: 44,
                         ),
-                        hintText: '搜索可安装的包',
+                        hintText: l10n.searchInstallHint,
                         leading: const Icon(Icons.search),
                         onSubmitted: (_) => _runSearch(),
                       ),
@@ -4947,7 +5145,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.travel_explore_outlined),
-                    label: const Text('搜索'),
+                    label: Text(l10n.buttonSearch),
                   ),
                 ],
               ),
@@ -4961,7 +5159,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                     FilterChip(
                       selected: _selectedSearchFilterId == null,
                       showCheckmark: false,
-                      label: const Text('全部'),
+                      label: Text(l10n.allLabel),
                       onSelected: (_) {
                         setState(() => _selectedSearchFilterId = null);
                       },
@@ -5101,7 +5299,7 @@ class _InstallSearchEmpty extends StatelessWidget {
     final theme = Theme.of(context);
     return Center(
       child: Text(
-        isSearching ? '正在搜索...' : '输入关键词后搜索可安装的包。',
+        isSearching ? context.l10n.searching : context.l10n.installPageEmptyHint,
         style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
@@ -5118,6 +5316,7 @@ class _SearchPackageHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final style = Theme.of(context).textTheme.labelMedium?.copyWith(
       color: Theme.of(context).colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w700,
@@ -5129,22 +5328,22 @@ class _SearchPackageHeaderRow extends StatelessWidget {
       child: compact
           ? Row(
               children: <Widget>[
-                Text('搜索结果', style: style),
+                Text(l10n.searchResultsHeader, style: style),
                 const Spacer(),
-                Text('$count 项', style: style),
+                Text(l10n.countLabel(count), style: style),
               ],
             )
           : Row(
               children: <Widget>[
-                Expanded(flex: 5, child: Text('包名', style: style)),
-                Expanded(flex: 2, child: Text('版本', style: style)),
-                Expanded(flex: 3, child: Text('来源', style: style)),
-                Expanded(flex: 5, child: Text('附加信息', style: style)),
+                Expanded(flex: 5, child: Text(l10n.packageNameColumn, style: style)),
+                Expanded(flex: 2, child: Text(l10n.versionColumn, style: style)),
+                Expanded(flex: 3, child: Text(l10n.sourceColumn, style: style)),
+                Expanded(flex: 5, child: Text(l10n.extraInfoColumn, style: style)),
                 Expanded(
                   flex: 2,
                   child: Align(
                     alignment: Alignment.centerRight,
-                    child: Text('包管理器', style: style),
+                    child: Text(l10n.packageManagerColumn, style: style),
                   ),
                 ),
               ],
@@ -5169,10 +5368,14 @@ class _SearchPackageListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final managerSummary = _searchPackageManagerSummary(package, controller);
+    final managerSummary = _searchPackageManagerSummary(
+      context,
+      package,
+      controller,
+    );
     final source = _searchPackageSourceLine(package);
-    final extra = _searchPackageExtraLine(package);
-    final icons = _searchManagerIcons();
+    final extra = _searchPackageExtraLine(context, package);
+    final icons = _searchManagerIcons(context);
 
     final rowContent = compact
         ? Row(
@@ -5189,7 +5392,11 @@ class _SearchPackageListTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _searchPackageCompactSummaryLine(package, managerSummary),
+                      _searchPackageCompactSummaryLine(
+                        context,
+                        package,
+                        managerSummary,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -5286,14 +5493,16 @@ class _SearchPackageListTile extends StatelessWidget {
     );
   }
 
-  List<Widget> _searchManagerIcons() {
+  List<Widget> _searchManagerIcons(BuildContext context) {
     return package.installOptions
         .map(
           (option) => Opacity(
             opacity: option.isInstalled ? 1 : 0.82,
             child: Tooltip(
               message: option.isInstalled
-                  ? '${controller.displayNameForManagerId(option.managerId)} · 已安装'
+                  ? context.l10n.packageAlreadyInstalled(
+                      controller.displayNameForManagerId(option.managerId),
+                    )
                   : controller.displayNameForManagerId(option.managerId),
               child: _ManagerIcon(
                 managerId: option.managerId,
@@ -5313,6 +5522,7 @@ class _SearchPackageListTile extends StatelessWidget {
     BuildContext context,
     Offset globalPosition,
   ) async {
+    final l10n = context.l10n;
     final items = package.installOptions
         .map((option) {
           final label = controller.displayNameForManagerId(option.managerId);
@@ -5336,11 +5546,11 @@ class _SearchPackageListTile extends StatelessWidget {
             ),
             label: option.isInstalled
                 ? canInstallSpecificVersion
-                      ? '使用 $label 安装特定版本'
-                      : '$label 已安装'
+                      ? l10n.installSpecificVersionWithManager(label)
+                      : l10n.managerInstalled(label)
                 : isInstalling
-                ? '$label 安装中'
-                : '使用 $label 安装',
+                ? l10n.managerInstalling(label)
+                : l10n.installWithManager(label),
             enabled: enabled,
             onPressed: !enabled
                 ? null
@@ -5377,21 +5587,24 @@ SearchPackageInstallOption _installOptionFromManagedPackage(
   );
 }
 
-String _compactSummaryLine(ManagedPackage package) {
+String _compactSummaryLine(BuildContext context, ManagedPackage package) {
   final parts = <String>[
-    '当前 ${package.version}',
-    if (package.latestVersion != null) '最新 ${package.latestVersion}',
+    context.l10n.currentVersionValue(package.version),
+    if (package.latestVersion != null)
+      context.l10n.latestVersionValue(package.latestVersion!),
   ];
   return parts.join(' · ');
 }
 
 String _searchPackageCompactSummaryLine(
+  BuildContext context,
   SearchPackage package,
   String managerSummary,
 ) {
   final parts = <String>[
     managerSummary,
-    if ((package.version ?? '').isNotEmpty) '版本 ${package.version}',
+    if ((package.version ?? '').isNotEmpty)
+      context.l10n.versionValue(package.version!),
     if (_searchPackageSourceLine(package).isNotEmpty)
       _searchPackageSourceLine(package),
   ];
@@ -5407,6 +5620,7 @@ String _searchPackageSourceLine(SearchPackage package) {
 }
 
 String _searchPackageManagerSummary(
+  BuildContext context,
   SearchPackage package,
   PackagePanelController controller,
 ) {
@@ -5418,10 +5632,10 @@ String _searchPackageManagerSummary(
       package.installOptions.first.managerId,
     );
   }
-  return '${package.installOptions.length} 个包管理器';
+  return context.l10n.multiManagerCount(package.installOptions.length);
 }
 
-String _searchPackageExtraLine(SearchPackage package) {
+String _searchPackageExtraLine(BuildContext context, SearchPackage package) {
   final installedManagers = package.installOptions
       .where((option) => option.isInstalled)
       .map((option) => option.managerName)
@@ -5432,18 +5646,21 @@ String _searchPackageExtraLine(SearchPackage package) {
     if (package.identifier != null &&
         package.identifier!.trim().isNotEmpty &&
         package.identifier != package.name)
-      '标识: ${package.identifier}',
-    if (installedManagers.isNotEmpty) '已安装: ${installedManagers.join(', ')}',
+      context.l10n.identifierValue(package.identifier!),
+    if (installedManagers.isNotEmpty)
+      context.l10n.installedManagersValue(installedManagers.join(', ')),
   ];
   return parts.join(' · ');
 }
 
-String _extraLine(ManagedPackage package) {
+String _extraLine(BuildContext context, ManagedPackage package) {
   final parts = <String>[
     if (package.notes != null && package.notes!.trim().isNotEmpty)
       package.notes!,
     if (package.latestVersionCheckedAt != null)
-      '上次检查 ${_formatCheckedAt(package.latestVersionCheckedAt!)}',
+      context.l10n.lastCheckedAtValue(
+        _formatCheckedAt(package.latestVersionCheckedAt!),
+      ),
   ];
   return parts.join(' · ');
 }

@@ -1,0 +1,583 @@
+{
+  "@@locale": "zh",
+  "appTitle": "包管理面板",
+  "appTagline": "一个管理各种包管理器的面板。",
+  "tabLocal": "本地",
+  "tabInstall": "安装",
+  "tabSettings": "设置",
+  "settingsTabGeneral": "常规",
+  "settingsTabManagers": "包管理器",
+  "settingsTabAppearance": "外观",
+  "settingsTabAbout": "关于",
+  "languageTitle": "语言",
+  "languageChinese": "简体中文",
+  "languageEnglish": "English",
+  "themeModeTitle": "主题模式",
+  "themeModeSystem": "系统",
+  "themeModeLight": "浅色",
+  "themeModeDark": "深色",
+  "autoCheckUpdatesTitle": "自动检查更新",
+  "autoCheckUpdatesSubtitle": "开启后，每次启动应用时都会检查 GitHub Release。",
+  "githubMirrorTitle": "GitHub 镜像下载",
+  "githubMirrorSubtitle": "开启后，更新弹窗中的下载按钮会优先使用镜像。",
+  "githubMirrorBaseUrlLabel": "镜像地址",
+  "editGithubMirrorTitle": "设置 GitHub 镜像地址",
+  "githubMirrorHint": "例如 https://ghproxy.net/",
+  "githubMirrorUpdated": "镜像地址已更新。",
+  "fontStackTitle": "字体栈",
+  "fontStackDescription": "第一个字体是主字体，其余字体会按顺序作为 fallback。",
+  "fontPreview": "字体预览：The quick brown fox jumps over the lazy dog. 敏捷的棕狐跳过了懒狗。",
+  "editFontStackTitle": "设置字体",
+  "commaSeparatedHint": "用英文逗号分隔。",
+  "fontStackInputHint": "例如 Cascadia Code, 汉仪有圆, Microsoft YaHei UI",
+  "buttonSetFont": "设置字体",
+  "buttonCancel": "取消",
+  "buttonSave": "保存",
+  "buttonRestoreDefault": "恢复默认",
+  "buttonClose": "关闭",
+  "buttonCopy": "复制",
+  "buttonRun": "执行",
+  "buttonInstall": "安装",
+  "buttonSearch": "搜索",
+  "buttonRefresh": "刷新",
+  "buttonRefreshStatus": "刷新状态",
+  "buttonAddGroup": "添加组",
+  "buttonEdit": "编辑",
+  "buttonOpenSettings": "打开设置",
+  "buttonCheckUpdates": "检查更新",
+  "buttonBatchUpdate": "批量更新",
+  "buttonGitHubRepo": "GitHub 仓库",
+  "buttonOpenReleasePage": "打开 Release 页面",
+  "buttonDownload": "下载",
+  "buttonDownloadAndInstall": "下载并安装",
+  "buttonRemoveIcon": "移除图标",
+  "buttonResetDefaultIcon": "恢复默认图标",
+  "buttonSelectIcon": "选择图标",
+  "buttonChangeIcon": "更换图标",
+  "buttonDeleteGroup": "删除组",
+  "buttonConfirm": "确定",
+  "buttonInstallInputVersion": "安装输入版本",
+  "searchLocalHint": "搜索本地包",
+  "searchInstallHint": "搜索可安装的包",
+  "clearTooltip": "清空",
+  "viewLoadErrorsButton": "查看加载错误 ({count})",
+  "@viewLoadErrorsButton": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "visiblePackageCount": "当前 {count} 个包",
+  "@visiblePackageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "managerLoadFailedSuffix": "{managerName} (加载失败)",
+  "@managerLoadFailedSuffix": {
+    "placeholders": {
+      "managerName": {
+        "type": "String"
+      }
+    }
+  },
+  "packageListHeader": "包列表",
+  "countLabel": "{count} 项",
+  "@countLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "countSelectedLabel": "{count} 项 · 已选 {selectedCount}",
+  "@countSelectedLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "selectedCount": {
+        "type": "int"
+      }
+    }
+  },
+  "packageNameColumn": "包名",
+  "currentVersionColumn": "当前版本",
+  "latestVersionColumn": "最新版本",
+  "extraInfoColumn": "附加信息",
+  "versionColumn": "版本",
+  "sourceColumn": "来源",
+  "packageManagerColumn": "包管理器",
+  "searchResultsHeader": "搜索结果",
+  "viewDetailsAction": "查看详情",
+  "checkUpdatesAction": "检查更新",
+  "updateAction": "更新",
+  "upgradeAction": "升级",
+  "removeAction": "删除",
+  "installSpecificVersionAction": "安装特定版本",
+  "loadingDetails": "正在加载详情...",
+  "detailsUnavailable": "详情加载失败或没有返回内容。",
+  "confirmRunCommandTitle": "确认执行命令",
+  "confirmRunCommandBody": "将执行下面的命令：",
+  "copyToClipboardSuccess": "已复制到剪贴板。",
+  "noErrorOutput": "没有返回错误输出。",
+  "loadErrorsTitle": "加载错误详情",
+  "commandFailedTitle": "命令执行失败",
+  "noOutput": "没有输出内容。",
+  "batchPrerequisitePrompt": "批量检查更新前需要先安装依赖命令，是否现在安装？",
+  "batchPrerequisiteTitle": "需要先安装依赖",
+  "cancelRequested": "已发送取消请求。",
+  "commandCannotCancel": "当前命令无法取消。",
+  "commandCancelled": "已取消：{command}",
+  "@commandCancelled": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      }
+    }
+  },
+  "runningCommandsTitle": "正在执行命令 ({count})",
+  "@runningCommandsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "commandQueueTitle": "命令队列 ({runningCount} 运行中，{queuedCount} 排队中)",
+  "@commandQueueTitle": {
+    "placeholders": {
+      "runningCount": {
+        "type": "int"
+      },
+      "queuedCount": {
+        "type": "int"
+      }
+    }
+  },
+  "commandStatusQueued": "排队中",
+  "commandCancelTooltip": "取消此命令",
+  "commandCancelling": "正在取消...",
+  "commandNotCancelable": "不可取消",
+  "emptyLoadingManagers": "正在刷新包管理器...",
+  "emptyNoMatchingPackages": "没有匹配的包",
+  "emptyNoEnabledManagers": "暂未启用包管理器",
+  "emptyNoEnabledManagersDescription": "当前没有启用任何包管理器，请先到设置中选择要展示的项。",
+  "emptyManagersLoadErrorDescription": "有 {count} 个包管理器加载失败，可以打开错误详情查看完整输出。",
+  "@emptyManagersLoadErrorDescription": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "emptyClickRefresh": "可以先点击“刷新”。",
+  "emptyNoSearchResult": "没有找到“{query}”的结果。",
+  "@emptyNoSearchResult": {
+    "placeholders": {
+      "query": {
+        "type": "String"
+      }
+    }
+  },
+  "homeFilterGroupAll": "全部",
+  "homeFilterGroupUpdates": "更新",
+  "homeFilterSummaryAll": "显示全部本地包",
+  "homeFilterSummaryUpdates": "仅显示有更新的本地包",
+  "homeFilterSummaryManagers": "{count} 个包管理器",
+  "@homeFilterSummaryManagers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeFilterSummaryPackages": "{count} 个单包",
+  "@homeFilterSummaryPackages": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeFilterSummaryUnconfigured": "未配置成员",
+  "managerOriginalName": "原名: {name}",
+  "@managerOriginalName": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "managerCustomIconSet": "已设置自定义图标",
+  "managerUpdatedMessage": "{name} 已更新{parts}。",
+  "@managerUpdatedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "parts": {
+        "type": "String"
+      }
+    }
+  },
+  "groupAddedMessage": "{name} 已添加。",
+  "@groupAddedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "groupDeletedMessage": "{name} 已删除。",
+  "@groupDeletedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "groupUpdatedMessage": "{name} 已更新。",
+  "@groupUpdatedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsManagersDescription": "可以自定义主页筛选组；刷新后未安装的包管理器会被禁用",
+  "groupColumn": "筛选组",
+  "descriptionColumn": "说明",
+  "enabledColumn": "启用",
+  "statusColumn": "状态",
+  "customGroupType": "自定义组",
+  "builtinGroupType": "内置组",
+  "groupVisibleOnHome": "主页显示中",
+  "groupHiddenOnHome": "主页已隐藏",
+  "managerDetected": "已检测到",
+  "managerNotDetected": "未检测到",
+  "changedDisplayName": "显示名称",
+  "changedIcon": "图标",
+  "dialogAddGroupTitle": "添加筛选组",
+  "dialogEditGroupTitle": "编辑 {name}",
+  "@dialogEditGroupTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "groupNameLabel": "组名称",
+  "groupNameHint": "例如 开发工具 / CLI / 常用",
+  "iconLabel": "图标",
+  "iconNotSet": "未设置图标",
+  "defaultIconLabel": "使用默认图标",
+  "iconFormatsHint": "支持 svg、png、jpg、jpeg、webp、ico。",
+  "includedManagersLabel": "包含的包管理器",
+  "includedPackagesLabel": "包含的单个本地包",
+  "noLocalPackages": "暂无本地包",
+  "builtinAllGroupHint": "这是内置“全部”筛选组，会显示所有本地包。",
+  "builtinUpdatesGroupHint": "这是内置“更新”筛选组，会显示有更新的本地包。",
+  "displayNameLabel": "显示名称",
+  "displayNameHint": "输入新的显示名称",
+  "editManagerTitle": "编辑 {name}",
+  "@editManagerTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "saveInProgress": "保存中...",
+  "aboutTitle": "关于",
+  "versionLoading": "读取中...",
+  "checkingUpdates": "检查中...",
+  "openLinkFailed": "无法打开链接：{url}",
+  "@openLinkFailed": {
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "checkUpdatesFailed": "检查更新失败：{message}",
+  "@checkUpdatesFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "alreadyLatestVersion": "当前已是最新版本：{version}",
+  "@alreadyLatestVersion": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "packageAlreadyLatest": "{name} 已经是最新版本。",
+  "@packageAlreadyLatest": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "packageNewVersionFound": "{name} 有新版本：{version}",
+  "@packageNewVersionFound": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "packageCheckFailed": "检查 {name} 失败：{message}",
+  "@packageCheckFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "packageCheckFailedFallback": "检查 {name} 失败，请查看活动日志。",
+  "@packageCheckFailedFallback": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "releaseAssetInstaller": "安装包",
+  "releaseAssetPortable": "绿色版",
+  "releaseAssetOther": "发行文件",
+  "unknownSize": "大小未知",
+  "downloadPreparing": "准备下载...",
+  "downloadedBytes": "已下载 {received}",
+  "@downloadedBytes": {
+    "placeholders": {
+      "received": {
+        "type": "String"
+      }
+    }
+  },
+  "downloadedProgress": "已下载 {received} / {total} · {percent}%",
+  "@downloadedProgress": {
+    "placeholders": {
+      "received": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "autoCheckDisabled": "已关闭自动检查更新。",
+  "disableAutoCheckFailed": "关闭失败：{message}",
+  "@disableAutoCheckFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "installerStarted": "安装包已启动。",
+  "installerDownloadedNotStarted": "安装包已下载，但未能自动启动。",
+  "downloadedAndOpenedFolder": "已下载并打开所在目录。",
+  "downloadCompleted": "已下载完成。",
+  "downloadFailed": "下载失败：{message}",
+  "@downloadFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "updateAvailableTitle": "发现新版本",
+  "versionTransition": "当前 {current}  ->  最新 {latest}",
+  "@versionTransition": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "latest": {
+        "type": "String"
+      }
+    }
+  },
+  "releaseNotesTitle": "更新说明",
+  "releaseNotesEmpty": "该 Release 暂未提供更新说明。",
+  "releaseAssetsEmpty": "未读取到发行文件，可前往 Release 页面查看。",
+  "releaseAssetsTitle": "可用发行文件",
+  "processing": "处理中...",
+  "disableAutoCheckButton": "取消自动检查更新",
+  "installPageEmptyHint": "输入关键词后搜索可安装的包。",
+  "searching": "正在搜索...",
+  "allLabel": "全部",
+  "packageAlreadyInstalled": "{manager} · 已安装",
+  "@packageAlreadyInstalled": {
+    "placeholders": {
+      "manager": {
+        "type": "String"
+      }
+    }
+  },
+  "installWithManager": "使用 {manager} 安装",
+  "@installWithManager": {
+    "placeholders": {
+      "manager": {
+        "type": "String"
+      }
+    }
+  },
+  "installSpecificVersionWithManager": "使用 {manager} 安装特定版本",
+  "@installSpecificVersionWithManager": {
+    "placeholders": {
+      "manager": {
+        "type": "String"
+      }
+    }
+  },
+  "managerInstalling": "{manager} 安装中",
+  "@managerInstalling": {
+    "placeholders": {
+      "manager": {
+        "type": "String"
+      }
+    }
+  },
+  "managerInstalled": "{manager} 已安装",
+  "@managerInstalled": {
+    "placeholders": {
+      "manager": {
+        "type": "String"
+      }
+    }
+  },
+  "installDialogVersionSelected": "当前将安装版本 {version}。",
+  "@installDialogVersionSelected": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "installDialogLatestSelected": "当前将显式安装 @latest。",
+  "installDialogDefaultSelected": "当前将执行默认安装命令。",
+  "installLatestTitle": "安装最新",
+  "installLatestSubtitle": "使用 @latest 形式安装",
+  "versionSearchHint": "输入版本号快速筛选，例如 1.2.3",
+  "pendingCommandLabel": "将要执行的命令",
+  "loadVersionListFailed": "读取版本列表失败：{message}",
+  "@loadVersionListFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "noAvailableVersionList": "当前命令没有返回可用版本列表。",
+  "availableVersionListCount": "共 {count} 个可选版本",
+  "@availableVersionListCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "availableVersionListTruncated": "共 {count} 个可选版本，仅显示最新 {max} 个，请输入版本号缩小范围。",
+  "@availableVersionListTruncated": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "availableVersionListTruncatedFiltered": "匹配 {count} 个版本，仅显示前 {max} 个，请继续输入缩小范围。",
+  "@availableVersionListTruncatedFiltered": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "noDisplayableVersions": "没有可显示的版本。",
+  "noMatchedVersionsUseTypedValue": "没有匹配的版本，确定时会直接使用输入框里的版本号。",
+  "specificVersionDialogTitle": "安装特定版本",
+  "specificVersionDialogDescription": "选择一个可用版本，或直接输入版本号执行安装。",
+  "noMatchedVersionsCanInstallTyped": "没有匹配的版本，可以直接使用下方按钮安装输入值。",
+  "currentVersionValue": "当前 {version}",
+  "@currentVersionValue": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "latestVersionValue": "最新 {version}",
+  "@latestVersionValue": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "versionValue": "版本 {version}",
+  "@versionValue": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "multiManagerCount": "{count} 个包管理器",
+  "@multiManagerCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "identifierValue": "标识: {identifier}",
+  "@identifierValue": {
+    "placeholders": {
+      "identifier": {
+        "type": "String"
+      }
+    }
+  },
+  "installedManagersValue": "已安装: {managers}",
+  "@installedManagersValue": {
+    "placeholders": {
+      "managers": {
+        "type": "String"
+      }
+    }
+  },
+  "lastCheckedAtValue": "上次检查 {value}",
+  "@lastCheckedAtValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  }
+}
