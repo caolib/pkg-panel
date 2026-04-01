@@ -483,14 +483,7 @@ class _RunningCommandToast extends StatelessWidget {
                                           padding: const EdgeInsets.only(
                                             top: 8,
                                           ),
-                                          child: SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: theme.colorScheme.primary,
-                                            ),
-                                          ),
+                                          child: const _BusyIndicator(size: 18),
                                         )
                                       : IconButton(
                                           tooltip: l10n.commandCancelTooltip,
@@ -593,11 +586,7 @@ class _ActionBar extends StatelessWidget {
                   ? null
                   : onRefreshAll,
               icon: controller.isRefreshingCurrentSelection
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const _BusyIndicator(size: 16)
                   : const Icon(Icons.sync),
               label: Text(l10n.buttonRefresh),
             ),
@@ -613,11 +602,7 @@ class _ActionBar extends StatelessWidget {
               FilledButton.tonalIcon(
                 onPressed: isBatchCheckingLatest ? null : onBatchCheckLatest,
                 icon: isBatchCheckingLatest
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                    ? const _BusyIndicator(size: 16)
                     : const Icon(Icons.find_replace_outlined),
                 label: Text(l10n.buttonCheckUpdates),
               ),
@@ -976,7 +961,7 @@ class _PackageListTile extends StatelessWidget {
         controller.selectPackage(
           package,
           additive: _isAdditiveSelectionPressed(),
-            range: _isRangeSelectionPressed(),
+          range: _isRangeSelectionPressed(),
         );
       },
       onDoubleTap: tileState.canViewDetails && !tileState.isLoadingDetails
@@ -1001,10 +986,7 @@ class _PackageListTile extends StatelessWidget {
         color: tileState.isSelected
             ? theme.colorScheme.primary.withAlpha(36)
             : Colors.transparent,
-        child: Padding(
-          padding: innerPadding,
-          child: rowContent,
-        ),
+        child: Padding(padding: innerPadding, child: rowContent),
       ),
     );
   }
@@ -1132,8 +1114,7 @@ class _ContextMenuItemLabel extends StatelessWidget {
     this.leading,
     required this.label,
     this.foregroundColor,
-  })
-    : assert(icon != null || leading != null);
+  }) : assert(icon != null || leading != null);
 
   final IconData? icon;
   final Widget? leading;
@@ -1301,10 +1282,9 @@ class _DesktopContextMenuItem extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           child: DefaultTextStyle(
-            style:
-                (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
-                  color: foregroundColor,
-                ),
+            style: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+              color: foregroundColor,
+            ),
             child: _ContextMenuItemLabel(
               icon: item.icon,
               leading: item.leading,
@@ -1402,7 +1382,7 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
-                              const CircularProgressIndicator(),
+                              const _BusyIndicator(size: 28),
                               const SizedBox(height: 16),
                               Text(l10n.loadingDetails),
                             ],
@@ -1444,7 +1424,6 @@ class _PackageDetailsDialogState extends State<_PackageDetailsDialog> {
       ),
     );
   }
-
 }
 
 class _PackageTileState {
@@ -1926,9 +1905,7 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                     future: _versionsFuture,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState != ConnectionState.done) {
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2.2),
-                        );
+                        return const Center(child: _BusyIndicator(size: 22));
                       }
                       if (snapshot.hasError) {
                         return _buildInstallVersionStatus(
@@ -2132,9 +2109,7 @@ class _InstallSpecificVersionDialogState
                 future: _versionsFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.2),
-                    );
+                    return const Center(child: _BusyIndicator(size: 22));
                   }
 
                   if (snapshot.hasError) {
@@ -2372,7 +2347,7 @@ class _EmptyPackages extends StatelessWidget {
             const SizedBox(
               width: 28,
               height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2.2),
+              child: _BusyIndicator(size: 28),
             )
           else
             Icon(

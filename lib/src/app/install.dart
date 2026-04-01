@@ -103,11 +103,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                         ? null
                         : _runSearch,
                     icon: widget.controller.isSearchingPackages
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const _BusyIndicator(size: 16)
                         : const Icon(Icons.travel_explore_outlined),
                     label: Text(l10n.buttonSearch),
                   ),

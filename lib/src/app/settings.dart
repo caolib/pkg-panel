@@ -514,7 +514,8 @@ class PackageSettingsPage extends StatelessWidget {
                                   : null,
                               previewColors: _themePreviewColorsForPalette(
                                 paletteId: paletteId,
-                                customSeedColor: controller.customThemeSeedColor,
+                                customSeedColor:
+                                    controller.customThemeSeedColor,
                               ),
                               selected: controller.themePaletteId == paletteId,
                               onTap: () => unawaited(
@@ -611,610 +612,501 @@ class PackageSettingsPage extends StatelessWidget {
         return switch (currentTabIndex) {
           0 => _buildGeneralTab(context, theme),
           1 => ListView(
-                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        l10n.settingsManagersDescription,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _addHomeFilterGroup(context),
+                    icon: const Icon(Icons.add),
+                    label: Text(l10n.buttonAddGroup),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.tonalIcon(
+                    onPressed: controller.isRefreshingManagerAvailability
+                        ? null
+                        : () async {
+                            await controller.refreshManagerAvailability();
+                          },
+                    icon: controller.isRefreshingManagerAvailability
+                        ? const _BusyIndicator(size: 16)
+                        : const Icon(Icons.refresh_outlined),
+                    label: Text(l10n.buttonRefreshStatus),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: Column(
+                  children: <Widget>[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLowest,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(20),
+                        ),
+                      ),
+                      child: Row(
                         children: <Widget>[
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Text(
-                                    l10n.settingsManagersDescription,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
+                          Expanded(
+                            flex: 4,
+                            child: Text(
+                              l10n.groupColumn,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
                               ),
-                              const SizedBox(width: 12),
-                              FilledButton.tonalIcon(
-                                onPressed: () => _addHomeFilterGroup(context),
-                                icon: const Icon(Icons.add),
-                                label: Text(l10n.buttonAddGroup),
-                              ),
-                              const SizedBox(width: 12),
-                              FilledButton.tonalIcon(
-                                onPressed:
-                                    controller.isRefreshingManagerAvailability
-                                    ? null
-                                    : () async {
-                                        await controller
-                                            .refreshManagerAvailability();
-                                      },
-                                icon: controller.isRefreshingManagerAvailability
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.refresh_outlined),
-                                label: Text(l10n.buttonRefreshStatus),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surface,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: theme.colorScheme.outlineVariant,
-                              ),
-                            ),
-                            child: Column(
-                              children: <Widget>[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 14,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: theme
-                                        .colorScheme
-                                        .surfaceContainerLowest,
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(20),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        flex: 4,
-                                        child: Text(
-                                          l10n.groupColumn,
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 5,
-                                        child: Text(
-                                          l10n.descriptionColumn,
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          l10n.enabledColumn,
-                                          textAlign: TextAlign.right,
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                ReorderableListView.builder(
-                                  shrinkWrap: true,
-                                  buildDefaultDragHandles: false,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: homeFilterGroups.length,
-                                  onReorder: (oldIndex, newIndex) {
-                                    if (newIndex > oldIndex) {
-                                      newIndex -= 1;
-                                    }
-                                    controller.reorderHomeFilterGroup(
-                                      oldIndex,
-                                      newIndex,
-                                    );
-                                  },
-                                  itemBuilder: (context, index) {
-                                    final group = homeFilterGroups[index];
-                                    final iconPath = controller
-                                        .iconPathForHomeFilterGroup(group.id);
-                                    final hasIcon = iconPath != null;
-                                    return DecoratedBox(
-                                      key: ValueKey(group.id),
-                                      decoration: BoxDecoration(
-                                        border:
-                                            index == homeFilterGroups.length - 1
-                                            ? null
-                                            : Border(
-                                                bottom: BorderSide(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .outlineVariant,
-                                                ),
-                                              ),
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 20,
-                                          vertical: 10,
-                                        ),
-                                        child: Row(
-                                          children: <Widget>[
-                                            MouseRegion(
-                                              cursor: SystemMouseCursors.grab,
-                                              child:
-                                                  ReorderableDragStartListener(
-                                                    index: index,
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                            right: 12,
-                                                          ),
-                                                      child: Icon(
-                                                        Icons.drag_indicator,
-                                                        color: theme
-                                                            .colorScheme
-                                                            .onSurfaceVariant,
-                                                      ),
-                                                    ),
-                                                  ),
-                                            ),
-                                            Expanded(
-                                              flex: 4,
-                                              child: Row(
-                                                children: <Widget>[
-                                                  if (hasIcon)
-                                                    _ManagerIcon(
-                                                      managerId: group.id,
-                                                      customIconPath: iconPath,
-                                                      fallbackIcon: Icons
-                                                          .filter_alt_outlined,
-                                                      fallbackColor: theme
-                                                          .colorScheme
-                                                          .primary,
-                                                      size: 20,
-                                                      showFallbackWhenNoAsset:
-                                                          false,
-                                                    ),
-                                                  if (hasIcon)
-                                                    const SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: <Widget>[
-                                                        Text(
-                                                          _homeFilterGroupDisplayName(
-                                                            context,
-                                                            group,
-                                                          ),
-                                                          style: theme
-                                                              .textTheme
-                                                              .titleMedium
-                                                              ?.copyWith(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                              ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 2,
-                                                        ),
-                                                        Text(
-                                                          group.kind ==
-                                                                  HomeFilterGroupKind
-                                                                      .custom
-                                                              ? l10n.customGroupType
-                                                              : l10n.builtinGroupType,
-                                                          style: theme
-                                                              .textTheme
-                                                              .bodySmall
-                                                              ?.copyWith(
-                                                                color: theme
-                                                                    .colorScheme
-                                                                    .onSurfaceVariant,
-                                                              ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 5,
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: <Widget>[
-                                                  Text(
-                                                    group.isVisible
-                                                        ? l10n.groupVisibleOnHome
-                                                        : l10n.groupHiddenOnHome,
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodyMedium
-                                                        ?.copyWith(
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          color: group.isVisible
-                                                              ? theme
-                                                                    .colorScheme
-                                                                    .primary
-                                                              : theme
-                                                                    .colorScheme
-                                                                    .onSurfaceVariant,
-                                                        ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    _homeFilterGroupSummary(
-                                                      context,
-                                                      group,
-                                                    ),
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodySmall
-                                                        ?.copyWith(
-                                                          color: theme
-                                                              .colorScheme
-                                                              .onSurfaceVariant,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 2,
-                                              child: Align(
-                                                alignment:
-                                                    Alignment.centerRight,
-                                                child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.end,
-                                                  children: <Widget>[
-                                                    OutlinedButton.icon(
-                                                      onPressed: () =>
-                                                          _editHomeFilterGroup(
-                                                            context,
-                                                            group,
-                                                          ),
-                                                      icon: const Icon(
-                                                        Icons.edit_outlined,
-                                                        size: 18,
-                                                      ),
-                                                      label: Text(
-                                                        l10n.buttonEdit,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Switch(
-                                                      value: group.isVisible,
-                                                      onChanged: (value) =>
-                                                          controller
-                                                              .setHomeFilterGroupVisibility(
-                                                                group.id,
-                                                                value,
-                                                              ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
                             ),
                           ),
-                          const SizedBox(height: 12),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surface,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: theme.colorScheme.outlineVariant,
+                          Expanded(
+                            flex: 5,
+                            child: Text(
+                              l10n.descriptionColumn,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                            child: Column(
-                              children: <Widget>[
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 14,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: theme
-                                        .colorScheme
-                                        .surfaceContainerLowest,
-                                    borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(20),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        flex: 4,
-                                        child: Text(
-                                          l10n.packageManagerColumn,
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 5,
-                                        child: Text(
-                                          l10n.statusColumn,
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 2,
-                                        child: Text(
-                                          l10n.enabledColumn,
-                                          textAlign: TextAlign.right,
-                                          style: theme.textTheme.labelLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                ReorderableListView.builder(
-                                  shrinkWrap: true,
-                                  buildDefaultDragHandles: false,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: states.length,
-                                  onReorder: (oldIndex, newIndex) {
-                                    if (newIndex > oldIndex) {
-                                      newIndex -= 1;
-                                    }
-                                    controller.reorderManager(
-                                      oldIndex,
-                                      newIndex,
-                                    );
-                                  },
-                                  itemBuilder: (context, index) {
-                                    final state = states[index];
-                                    return DecoratedBox(
-                                      key: ValueKey(state.manager.id),
-                                      decoration: BoxDecoration(
-                                        border: index == states.length - 1
-                                            ? null
-                                            : Border(
-                                                bottom: BorderSide(
-                                                  color: theme
-                                                      .colorScheme
-                                                      .outlineVariant,
-                                                ),
-                                              ),
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 20,
-                                          vertical: 10,
-                                        ),
-                                        child: Row(
-                                          children: <Widget>[
-                                            MouseRegion(
-                                              cursor: SystemMouseCursors.grab,
-                                              child:
-                                                  ReorderableDragStartListener(
-                                                    index: index,
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.only(
-                                                            right: 12,
-                                                          ),
-                                                      child: Icon(
-                                                        Icons.drag_indicator,
-                                                        color: theme
-                                                            .colorScheme
-                                                            .onSurfaceVariant,
-                                                      ),
-                                                    ),
-                                                  ),
-                                            ),
-                                            Expanded(
-                                              flex: 4,
-                                              child: Row(
-                                                children: <Widget>[
-                                                  _ManagerIcon(
-                                                    managerId: state.manager.id,
-                                                    customIconPath: controller
-                                                        .customManagerIconPath(
-                                                          state.manager.id,
-                                                        ),
-                                                    fallbackIcon:
-                                                        state.manager.icon,
-                                                    fallbackColor:
-                                                        state.manager.color,
-                                                    size: 20,
-                                                  ),
-                                                  const SizedBox(width: 12),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: <Widget>[
-                                                        Text(
-                                                          controller
-                                                              .displayNameForManagerId(
-                                                                state
-                                                                    .manager
-                                                                    .id,
-                                                              ),
-                                                          style: theme
-                                                              .textTheme
-                                                              .titleMedium
-                                                              ?.copyWith(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                              ),
-                                                        ),
-                                                        const SizedBox(
-                                                          height: 2,
-                                                        ),
-                                                        if (_managerCustomizationSummary(
-                                                              context,
-                                                              state,
-                                                            ) !=
-                                                            null) ...<Widget>[
-                                                          Text(
-                                                            _managerCustomizationSummary(
-                                                              context,
-                                                              state,
-                                                            )!,
-                                                            maxLines: 1,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style: theme
-                                                                .textTheme
-                                                                .bodySmall
-                                                                ?.copyWith(
-                                                                  color: theme
-                                                                      .colorScheme
-                                                                      .onSurfaceVariant,
-                                                                ),
-                                                          ),
-                                                          const SizedBox(
-                                                            height: 2,
-                                                          ),
-                                                        ],
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 5,
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: <Widget>[
-                                                  Text(
-                                                    state.isAvailable
-                                                        ? l10n.managerDetected
-                                                        : l10n.managerNotDetected,
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodyMedium
-                                                        ?.copyWith(
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          color:
-                                                              state.isAvailable
-                                                              ? theme
-                                                                    .colorScheme
-                                                                    .primary
-                                                              : theme
-                                                                    .colorScheme
-                                                                    .onSurfaceVariant,
-                                                        ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    state.manager.description,
-                                                    style: theme
-                                                        .textTheme
-                                                        .bodySmall
-                                                        ?.copyWith(
-                                                          color: theme
-                                                              .colorScheme
-                                                              .onSurfaceVariant,
-                                                        ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 2,
-                                              child: Align(
-                                                alignment:
-                                                    Alignment.centerRight,
-                                                child: Row(
-                                                  mainAxisAlignment:
-                                                      MainAxisAlignment.end,
-                                                  children: <Widget>[
-                                                    OutlinedButton.icon(
-                                                      onPressed: () =>
-                                                          _editManager(
-                                                            context,
-                                                            state,
-                                                          ),
-                                                      icon: const Icon(
-                                                        Icons.edit_outlined,
-                                                        size: 18,
-                                                      ),
-                                                      label: Text(
-                                                        l10n.buttonEdit,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Switch(
-                                                      value: state.isVisible,
-                                                      onChanged: (value) =>
-                                                          controller
-                                                              .setManagerVisibility(
-                                                                state
-                                                                    .manager
-                                                                    .id,
-                                                                value,
-                                                              ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              l10n.enabledColumn,
+                              textAlign: TextAlign.right,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ],
                       ),
-          2 => _buildAppearanceTab(context, theme),
-          _ => SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                        child: _AboutAppCard(
-                          theme: theme,
-                          controller: controller,
+                    ),
+                    ReorderableListView.builder(
+                      shrinkWrap: true,
+                      buildDefaultDragHandles: false,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: homeFilterGroups.length,
+                      onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) {
+                          newIndex -= 1;
+                        }
+                        controller.reorderHomeFilterGroup(oldIndex, newIndex);
+                      },
+                      itemBuilder: (context, index) {
+                        final group = homeFilterGroups[index];
+                        final iconPath = controller.iconPathForHomeFilterGroup(
+                          group.id,
+                        );
+                        final hasIcon = iconPath != null;
+                        return DecoratedBox(
+                          key: ValueKey(group.id),
+                          decoration: BoxDecoration(
+                            border: index == homeFilterGroups.length - 1
+                                ? null
+                                : Border(
+                                    bottom: BorderSide(
+                                      color: theme.colorScheme.outlineVariant,
+                                    ),
+                                  ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: ReorderableDragStartListener(
+                                    index: index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 12),
+                                      child: Icon(
+                                        Icons.drag_indicator,
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 4,
+                                  child: Row(
+                                    children: <Widget>[
+                                      if (hasIcon)
+                                        _ManagerIcon(
+                                          managerId: group.id,
+                                          customIconPath: iconPath,
+                                          fallbackIcon:
+                                              Icons.filter_alt_outlined,
+                                          fallbackColor:
+                                              theme.colorScheme.primary,
+                                          size: 20,
+                                          showFallbackWhenNoAsset: false,
+                                        ),
+                                      if (hasIcon) const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Text(
+                                              _homeFilterGroupDisplayName(
+                                                context,
+                                                group,
+                                              ),
+                                              style: theme.textTheme.titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              group.kind ==
+                                                      HomeFilterGroupKind.custom
+                                                  ? l10n.customGroupType
+                                                  : l10n.builtinGroupType,
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        group.isVisible
+                                            ? l10n.groupVisibleOnHome
+                                            : l10n.groupHiddenOnHome,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: group.isVisible
+                                                  ? theme.colorScheme.primary
+                                                  : theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _homeFilterGroupSummary(context, group),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: <Widget>[
+                                        OutlinedButton.icon(
+                                          onPressed: () => _editHomeFilterGroup(
+                                            context,
+                                            group,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.edit_outlined,
+                                            size: 18,
+                                          ),
+                                          label: Text(l10n.buttonEdit),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Switch(
+                                          value: group.isVisible,
+                                          onChanged: (value) => controller
+                                              .setHomeFilterGroupVisibility(
+                                                group.id,
+                                                value,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                child: Column(
+                  children: <Widget>[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerLowest,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(20),
                         ),
                       ),
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            flex: 4,
+                            child: Text(
+                              l10n.packageManagerColumn,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 5,
+                            child: Text(
+                              l10n.statusColumn,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              l10n.enabledColumn,
+                              textAlign: TextAlign.right,
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ReorderableListView.builder(
+                      shrinkWrap: true,
+                      buildDefaultDragHandles: false,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: states.length,
+                      onReorder: (oldIndex, newIndex) {
+                        if (newIndex > oldIndex) {
+                          newIndex -= 1;
+                        }
+                        controller.reorderManager(oldIndex, newIndex);
+                      },
+                      itemBuilder: (context, index) {
+                        final state = states[index];
+                        return DecoratedBox(
+                          key: ValueKey(state.manager.id),
+                          decoration: BoxDecoration(
+                            border: index == states.length - 1
+                                ? null
+                                : Border(
+                                    bottom: BorderSide(
+                                      color: theme.colorScheme.outlineVariant,
+                                    ),
+                                  ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: <Widget>[
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.grab,
+                                  child: ReorderableDragStartListener(
+                                    index: index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 12),
+                                      child: Icon(
+                                        Icons.drag_indicator,
+                                        color:
+                                            theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 4,
+                                  child: Row(
+                                    children: <Widget>[
+                                      _ManagerIcon(
+                                        managerId: state.manager.id,
+                                        customIconPath: controller
+                                            .customManagerIconPath(
+                                              state.manager.id,
+                                            ),
+                                        fallbackIcon: state.manager.icon,
+                                        fallbackColor: state.manager.color,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: <Widget>[
+                                            Text(
+                                              controller
+                                                  .displayNameForManagerId(
+                                                    state.manager.id,
+                                                  ),
+                                              style: theme.textTheme.titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            if (_managerCustomizationSummary(
+                                                  context,
+                                                  state,
+                                                ) !=
+                                                null) ...<Widget>[
+                                              Text(
+                                                _managerCustomizationSummary(
+                                                  context,
+                                                  state,
+                                                )!,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: theme.textTheme.bodySmall
+                                                    ?.copyWith(
+                                                      color: theme
+                                                          .colorScheme
+                                                          .onSurfaceVariant,
+                                                    ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: <Widget>[
+                                      Text(
+                                        state.isAvailable
+                                            ? l10n.managerDetected
+                                            : l10n.managerNotDetected,
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: state.isAvailable
+                                                  ? theme.colorScheme.primary
+                                                  : theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                            ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        state.manager.description,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: theme
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: <Widget>[
+                                        OutlinedButton.icon(
+                                          onPressed: () =>
+                                              _editManager(context, state),
+                                          icon: const Icon(
+                                            Icons.edit_outlined,
+                                            size: 18,
+                                          ),
+                                          label: Text(l10n.buttonEdit),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Switch(
+                                          value: state.isVisible,
+                                          onChanged: (value) =>
+                                              controller.setManagerVisibility(
+                                                state.manager.id,
+                                                value,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          2 => _buildAppearanceTab(context, theme),
+          _ => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: _AboutAppCard(theme: theme, controller: controller),
+          ),
         };
       },
     );
@@ -1222,10 +1114,7 @@ class PackageSettingsPage extends StatelessWidget {
 }
 
 class _SettingsContentViewport extends StatelessWidget {
-  const _SettingsContentViewport({
-    required this.builder,
-    this.maxWidth = 1080,
-  });
+  const _SettingsContentViewport({required this.builder, this.maxWidth = 1080});
 
   final double maxWidth;
   final Widget Function(BuildContext context, double contentWidth) builder;
@@ -2541,11 +2430,7 @@ class _AboutMetaRowState extends State<_AboutMetaRow> {
                             );
                           },
                     icon: widget.controller.isCheckingAppUpdate
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const _BusyIndicator(size: 16)
                         : const Icon(Icons.system_update_alt),
                     label: Text(
                       widget.controller.isCheckingAppUpdate
@@ -2687,6 +2572,20 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
   bool _isDisablingAutoCheck = false;
   bool _autoCheckDisabledInDialog = false;
 
+  bool _isSameDownloadProgress(
+    AppUpdateDownloadProgress? left,
+    AppUpdateDownloadProgress? right,
+  ) {
+    if (identical(left, right)) {
+      return true;
+    }
+    if (left == null || right == null) {
+      return false;
+    }
+    return left.receivedBytes == right.receivedBytes &&
+        left.totalBytes == right.totalBytes;
+  }
+
   Future<void> _disableAutoCheck() async {
     if (_isDisablingAutoCheck || _autoCheckDisabledInDialog) {
       return;
@@ -2738,6 +2637,9 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
         asset,
         onProgress: (progress) {
           if (!mounted) {
+            return;
+          }
+          if (_isSameDownloadProgress(_downloadProgress, progress)) {
             return;
           }
           setState(() {
@@ -2912,14 +2814,7 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
                                         icon:
                                             _activeDownloadUrl ==
                                                 asset.downloadUrl
-                                            ? const SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
-                                              )
+                                            ? const _BusyIndicator(size: 16)
                                             : Icon(
                                                 asset.startsInstaller
                                                     ? Icons
@@ -2940,10 +2835,14 @@ class _AppUpdateDialogState extends State<_AppUpdateDialog> {
                                   if (_activeDownloadUrl ==
                                       asset.downloadUrl) ...<Widget>[
                                     const SizedBox(height: 12),
-                                    LinearProgressIndicator(
-                                      value: _downloadProgress?.progress,
-                                      minHeight: 6,
-                                      borderRadius: BorderRadius.circular(999),
+                                    RepaintBoundary(
+                                      child: LinearProgressIndicator(
+                                        value: _downloadProgress?.progress,
+                                        minHeight: 6,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(height: 6),
                                     Text(

@@ -100,6 +100,42 @@ String _formatUiError(Object error) {
       .replaceFirst('HttpException: ', '');
 }
 
+class _BusyIndicator extends StatelessWidget {
+  const _BusyIndicator({this.size = 18});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return RepaintBoundary(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(size * 0.32),
+            border: Border.all(
+              color: theme.colorScheme.primary.withValues(alpha: 0.28),
+            ),
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(size * 0.14),
+            child: FittedBox(
+              child: Icon(
+                Icons.hourglass_top_rounded,
+                size: size * 0.58,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 bool _isQueuedStatus(String? statusLabel) {
   final normalized = statusLabel?.trim();
   return normalized == '排队中' || normalized == 'Queued';

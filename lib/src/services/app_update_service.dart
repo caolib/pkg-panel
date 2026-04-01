@@ -6,6 +6,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'external_link_opener.dart';
 
 const String defaultGithubMirrorBaseUrl = 'https://ghproxy.net/';
+const Duration _downloadProgressInterval = Duration(milliseconds: 120);
+const int _downloadProgressMinBytesStep = 256 * 1024;
 
 enum AppReleaseAssetKind { installer, portable, other }
 
@@ -374,22 +376,50 @@ class AppUpdateService {
             ? response.contentLength
             : null;
         var receivedBytes = 0;
-        onProgress?.call(
-          AppUpdateDownloadProgress(
-            receivedBytes: receivedBytes,
-            totalBytes: totalBytes,
-          ),
-        );
-        await for (final chunk in response) {
-          sink.add(chunk);
-          receivedBytes += chunk.length;
-          onProgress?.call(
+        var lastReportedBytes = -1;
+        double? lastReportedRatio;
+        var lastReportedAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+        void reportProgress({bool force = false}) {
+          if (onProgress == null) {
+            return;
+          }
+          final now = DateTime.now();
+          final ratio = totalBytes == null || totalBytes <= 0
+              ? null
+              : receivedBytes / totalBytes;
+          final bytesChanged = receivedBytes - lastReportedBytes;
+          final ratioChanged = ratio == null || lastReportedRatio == null
+              ? true
+              : (ratio - lastReportedRatio!).abs() >= 0.01;
+          final intervalElapsed =
+              now.difference(lastReportedAt) >= _downloadProgressInterval;
+
+          if (!force &&
+              !intervalElapsed &&
+              bytesChanged < _downloadProgressMinBytesStep &&
+              !ratioChanged) {
+            return;
+          }
+
+          lastReportedBytes = receivedBytes;
+          lastReportedRatio = ratio;
+          lastReportedAt = now;
+          onProgress(
             AppUpdateDownloadProgress(
               receivedBytes: receivedBytes,
               totalBytes: totalBytes,
             ),
           );
         }
+
+        reportProgress(force: true);
+        await for (final chunk in response) {
+          sink.add(chunk);
+          receivedBytes += chunk.length;
+          reportProgress();
+        }
+        reportProgress(force: true);
         await sink.close();
       } catch (_) {
         await sink.close();
