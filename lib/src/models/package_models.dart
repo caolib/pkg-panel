@@ -62,7 +62,7 @@ class ManagedPackage {
     if (nextVersion == null || nextVersion.isEmpty) {
       return false;
     }
-    return nextVersion != version.trim();
+    return _compareVersions(nextVersion, version.trim()) > 0;
   }
 
   ManagedPackage copyWith({
@@ -352,4 +352,19 @@ class ActivityEntry {
   final String title;
   final String message;
   final bool isError;
+}
+
+int _compareVersions(String a, String b) {
+  final numPattern = RegExp(r'(\d+)');
+  final aParts =
+      numPattern.allMatches(a).map((m) => int.parse(m.group(1)!)).toList();
+  final bParts =
+      numPattern.allMatches(b).map((m) => int.parse(m.group(1)!)).toList();
+  final maxLen = aParts.length > bParts.length ? aParts.length : bParts.length;
+  for (var i = 0; i < maxLen; i++) {
+    final aVal = i < aParts.length ? aParts[i] : 0;
+    final bVal = i < bParts.length ? bParts[i] : 0;
+    if (aVal != bVal) return aVal.compareTo(bVal);
+  }
+  return 0;
 }
