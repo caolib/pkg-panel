@@ -149,6 +149,7 @@ class PackagePanelController extends ChangeNotifier {
   bool _hasTriggeredInitialRefresh = false;
   bool _hasInitializedManagerVisibility;
   bool _isCheckingAppUpdate = false;
+  bool _isBatchCheckingLatestForGroup = false;
   Locale _locale;
   String _themePaletteId;
   Color _customThemeSeedColor;
@@ -376,12 +377,27 @@ class PackagePanelController extends ChangeNotifier {
     return capability.supportsBatchLatestVersionLookup(packages);
   }
 
+  bool get canBatchCheckLatestForCurrentSelection {
+    final selectedGroup = _selectedHomeFilterGroup;
+    if (selectedGroup != null) {
+      return visiblePackages.any(canCheckLatestVersion);
+    }
+    return canBatchCheckLatestForSelectedManager;
+  }
+
   bool get isBatchCheckingLatestForSelectedManager {
     final managerId = _selectedManagerId;
     if (managerId == null) {
       return false;
     }
     return _runningCommands.contains(_batchLatestBusyKey(managerId));
+  }
+
+  bool get isBatchCheckingLatestForCurrentSelection {
+    if (_isBatchCheckingLatestForGroup) {
+      return true;
+    }
+    return isBatchCheckingLatestForSelectedManager;
   }
 
   bool isBusy(String busyKey) =>
@@ -1583,6 +1599,60 @@ class PackagePanelController extends ChangeNotifier {
       _runningCommands.remove(busyKey);
       _runningCommandInfo.remove(busyKey);
       _runningCommands.removeAll(packageBusyKeys);
+      notifyListeners();
+    }
+  }
+
+  Future<void> batchCheckLatestVersionsForCurrentSelection() async {
+    final selectedGroup = _selectedHomeFilterGroup;
+    if (selectedGroup == null) {
+      await batchCheckLatestVersionsForSelectedManager();
+      return;
+    }
+
+    if (_isBatchCheckingLatestForGroup) {
+      return;
+    }
+
+    final packages = visiblePackages
+        .where(canCheckLatestVersion)
+        .toList(growable: false);
+    if (packages.isEmpty) {
+      return;
+    }
+
+    _isBatchCheckingLatestForGroup = true;
+    _pushActivity(
+      ActivityEntry(
+        timestamp: DateTime.now(),
+        title: '正在批量检查更新',
+        message: '准备检查 ${packages.length} 个包的最新版本。',
+      ),
+    );
+    notifyListeners();
+
+    try {
+      for (final package in packages) {
+        await checkLatestVersion(package);
+      }
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '批量检查更新完成',
+          message: '已完成 ${packages.length} 个包的最新版本检查。',
+        ),
+      );
+    } catch (error) {
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '批量检查更新失败',
+          message: '$error',
+          isError: true,
+        ),
+      );
+    } finally {
+      _isBatchCheckingLatestForGroup = false;
       notifyListeners();
     }
   }

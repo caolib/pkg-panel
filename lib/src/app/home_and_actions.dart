@@ -278,73 +278,76 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   }
 
   Future<void> _handleBatchCheckLatestForSelectedManager() async {
-    final prerequisiteCommand = await widget.controller
-        .batchLatestVersionPrerequisiteCommandForSelectedManager();
-    if (!mounted) {
-      return;
-    }
-
-    if (prerequisiteCommand != null) {
-      final prompt =
-          widget.controller
-              .batchLatestVersionPrerequisitePromptForSelectedManager() ??
-          context.l10n.batchPrerequisitePrompt;
-      final shouldInstall =
-          await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(context.l10n.batchPrerequisiteTitle),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(prompt),
-                  const SizedBox(height: 12),
-                  _CommandPreview(command: prerequisiteCommand.command),
-                ],
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(context.l10n.buttonCancel),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(context.l10n.buttonInstall),
-                ),
-              ],
-            ),
-          ) ??
-          false;
-      if (!shouldInstall || !mounted) {
-        return;
-      }
-
-      final result = await widget.controller.runCommand(prerequisiteCommand);
+    final selectedGroup = widget.controller.selectedHomeFilterGroup;
+    if (selectedGroup == null) {
+      final prerequisiteCommand = await widget.controller
+          .batchLatestVersionPrerequisiteCommandForSelectedManager();
       if (!mounted) {
         return;
       }
-      _showCompactSnackBar(
-        context,
-        result.wasCancelled
-            ? context.l10n.commandCancelled(prerequisiteCommand.command)
-            : prerequisiteCommand.command,
-      );
-      if (!result.isSuccess && !result.wasCancelled) {
-        await showDialog<void>(
-          context: context,
-          builder: (context) => _CommandOutputDialog(
-            title: context.l10n.commandFailedTitle,
-            output: result.combinedOutput.isEmpty
-                ? context.l10n.noOutput
-                : result.combinedOutput,
-          ),
+
+      if (prerequisiteCommand != null) {
+        final prompt =
+            widget.controller
+                .batchLatestVersionPrerequisitePromptForSelectedManager() ??
+            context.l10n.batchPrerequisitePrompt;
+        final shouldInstall =
+            await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text(context.l10n.batchPrerequisiteTitle),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(prompt),
+                    const SizedBox(height: 12),
+                    _CommandPreview(command: prerequisiteCommand.command),
+                  ],
+                ),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text(context.l10n.buttonCancel),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: Text(context.l10n.buttonInstall),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+        if (!shouldInstall || !mounted) {
+          return;
+        }
+
+        final result = await widget.controller.runCommand(prerequisiteCommand);
+        if (!mounted) {
+          return;
+        }
+        _showCompactSnackBar(
+          context,
+          result.wasCancelled
+              ? context.l10n.commandCancelled(prerequisiteCommand.command)
+              : prerequisiteCommand.command,
         );
-        return;
+        if (!result.isSuccess && !result.wasCancelled) {
+          await showDialog<void>(
+            context: context,
+            builder: (context) => _CommandOutputDialog(
+              title: context.l10n.commandFailedTitle,
+              output: result.combinedOutput.isEmpty
+                  ? context.l10n.noOutput
+                  : result.combinedOutput,
+            ),
+          );
+          return;
+        }
       }
     }
 
-    await widget.controller.batchCheckLatestVersionsForSelectedManager();
+    await widget.controller.batchCheckLatestVersionsForCurrentSelection();
   }
 
   Future<void> _openSettings() async {
@@ -544,9 +547,9 @@ class _ActionBar extends StatelessWidget {
     final l10n = context.l10n;
     final batchCommand = controller.batchUpdateCommandForSelectedManager();
     final canBatchCheckLatest =
-        controller.canBatchCheckLatestForSelectedManager;
+        controller.canBatchCheckLatestForCurrentSelection;
     final isBatchCheckingLatest =
-        controller.isBatchCheckingLatestForSelectedManager;
+        controller.isBatchCheckingLatestForCurrentSelection;
     final hasLoadErrors = controller.errorManagers > 0;
     final visibleCount = controller.visiblePackages.length;
     final showBatchUpdate =
