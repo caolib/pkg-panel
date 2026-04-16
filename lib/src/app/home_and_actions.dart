@@ -710,7 +710,7 @@ class _PackageListView extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 1120;
+        final compact = constraints.maxWidth < 600;
         final theme = Theme.of(context);
         final borderRadius = BorderRadius.circular(18);
 
