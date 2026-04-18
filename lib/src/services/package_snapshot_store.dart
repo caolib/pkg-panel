@@ -111,9 +111,6 @@ class PackageSnapshotStore {
       'managerId': package.managerId,
       'managerName': package.managerName,
       'version': package.version,
-      'latestVersion': package.latestVersion,
-      'latestVersionCheckedAt': package.latestVersionCheckedAt
-          ?.toIso8601String(),
       'identifier': package.identifier,
       'source': package.source,
       'notes': package.notes,
@@ -139,8 +136,6 @@ class PackageSnapshotStore {
       managerId: manager.id,
       managerName: manager.displayName,
       version: version,
-      latestVersion: _nullableString(json['latestVersion']),
-      latestVersionCheckedAt: _nullableDateTime(json['latestVersionCheckedAt']),
       identifier: _nullableString(json['identifier']),
       source: _nullableString(json['source']),
       notes: _nullableString(json['notes']),
@@ -162,11 +157,6 @@ class PackageSnapshotStore {
   String? _nullableString(Object? value) {
     final text = '${value ?? ''}'.trim();
     return text.isEmpty ? null : text;
-  }
-
-  DateTime? _nullableDateTime(Object? value) {
-    final text = '${value ?? ''}'.trim();
-    return text.isEmpty ? null : DateTime.tryParse(text);
   }
 
   Future<File> _resolveFile() async {

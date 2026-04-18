@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pkg_panel/src/app.dart';
 import 'package:pkg_panel/src/models/package_models.dart';
 import 'package:pkg_panel/src/services/package_adapters.dart';
-import 'package:pkg_panel/src/services/package_latest_info_store.dart';
 import 'package:pkg_panel/src/services/package_manager_settings_store.dart';
 import 'package:pkg_panel/src/services/package_panel_controller.dart';
 import 'package:pkg_panel/src/services/package_snapshot_store.dart';
@@ -56,7 +55,7 @@ void main() {
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('批量更新'), findsNothing);
     expect(find.text('操作'), findsNothing);
-    expect(find.text('检查更新'), findsNothing);
+    expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('升级'), findsNothing);
     expect(find.text('删除'), findsNothing);
 
@@ -68,7 +67,7 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('检查更新'), findsNWidgets(2));
     expect(find.text('升级'), findsOneWidget);
     expect(find.text('删除'), findsOneWidget);
   });
@@ -167,7 +166,6 @@ void main() {
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
       settingsStore: const _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm', 'pip'},
@@ -230,7 +228,6 @@ void main() {
       final controller = PackagePanelController(
         shell: const ShellExecutor(),
         adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'npm', 'pip'},
@@ -303,7 +300,6 @@ void main() {
       final controller = PackagePanelController(
         shell: const ShellExecutor(),
         adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'npm', 'pip'},
@@ -374,7 +370,6 @@ void main() {
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{},
@@ -426,7 +421,6 @@ void main() {
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'npm', 'pip'},
@@ -598,7 +592,6 @@ void main() {
         }),
         adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
         settingsStore: settingsStore,
-        latestInfoStore: const _MemoryLatestInfoStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'npm', 'pip'},
         initialManagerAvailability: const <String, bool>{
@@ -1590,7 +1583,6 @@ Chocolatey has determined 2 package(s) are outdated.
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[adapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
       settingsStore: const _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'choco'},
@@ -1687,7 +1679,6 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[adapter],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'cargo'},
@@ -1753,7 +1744,6 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[adapter],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'cargo'},
@@ -1798,7 +1788,6 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
           ),
         }),
         adapters: <PackageManagerAdapter>[const CargoAdapter()],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'cargo'},
@@ -1954,7 +1943,6 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
         shell: shell,
         adapters: PackageManagerRegistry.defaultAdapters,
         settingsStore: settingsStore,
-        latestInfoStore: const _MemoryLatestInfoStore(),
         snapshotStore: const _MemorySnapshotStore(),
       );
 
@@ -1976,7 +1964,6 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
         shell: shell,
         adapters: PackageManagerRegistry.defaultAdapters,
         settingsStore: settingsStore,
-        latestInfoStore: const _MemoryLatestInfoStore(),
         snapshotStore: const _MemorySnapshotStore(),
       );
 
@@ -2093,7 +2080,6 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     final controller = PackagePanelController(
       shell: shell,
       adapters: PackageManagerRegistry.defaultAdapters,
-      latestInfoStore: const _MemoryLatestInfoStore(),
       settingsStore: const _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm'},
@@ -2151,7 +2137,6 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     final controller = PackagePanelController(
       shell: shell,
       adapters: PackageManagerRegistry.defaultAdapters,
-      latestInfoStore: const _MemoryLatestInfoStore(),
       settingsStore: const _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm'},
@@ -2212,7 +2197,6 @@ Name  Installed Version Latest Version Missing Dependencies Info
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[adapter],
-        latestInfoStore: const _MemoryLatestInfoStore(),
         settingsStore: const _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'scoop'},
@@ -2509,7 +2493,6 @@ chafa 1.16.2            1.18.1
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[adapter],
-      latestInfoStore: const _MemoryLatestInfoStore(),
       settingsStore: const _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'scoop'},
@@ -2900,18 +2883,6 @@ class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
 
   @override
   Future<void> saveGithubMirrorBaseUrl(String value) async {}
-}
-
-class _MemoryLatestInfoStore extends PackageLatestInfoStore {
-  const _MemoryLatestInfoStore();
-
-  @override
-  Future<Map<String, PersistedPackageLatestInfo>> load() async {
-    return const <String, PersistedPackageLatestInfo>{};
-  }
-
-  @override
-  Future<void> save(Map<String, PersistedPackageLatestInfo> entries) async {}
 }
 
 class _MemorySnapshotStore extends PackageSnapshotStore {

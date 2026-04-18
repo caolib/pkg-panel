@@ -7,7 +7,6 @@ import '../models/package_models.dart';
 import 'app_update_service.dart';
 import 'package_adapters.dart';
 import 'package_manager_settings_store.dart';
-import 'package_latest_info_store.dart';
 import 'package_snapshot_store.dart';
 import 'shell_executor.dart';
 import 'winget_package_icon_resolver.dart';
@@ -28,10 +27,8 @@ class PackagePanelController extends ChangeNotifier {
     required ShellExecutor shell,
     required List<PackageManagerAdapter> adapters,
     List<ManagerSnapshot>? initialSnapshots,
-    PackageLatestInfoStore? latestInfoStore,
     PackageManagerSettingsStore? settingsStore,
     PackageSnapshotStore? snapshotStore,
-    Map<String, PersistedPackageLatestInfo>? initialLatestInfo,
     Set<String>? initialVisibleManagerIds,
     List<HomeFilterGroup>? initialHomeFilterGroups,
     List<String>? initialManagerOrderIds,
@@ -53,14 +50,10 @@ class PackagePanelController extends ChangeNotifier {
     WingetPackageIconResolver? wingetIconResolver,
   }) : _shell = shell,
        _appUpdateService = appUpdateService ?? const AppUpdateService(),
-       _latestInfoStore = latestInfoStore ?? const PackageLatestInfoStore(),
        _settingsStore = settingsStore ?? const PackageManagerSettingsStore(),
        _snapshotStore = snapshotStore ?? const PackageSnapshotStore(),
        _wingetIconResolver =
            wingetIconResolver ?? const WingetPackageIconResolver(),
-       _latestInfo = Map<String, PersistedPackageLatestInfo>.from(
-         initialLatestInfo ?? const <String, PersistedPackageLatestInfo>{},
-       ),
        _adapters = List<PackageManagerAdapter>.from(adapters),
        _homeFilterGroups = _normalizeHomeFilterGroups(initialHomeFilterGroups),
        _snapshots = _normalizeSnapshots(adapters, initialSnapshots),
@@ -107,11 +100,9 @@ class PackagePanelController extends ChangeNotifier {
 
   final ShellExecutor _shell;
   final AppUpdateService _appUpdateService;
-  final PackageLatestInfoStore _latestInfoStore;
   final PackageManagerSettingsStore _settingsStore;
   final PackageSnapshotStore _snapshotStore;
   final WingetPackageIconResolver _wingetIconResolver;
-  final Map<String, PersistedPackageLatestInfo> _latestInfo;
   final List<PackageManagerAdapter> _adapters;
   final List<HomeFilterGroup> _homeFilterGroups;
   final List<ManagerSnapshot> _snapshots;
@@ -378,8 +369,7 @@ class PackagePanelController extends ChangeNotifier {
   }
 
   bool get canBatchCheckLatestForCurrentSelection {
-    final selectedGroup = _selectedHomeFilterGroup;
-    if (selectedGroup != null) {
+    if (_selectedHomeFilterGroup != null || _selectedManagerId == null) {
       return visiblePackages.any(canCheckLatestVersion);
     }
     return canBatchCheckLatestForSelectedManager;
@@ -1067,9 +1057,7 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final packages = _mergeLatestInfoIntoPackages(
-        await capability.listPackages(_shell),
-      );
+      final packages = await capability.listPackages(_shell);
       await _resolvePackageIcons(adapter.definition.id, packages);
       _setSnapshot(
         adapter.definition.id,
@@ -1605,7 +1593,7 @@ class PackagePanelController extends ChangeNotifier {
 
   Future<void> batchCheckLatestVersionsForCurrentSelection() async {
     final selectedGroup = _selectedHomeFilterGroup;
-    if (selectedGroup == null) {
+    if (selectedGroup == null && _selectedManagerId != null) {
       await batchCheckLatestVersionsForSelectedManager();
       return;
     }
@@ -2108,6 +2096,7 @@ class PackagePanelController extends ChangeNotifier {
           .toList(growable: false);
 
       _snapshots[i] = snapshot.copyWith(packages: nextPackages);
+      _invalidateVisiblePackagesCache();
       if (_selectedPackage?.key == nextPackage.key) {
         _selectedPackage = nextPackage;
       }
@@ -2268,34 +2257,10 @@ class PackagePanelController extends ChangeNotifier {
       notes: package.notes,
     );
     _replacePackage(updatedPackage);
-    _latestInfo[updatedPackage.key] = PersistedPackageLatestInfo(
-      installedVersion: updatedPackage.version.trim(),
-      latestVersion: normalizedLatestVersion,
-      checkedAt: checkedAt,
-    );
   }
 
   Future<void> _persistLatestVersionInfo() async {
-    await _latestInfoStore.save(_latestInfo);
     await _snapshotStore.save(_snapshots);
-  }
-
-  List<ManagedPackage> _mergeLatestInfoIntoPackages(
-    List<ManagedPackage> packages,
-  ) {
-    return packages
-        .map((package) {
-          final cached = _latestInfo[package.key];
-          if (cached == null) {
-            return package;
-          }
-
-          return package.copyWith(
-            latestVersion: cached.latestVersion,
-            latestVersionCheckedAt: cached.checkedAt,
-          );
-        })
-        .toList(growable: false);
   }
 
   List<SearchPackage> _mergeSearchResults(List<SearchPackage> packages) {
