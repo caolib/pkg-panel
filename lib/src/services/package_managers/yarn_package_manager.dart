@@ -24,7 +24,7 @@ class YarnAdapter extends PackageManagerAdapter
           id: 'yarn',
           displayName: 'yarn',
           executable: 'yarn',
-          description: 'Yarn global packages',
+          description: 'Yarn Classic (v1) global packages（不支持 Yarn Berry v2+）',
           color: Color(0xFF2C8EBB),
           icon: Icons.change_history_outlined,
           supportsBatchUpdate: true,

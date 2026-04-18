@@ -34,9 +34,8 @@ class ChocolateyAdapter extends PackageManagerAdapter
   Future<List<ManagedPackage>> listPackages(ShellExecutor shell) async {
     final result = await shell.runExecutable('choco', const <String>[
       'list',
-      '--local-only',
       '--limit-output',
-    ], displayCommand: 'choco list --local-only --limit-output');
+    ], displayCommand: 'choco list --limit-output');
     if (!result.isSuccess) {
       throw PackageAdapterException(
         definition.displayName,
