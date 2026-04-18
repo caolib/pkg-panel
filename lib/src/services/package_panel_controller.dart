@@ -166,6 +166,14 @@ class PackagePanelController extends ChangeNotifier {
       )
       .toList(growable: false);
 
+  List<ManagerSnapshot> get _homeSnapshots => _snapshots
+      .where(
+        (snapshot) =>
+            _shouldLoadManagerForHome(snapshot.manager.id) &&
+            _supportsInstalledPackagesById(snapshot.manager.id),
+      )
+      .toList(growable: false);
+
   List<ActivityEntry> get activity =>
       List<ActivityEntry>.unmodifiable(_activity);
 
@@ -241,7 +249,7 @@ class PackagePanelController extends ChangeNotifier {
   int get errorManagers => _snapshots
       .where(
         (snapshot) =>
-            isManagerVisible(snapshot.manager.id) &&
+            _shouldLoadManagerForHome(snapshot.manager.id) &&
             _supportsInstalledPackagesById(snapshot.manager.id),
       )
       .where((snapshot) => snapshot.loadState == ManagerLoadState.error)
@@ -261,7 +269,7 @@ class PackagePanelController extends ChangeNotifier {
         selectedGroup,
       ).contains(managerId);
     }
-    return isManagerVisible(managerId);
+    return _shouldLoadManagerForHome(managerId);
   });
 
   List<ManagedPackage> get visiblePackages {
@@ -2629,7 +2637,7 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     if (_selectedManagerId == null) {
-      yield* visibleSnapshots;
+      yield* _homeSnapshots;
       return;
     }
 
