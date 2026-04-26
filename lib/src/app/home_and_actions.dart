@@ -22,6 +22,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   int _currentTabIndex = 0;
   int _currentSettingsTabIndex = 0;
   bool _hasQueuedStartupUpdateCheck = false;
+  bool _isRunningCommandToastCollapsed = false;
 
   @override
   void initState() {
@@ -115,6 +116,13 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                   bottom: 24,
                   child: _RunningCommandToast(
                     commands: runningCommands,
+                    collapsed: _isRunningCommandToastCollapsed,
+                    onToggleCollapsed: () {
+                      setState(() {
+                        _isRunningCommandToastCollapsed =
+                            !_isRunningCommandToastCollapsed;
+                      });
+                    },
                     onCancelCommand: (command) =>
                         unawaited(_cancelRunningCommand(command)),
                   ),
@@ -229,16 +237,11 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     final cancelled = await widget.controller.cancelRunningCommand(
       command.busyKey,
     );
-    if (!mounted) {
+    if (!mounted || !cancelled) {
       return;
     }
 
-    _showCompactSnackBar(
-      context,
-      cancelled
-          ? context.l10n.cancelRequested
-          : context.l10n.commandCannotCancel,
-    );
+    _showCompactSnackBar(context, context.l10n.cancelRequested);
   }
 
   Future<void> _confirmAndRunCommand(PackageCommand command) async {
@@ -374,9 +377,16 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
 }
 
 class _RunningCommandToast extends StatelessWidget {
-  const _RunningCommandToast({required this.commands, this.onCancelCommand});
+  const _RunningCommandToast({
+    required this.commands,
+    required this.collapsed,
+    this.onToggleCollapsed,
+    this.onCancelCommand,
+  });
 
   final List<RunningCommandInfo> commands;
+  final bool collapsed;
+  final VoidCallback? onToggleCollapsed;
   final void Function(RunningCommandInfo command)? onCancelCommand;
 
   @override
@@ -390,12 +400,25 @@ class _RunningCommandToast extends StatelessWidget {
     final title = queuedCount == 0
         ? l10n.runningCommandsTitle(runningCount)
         : l10n.commandQueueTitle(runningCount, queuedCount);
+    final titleStyle = theme.textTheme.labelLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    final toggleButton = IconButton(
+      visualDensity: VisualDensity.compact,
+      onPressed: onToggleCollapsed,
+      icon: Icon(collapsed ? Icons.unfold_more : Icons.unfold_less),
+    );
     return RepaintBoundary(
       child: Material(
         color: Colors.transparent,
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 360),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          constraints: collapsed
+              ? const BoxConstraints(maxWidth: 320)
+              : const BoxConstraints(maxWidth: 520, maxHeight: 360),
+          padding: EdgeInsets.symmetric(
+            horizontal: collapsed ? 14 : 16,
+            vertical: collapsed ? 10 : 14,
+          ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(18),
@@ -433,90 +456,92 @@ class _RunningCommandToast extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: titleStyle,
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  toggleButton,
                 ],
               ),
-              const SizedBox(height: 6),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      for (final command in commands)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainer,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: theme.colorScheme.outlineVariant,
+              if (!collapsed) ...<Widget>[
+                const SizedBox(height: 6),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        for (final command in commands)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainer,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: theme.colorScheme.outlineVariant,
+                                ),
+                              ),
+                              child: Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Tooltip(
+                                      message: command.command,
+                                      waitDuration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      child: Text(
+                                        command.command,
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        overflow: TextOverflow.ellipsis,
+                                        style:
+                                            theme.textTheme.bodyMedium?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                          fontFamily: 'Cascadia Code',
+                                          fontFamilyFallback: theme
+                                              .textTheme
+                                              .bodyMedium
+                                              ?.fontFamilyFallback,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  if (command.canCancel)
+                                    command.isCancelling
+                                        ? const _BusyIndicator(size: 18)
+                                        : IconButton(
+                                            tooltip: l10n.commandCancelTooltip,
+                                            onPressed: () =>
+                                                onCancelCommand?.call(command),
+                                            icon: const Icon(
+                                              Icons.stop_circle_outlined,
+                                            ),
+                                          )
+                                  else
+                                    Text(
+                                      _localizedCommandStatus(context, command),
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Expanded(
-                                  child: Text(
-                                    command.command,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: 'Cascadia Code',
-                                      fontFamilyFallback: theme
-                                          .textTheme
-                                          .bodyMedium
-                                          ?.fontFamilyFallback,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                if (command.canCancel)
-                                  command.isCancelling
-                                      ? Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 8,
-                                          ),
-                                          child: const _BusyIndicator(size: 18),
-                                        )
-                                      : IconButton(
-                                          tooltip: l10n.commandCancelTooltip,
-                                          onPressed: () =>
-                                              onCancelCommand?.call(command),
-                                          icon: const Icon(
-                                            Icons.stop_circle_outlined,
-                                          ),
-                                        )
-                                else
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Text(
-                                      _localizedCommandStatus(context, command),
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ),
-                              ],
-                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -1591,6 +1616,11 @@ class _CommandDialog extends StatelessWidget {
         ],
       ),
       actions: <Widget>[
+        OutlinedButton.icon(
+          onPressed: () => _copyTextToClipboard(context, command.command),
+          icon: const Icon(Icons.copy_all_outlined),
+          label: Text(l10n.buttonCopy),
+        ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
           child: Text(l10n.buttonCancel),
@@ -1618,13 +1648,7 @@ class _CommandOutputDialog extends StatelessWidget {
       content: SizedBox(width: 720, child: _CommandPreview(command: output)),
       actions: <Widget>[
         OutlinedButton.icon(
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: output));
-            if (!context.mounted) {
-              return;
-            }
-            _showCompactSnackBar(context, l10n.copyToClipboardSuccess);
-          },
+          onPressed: () => _copyTextToClipboard(context, output),
           icon: const Icon(Icons.copy_all_outlined),
           label: Text(l10n.buttonCopy),
         ),
@@ -1635,6 +1659,14 @@ class _CommandOutputDialog extends StatelessWidget {
       ],
     );
   }
+}
+
+Future<void> _copyTextToClipboard(BuildContext context, String text) async {
+  await Clipboard.setData(ClipboardData(text: text));
+  if (!context.mounted) {
+    return;
+  }
+  _showCompactSnackBar(context, context.l10n.copyToClipboardSuccess);
 }
 
 String? _buildLoadErrorOutput(

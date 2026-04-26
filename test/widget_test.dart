@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pkg_panel/src/app.dart';
 import 'package:pkg_panel/src/models/package_models.dart';
@@ -1336,6 +1337,81 @@ void main() {
     );
   });
 
+  testWidgets('confirm command dialog allows copying command text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final controller = PackagePanelController(
+      shell: _MappedShellExecutor(<Pattern, ShellResult>{
+        "npm view 'eslint' versions --json": const ShellResult(
+          exitCode: 0,
+          stdout: '["9.0.0","9.1.0","9.1.1"]',
+          stderr: '',
+        ),
+      }),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'npm')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.1.1',
+              source: 'global',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('eslint')),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('安装特定版本'));
+    await tester.pumpAndSettle();
+
+    final versionDialogFinder = find.byType(AlertDialog);
+    await tester.tap(
+      find.descendant(of: versionDialogFinder, matching: find.text('9.0.0')),
+    );
+    await tester.pumpAndSettle();
+
+    const commandText = "npm install -g 'eslint@9.0.0'";
+    final confirmDialogFinder = find.byType(AlertDialog);
+    expect(
+      find.descendant(of: confirmDialogFinder, matching: find.text('复制')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.descendant(of: confirmDialogFinder, matching: find.text('复制')),
+    );
+    await tester.pumpAndSettle();
+
+    final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+    expect(clipboardData?.text, commandText);
+    expect(find.text('已复制到剪贴板。'), findsOneWidget);
+  });
+
   testWidgets(
     'specific-version dialog limits huge version lists until filtered',
     (tester) async {
@@ -2175,6 +2251,126 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(find.text(commandText), findsNothing);
   });
 
+  testWidgets('running command toast truncates commands and can collapse', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const commandText =
+        "winget upgrade --id 'Anthropic.Claude' --exact "
+        '--accept-package-agreements --accept-source-agreements '
+        '--disable-interactivity';
+    final shell = _DelayedShellExecutor(
+      const <Pattern, ShellResult>{},
+      delayedCommand: commandText,
+      delayedResult: const ShellResult(exitCode: 0, stdout: '', stderr: ''),
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'winget'},
+      initialManagerAvailability: const <String, bool>{'winget': true},
+    );
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
+
+    final commandFuture = controller.runCommand(
+      PackageCommand(
+        managerId: 'winget',
+        busyKey: 'test-winget-toast',
+        label: '升级 Claude',
+        request: ShellRequest.process(
+          executable: 'winget',
+          arguments: const <String>[
+            'upgrade',
+            '--id',
+            'Anthropic.Claude',
+            '--exact',
+            '--accept-package-agreements',
+            '--accept-source-agreements',
+            '--disable-interactivity',
+          ],
+          displayCommand: commandText,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final commandTextWidget = tester.widget<Text>(find.text(commandText));
+    expect(commandTextWidget.maxLines, 1);
+
+    await tester.tap(find.byIcon(Icons.unfold_less));
+    await tester.pumpAndSettle();
+
+    expect(find.text(commandText), findsNothing);
+    expect(find.text('正在执行命令 (1)'), findsOneWidget);
+    expect(find.byIcon(Icons.unfold_more), findsOneWidget);
+
+    shell.completeDelayed();
+    await commandFuture;
+    await tester.pump();
+  });
+
+  testWidgets(
+    'cancel failure stays silent instead of showing cannot-cancel snackbar',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      const commandText = 'npm install -g eslint';
+      final shell = _NonCancellableDelayedShellExecutor(
+        const <Pattern, ShellResult>{},
+        delayedCommand: commandText,
+        delayedResult: const ShellResult(exitCode: 0, stdout: '', stderr: ''),
+      );
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: PackageManagerRegistry.defaultAdapters,
+        settingsStore: const _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm'},
+        initialManagerAvailability: const <String, bool>{'npm': true},
+      );
+
+      await tester.pumpWidget(
+        PkgPanelApp(controller: controller, autoLoad: false),
+      );
+      await tester.pumpAndSettle();
+
+      final commandFuture = controller.runCommand(
+        PackageCommand(
+          managerId: 'npm',
+          busyKey: 'test-install-toast',
+          label: '安装 eslint',
+          request: ShellRequest.process(
+            executable: 'npm',
+            arguments: const <String>['install', '-g', 'eslint'],
+            displayCommand: commandText,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.stop_circle_outlined));
+      await tester.pump();
+
+      expect(find.text('当前命令无法取消。'), findsNothing);
+      expect(find.text(commandText), findsOneWidget);
+
+      shell.completeDelayed();
+      await commandFuture;
+      await tester.pump();
+    },
+  );
+
   test(
     'controller tracks scoop batch latest command while lookup runs',
     () async {
@@ -2962,4 +3158,15 @@ class _DelayedShellExecutor extends ShellExecutor {
       stderr: 'Unexpected command: $command',
     );
   }
+}
+
+class _NonCancellableDelayedShellExecutor extends _DelayedShellExecutor {
+  _NonCancellableDelayedShellExecutor(
+    super.results, {
+    required super.delayedCommand,
+    required super.delayedResult,
+  });
+
+  @override
+  Future<bool> cancelExecution(String executionKey) async => false;
 }
