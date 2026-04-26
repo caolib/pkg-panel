@@ -1,7 +1,6 @@
 
-## ✨ 新功能
-- [c7580a0] ✨ feat: 移除最新版本缓存机制，全部视图支持检查更新
+## 📦 其他
+- [b3a64de] Improve command cancellation flow
+- [ce9d61d] Refine command execution UI
 
-## 🐛 修复
-- [7357b5d] 🐛 fix: 禁用的包管理器不再显示侧边栏按钮，但自定义组引用时仍在全部视图加载数据
-- [0245c98] 🐛 fix: 修正部分命令
+
