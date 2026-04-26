@@ -2190,6 +2190,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
 
     expect(find.text('正在执行命令'), findsOneWidget);
     expect(find.text("npm view 'eslint' version --json"), findsOneWidget);
+    expect(find.text('不可取消'), findsNothing);
 
     shell.completeDelayed();
     await lookupFuture;
@@ -2370,6 +2371,117 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
       await tester.pump();
     },
   );
+
+  test('cancelling a running command forcefully clears queued commands', () async {
+    const firstCommandText = 'npm install -g eslint';
+    const secondCommandText = 'npm uninstall -g eslint';
+    final shell = _CancellableDelayedShellExecutor(
+      const <Pattern, ShellResult>{},
+      delayedCommand: firstCommandText,
+      delayedResult: const ShellResult(exitCode: 0, stdout: '', stderr: ''),
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+    );
+
+    final firstFuture = controller.runCommand(
+      PackageCommand(
+        managerId: 'npm',
+        busyKey: 'first',
+        label: '安装 eslint',
+        request: ShellRequest.process(
+          executable: 'npm',
+          arguments: const <String>['install', '-g', 'eslint'],
+          displayCommand: firstCommandText,
+        ),
+      ),
+    );
+    final secondFuture = controller.runCommand(
+      PackageCommand(
+        managerId: 'npm',
+        busyKey: 'second',
+        label: '卸载 eslint',
+        request: ShellRequest.process(
+          executable: 'npm',
+          arguments: const <String>['uninstall', '-g', 'eslint'],
+          displayCommand: secondCommandText,
+        ),
+      ),
+    );
+
+    expect(controller.runningCommands.length, 2);
+
+    final cancelled = await controller.cancelRunningCommand('first');
+    expect(cancelled, isTrue);
+
+    final firstResult = await firstFuture;
+    final secondResult = await secondFuture;
+
+    expect(firstResult.wasCancelled, isTrue);
+    expect(secondResult.wasCancelled, isTrue);
+    expect(shell.cancelForceFlags, <bool>[true]);
+    expect(controller.runningCommands, isEmpty);
+  });
+
+  test('queued command can be cancelled before it starts', () async {
+    const firstCommandText = 'npm install -g eslint';
+    const secondCommandText = 'npm uninstall -g eslint';
+    final shell = _DelayedShellExecutor(
+      const <Pattern, ShellResult>{},
+      delayedCommand: firstCommandText,
+      delayedResult: const ShellResult(exitCode: 0, stdout: '', stderr: ''),
+    );
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: PackageManagerRegistry.defaultAdapters,
+      settingsStore: const _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+    );
+
+    final firstFuture = controller.runCommand(
+      PackageCommand(
+        managerId: 'npm',
+        busyKey: 'first',
+        label: '安装 eslint',
+        request: ShellRequest.process(
+          executable: 'npm',
+          arguments: const <String>['install', '-g', 'eslint'],
+          displayCommand: firstCommandText,
+        ),
+      ),
+    );
+    final secondFuture = controller.runCommand(
+      PackageCommand(
+        managerId: 'npm',
+        busyKey: 'second',
+        label: '卸载 eslint',
+        request: ShellRequest.process(
+          executable: 'npm',
+          arguments: const <String>['uninstall', '-g', 'eslint'],
+          displayCommand: secondCommandText,
+        ),
+      ),
+    );
+
+    final cancelled = await controller.cancelRunningCommand('second');
+    final secondResult = await secondFuture;
+
+    expect(cancelled, isTrue);
+    expect(secondResult.wasCancelled, isTrue);
+    expect(controller.runningCommands.map((command) => command.busyKey), [
+      'first',
+    ]);
+
+    shell.completeDelayed();
+    await firstFuture;
+  });
 
   test(
     'controller tracks scoop batch latest command while lookup runs',
@@ -3168,5 +3280,72 @@ class _NonCancellableDelayedShellExecutor extends _DelayedShellExecutor {
   });
 
   @override
-  Future<bool> cancelExecution(String executionKey) async => false;
+  Future<bool> cancelExecution(String executionKey, {bool force = false}) async =>
+      false;
+}
+
+class _CancellableDelayedShellExecutor extends ShellExecutor {
+  _CancellableDelayedShellExecutor(
+    this.results, {
+    required this.delayedCommand,
+    required this.delayedResult,
+  });
+
+  final Map<Pattern, ShellResult> results;
+  final String delayedCommand;
+  final ShellResult delayedResult;
+  final Completer<void> _completer = Completer<void>();
+  final List<bool> cancelForceFlags = <bool>[];
+  final Set<String> _cancelledExecutionKeys = <String>{};
+
+  void completeDelayed() {
+    if (!_completer.isCompleted) {
+      _completer.complete();
+    }
+  }
+
+  @override
+  Future<ShellResult> runRequest(
+    ShellRequest request, {
+    Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
+  }) async {
+    final command = request.displayCommand;
+    if (command == delayedCommand) {
+      await _completer.future;
+      if (executionKey != null && _cancelledExecutionKeys.contains(executionKey)) {
+        return const ShellResult(
+          exitCode: 130,
+          stdout: '',
+          stderr: '命令已取消。',
+          wasCancelled: true,
+        );
+      }
+      return delayedResult;
+    }
+
+    for (final entry in results.entries) {
+      final pattern = entry.key;
+      if (pattern is String && command == pattern) {
+        return entry.value;
+      }
+      if (pattern is RegExp && pattern.hasMatch(command)) {
+        return entry.value;
+      }
+    }
+
+    return ShellResult(
+      exitCode: 1,
+      stdout: '',
+      stderr: 'Unexpected command: $command',
+    );
+  }
+
+  @override
+  Future<bool> cancelExecution(String executionKey, {bool force = false}) async {
+    cancelForceFlags.add(force);
+    _cancelledExecutionKeys.add(executionKey);
+    completeDelayed();
+    return true;
+  }
 }

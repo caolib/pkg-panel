@@ -408,15 +408,32 @@ class PackagePanelController extends ChangeNotifier {
       ]);
 
   Future<bool> cancelRunningCommand(String busyKey) async {
+    if (_queuedCommands.contains(busyKey)) {
+      return _cancelQueuedCommand(busyKey);
+    }
+
     final command = _runningCommandInfo[busyKey];
     if (command == null || !command.canCancel || command.isCancelling) {
       return false;
     }
 
     _runningCommandInfo[busyKey] = command.copyWith(isCancelling: true);
+    final managerId = _managerIdForBusyKey(busyKey);
+    final cancelledQueuedCount = managerId == null
+        ? 0
+        : _cancelQueuedCommandsForManager(managerId);
+    if (cancelledQueuedCount > 0) {
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '已清空后续排队命令',
+          message: '已移除 $cancelledQueuedCount 个待执行命令。',
+        ),
+      );
+    }
     notifyListeners();
 
-    final cancelled = await _shell.cancelExecution(busyKey);
+    final cancelled = await _shell.cancelExecution(busyKey, force: true);
     if (!cancelled) {
       final current = _runningCommandInfo[busyKey];
       if (current != null) {
@@ -445,6 +462,77 @@ class PackagePanelController extends ChangeNotifier {
     for (final busyKey in busyKeys) {
       await cancelRunningCommand(busyKey);
     }
+  }
+
+  String? _managerIdForBusyKey(String busyKey) {
+    for (final entry in _activeManagerCommandBusyKeys.entries) {
+      if (entry.value == busyKey) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  int _cancelQueuedCommandsForManager(String managerId) {
+    final queue = _queuedManagerCommands.remove(managerId);
+    if (queue == null || queue.isEmpty) {
+      return 0;
+    }
+
+    for (final queued in queue) {
+      _queuedCommands.remove(queued.command.busyKey);
+      _queuedCommandInfo.remove(queued.command.busyKey);
+      if (!queued.completer.isCompleted) {
+        queued.completer.complete(
+          const ShellResult(
+            exitCode: 130,
+            stdout: '',
+            stderr: '命令已取消。',
+            wasCancelled: true,
+          ),
+        );
+      }
+    }
+    return queue.length;
+  }
+
+  bool _cancelQueuedCommand(String busyKey) {
+    for (final entry in _queuedManagerCommands.entries.toList()) {
+      final queue = entry.value;
+      final index = queue.indexWhere(
+        (queued) => queued.command.busyKey == busyKey,
+      );
+      if (index < 0) {
+        continue;
+      }
+
+      final queued = queue.removeAt(index);
+      if (queue.isEmpty) {
+        _queuedManagerCommands.remove(entry.key);
+      }
+      _queuedCommands.remove(busyKey);
+      _queuedCommandInfo.remove(busyKey);
+      if (!queued.completer.isCompleted) {
+        queued.completer.complete(
+          const ShellResult(
+            exitCode: 130,
+            stdout: '',
+            stderr: '命令已取消。',
+            wasCancelled: true,
+          ),
+        );
+      }
+      _pushActivity(
+        ActivityEntry(
+          timestamp: DateTime.now(),
+          title: '${queued.command.label} 已取消',
+          message: queued.command.command,
+        ),
+      );
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 
   bool canCheckLatestVersion(ManagedPackage package) {
@@ -1674,6 +1762,7 @@ class PackagePanelController extends ChangeNotifier {
       _queuedCommandInfo[command.busyKey] = RunningCommandInfo(
         busyKey: command.busyKey,
         command: command.command,
+        canCancel: true,
         statusLabel: '排队中',
       );
       _pushActivity(

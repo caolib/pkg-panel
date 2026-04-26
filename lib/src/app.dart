@@ -152,7 +152,7 @@ String _localizedCommandStatus(
   if (_isQueuedStatus(command.statusLabel)) {
     return l10n.commandStatusQueued;
   }
-  return command.statusLabel ?? l10n.commandNotCancelable;
+  return command.statusLabel ?? '';
 }
 
 String _homeFilterGroupDisplayName(

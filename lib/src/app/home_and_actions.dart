@@ -240,6 +240,9 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     if (!mounted || !cancelled) {
       return;
     }
+    if (_isQueuedStatus(command.statusLabel)) {
+      return;
+    }
 
     _showCompactSnackBar(context, context.l10n.cancelRequested);
   }
@@ -513,26 +516,10 @@ class _RunningCommandToast extends StatelessWidget {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  if (command.canCancel)
-                                    command.isCancelling
-                                        ? const _BusyIndicator(size: 18)
-                                        : IconButton(
-                                            tooltip: l10n.commandCancelTooltip,
-                                            onPressed: () =>
-                                                onCancelCommand?.call(command),
-                                            icon: const Icon(
-                                              Icons.stop_circle_outlined,
-                                            ),
-                                          )
-                                  else
-                                    Text(
-                                      _localizedCommandStatus(context, command),
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: theme
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                    ),
+                                  _CommandQueueAction(
+                                    command: command,
+                                    onCancelCommand: onCancelCommand,
+                                  ),
                                 ],
                               ),
                             ),
@@ -545,6 +532,58 @@ class _RunningCommandToast extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CommandQueueAction extends StatelessWidget {
+  const _CommandQueueAction({required this.command, this.onCancelCommand});
+
+  final RunningCommandInfo command;
+  final void Function(RunningCommandInfo command)? onCancelCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    final statusLabel = _localizedCommandStatus(context, command);
+    if (command.isCancelling) {
+      return const _BusyIndicator(size: 18);
+    }
+    if (command.canCancel) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (statusLabel.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
+                statusLabel,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          IconButton(
+            tooltip: l10n.commandCancelTooltip,
+            onPressed: () => onCancelCommand?.call(command),
+            icon: Icon(
+              _isQueuedStatus(command.statusLabel)
+                  ? Icons.remove_circle_outline
+                  : Icons.stop_circle_outlined,
+            ),
+          ),
+        ],
+      );
+    }
+    if (statusLabel.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Text(
+      statusLabel,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

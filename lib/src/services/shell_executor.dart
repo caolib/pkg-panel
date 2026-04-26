@@ -142,13 +142,13 @@ class ShellExecutor {
     );
   }
 
-  Future<bool> cancelExecution(String executionKey) async {
+  Future<bool> cancelExecution(String executionKey, {bool force = false}) async {
     final execution = _state.activeExecutions[executionKey];
     if (execution == null || execution.cancellationRequested) {
       return false;
     }
 
-    final cancelled = await _terminateProcess(execution.process);
+    final cancelled = await _terminateProcess(execution.process, force: force);
     if (cancelled) {
       execution.cancellationRequested = true;
     }
@@ -460,8 +460,17 @@ class ShellExecutor {
     return builder.takeBytes();
   }
 
-  Future<bool> _terminateProcess(Process process) async {
+  Future<bool> _terminateProcess(Process process, {bool force = false}) async {
     if (Platform.isWindows) {
+      if (force) {
+        final terminatedForcefully = await _terminateWindowsProcessTree(
+          process.pid,
+          force: true,
+        );
+        if (terminatedForcefully) {
+          return true;
+        }
+      }
       final terminatedGracefully = await _terminateWindowsProcessTree(
         process.pid,
       );
