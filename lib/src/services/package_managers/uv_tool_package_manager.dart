@@ -15,6 +15,7 @@ class UvToolAdapter extends PackageManagerAdapter
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
+        BatchLatestVersionLookupCapability,
         PackageDetailsCapability {
   const UvToolAdapter()
     : super(
@@ -209,23 +210,53 @@ class UvToolAdapter extends PackageManagerAdapter
   }
 
   @override
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    return 'pip index versions（逐个查询 ${packages.length} 个包）';
+  }
+
+  @override
   Future<String> lookupLatestVersion(
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final result = await shell.runExecutable(
-      'pip',
-      <String>[
-        'index',
-        'versions',
-        package.name,
-        '--disable-pip-version-check',
-        '--no-color',
-      ],
-      timeout: const Duration(seconds: 45),
-      displayCommand:
-          'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color',
-    );
-    return parsePipLatestVersion(result, managerName: definition.displayName);
+    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
+      package,
+    ]);
+    return latestVersions[package.key] ?? package.version;
+  }
+
+  @override
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    if (packages.isEmpty) {
+      return const <String, String>{};
+    }
+
+    final latestByPackageKey = <String, String>{};
+    for (final package in packages) {
+      final result = await shell.runExecutable(
+        'pip',
+        <String>[
+          'index',
+          'versions',
+          package.name,
+          '--disable-pip-version-check',
+          '--no-color',
+        ],
+        timeout: const Duration(seconds: 45),
+        displayCommand: latestVersionLookupCommand(package),
+      );
+      try {
+        latestByPackageKey[package.key] = parsePipLatestVersion(
+          result,
+          managerName: definition.displayName,
+        );
+      } catch (_) {
+        latestByPackageKey[package.key] = package.version;
+      }
+    }
+    return latestByPackageKey;
   }
 }

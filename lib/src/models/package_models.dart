@@ -356,10 +356,14 @@ class ActivityEntry {
 
 int _compareVersions(String a, String b) {
   final numPattern = RegExp(r'(\d+)');
-  final aParts =
-      numPattern.allMatches(a).map((m) => int.parse(m.group(1)!)).toList();
-  final bParts =
-      numPattern.allMatches(b).map((m) => int.parse(m.group(1)!)).toList();
+  final aParts = numPattern
+      .allMatches(a)
+      .map((m) => int.parse(m.group(1)!))
+      .toList();
+  final bParts = numPattern
+      .allMatches(b)
+      .map((m) => int.parse(m.group(1)!))
+      .toList();
   final maxLen = aParts.length > bParts.length ? aParts.length : bParts.length;
   for (var i = 0; i < maxLen; i++) {
     final aVal = i < aParts.length ? aParts[i] : 0;

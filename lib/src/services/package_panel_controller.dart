@@ -1716,8 +1716,59 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final byManager = <String, List<ManagedPackage>>{};
       for (final package in packages) {
-        await checkLatestVersion(package);
+        byManager
+            .putIfAbsent(package.managerId, () => <ManagedPackage>[])
+            .add(package);
+      }
+
+      for (final entry in byManager.entries) {
+        final managerId = entry.key;
+        final managerPackages = entry.value;
+        final adapter = _adapterFor(managerId);
+        final capability = _capabilityOf<LatestVersionLookupCapability>(
+          adapter,
+        );
+        if (capability == null) continue;
+
+        final supported = managerPackages
+            .where(capability.supportsLatestVersionLookup)
+            .toList(growable: false);
+        if (supported.isEmpty) continue;
+
+        final batchCapability = capability is BatchLatestVersionLookupCapability
+            ? capability
+            : null;
+        final busyKey = _batchLatestBusyKey(managerId);
+        final packageBusyKeys = batchCapability == null
+            ? const <String>[]
+            : supported.map(_latestVersionBusyKey).toList(growable: false);
+
+        _runningCommands.add(busyKey);
+        if (batchCapability != null) {
+          _runningCommandInfo[busyKey] = RunningCommandInfo(
+            busyKey: busyKey,
+            command: batchCapability.batchLatestVersionLookupCommand(supported),
+          );
+        }
+        _runningCommands.addAll(packageBusyKeys);
+        notifyListeners();
+
+        try {
+          if (batchCapability != null) {
+            await _checkLatestVersionsInBatch(supported, batchCapability);
+          } else {
+            for (final package in supported) {
+              await checkLatestVersion(package);
+            }
+          }
+        } finally {
+          _runningCommands.remove(busyKey);
+          _runningCommandInfo.remove(busyKey);
+          _runningCommands.removeAll(packageBusyKeys);
+          notifyListeners();
+        }
       }
       _pushActivity(
         ActivityEntry(
@@ -2033,8 +2084,8 @@ class PackagePanelController extends ChangeNotifier {
         fallback: _themeMode,
       );
       _autoCheckAppUpdates = await _settingsStore.loadAutoCheckAppUpdates();
-      _rememberWindowPlacement =
-          await _settingsStore.loadRememberWindowPlacement();
+      _rememberWindowPlacement = await _settingsStore
+          .loadRememberWindowPlacement();
       _useGithubMirrorForDownloads = await _settingsStore
           .loadUseGithubMirrorForDownloads();
       _githubMirrorBaseUrl = await _settingsStore.loadGithubMirrorBaseUrl();

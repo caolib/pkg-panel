@@ -11,6 +11,7 @@ class PipAdapter extends PackageManagerAdapter
         VersionedPackageInstallCapability,
         PackageActionCapability,
         LatestVersionLookupCapability,
+        BatchLatestVersionLookupCapability,
         PackageDetailsCapability {
   const PipAdapter()
     : super(
@@ -126,11 +127,13 @@ class PipAdapter extends PackageManagerAdapter
   }
 
   @override
-  bool supportsBatchLatestVersionLookup(List<ManagedPackage> packages) => false;
+  String latestVersionLookupCommand(ManagedPackage package) {
+    return 'pip list --outdated --format=json';
+  }
 
   @override
-  String latestVersionLookupCommand(ManagedPackage package) {
-    return 'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color';
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    return 'pip list --outdated --format=json';
   }
 
   @override
@@ -138,19 +141,35 @@ class PipAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
+    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
+      package,
+    ]);
+    return latestVersions[package.key] ?? package.version;
+  }
+
+  @override
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    if (packages.isEmpty) {
+      return const <String, String>{};
+    }
+
     final result = await shell.runExecutable(
       'pip',
-      <String>[
-        'index',
-        'versions',
-        package.name,
-        '--disable-pip-version-check',
-        '--no-color',
-      ],
+      const <String>['list', '--outdated', '--format=json'],
       timeout: const Duration(seconds: 45),
-      displayCommand:
-          'pip index versions ${psQuote(package.name)} --disable-pip-version-check --no-color',
+      displayCommand: 'pip list --outdated --format=json',
     );
-    return parsePipLatestVersion(result, managerName: definition.displayName);
+    final latestByName = parsePipOutdatedLatestVersions(
+      result,
+      managerName: definition.displayName,
+    );
+    return <String, String>{
+      for (final package in packages)
+        package.key:
+            latestByName[package.name.trim().toLowerCase()] ?? package.version,
+    };
   }
 }

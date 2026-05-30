@@ -18,6 +18,7 @@ class BunAdapter extends PackageManagerAdapter
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
+        BatchLatestVersionLookupCapability,
         PackageDetailsCapability {
   const BunAdapter()
     : super(
@@ -215,7 +216,12 @@ class BunAdapter extends PackageManagerAdapter
 
   @override
   String latestVersionLookupCommand(ManagedPackage package) {
-    return 'npm view ${psQuote(package.name)} version --json';
+    return 'bun outdated --global';
+  }
+
+  @override
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    return 'bun outdated --global';
   }
 
   @override
@@ -223,13 +229,60 @@ class BunAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
+    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
+      package,
+    ]);
+    return latestVersions[package.key] ?? package.version;
+  }
+
+  @override
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    if (packages.isEmpty) {
+      return const <String, String>{};
+    }
+
     final result = await shell.runExecutable(
-      'npm',
-      <String>['view', package.name, 'version', '--json'],
+      'bun',
+      const <String>['outdated', '--global'],
       timeout: const Duration(seconds: 45),
-      displayCommand: 'npm view ${psQuote(package.name)} version --json',
+      displayCommand: 'bun outdated --global',
     );
-    return parseSingleVersionValue(result, managerName: definition.displayName);
+    if (result.isSuccess || result.exitCode == 1) {
+      final latestByName = parseBunOutdatedLatestVersions(
+        result,
+        managerName: definition.displayName,
+      );
+      if (latestByName.isNotEmpty) {
+        return <String, String>{
+          for (final package in packages)
+            package.key:
+                latestByName[package.name.trim().toLowerCase()] ??
+                package.version,
+        };
+      }
+    }
+
+    final latestByPackageKey = <String, String>{};
+    for (final package in packages) {
+      final fallback = await shell.runExecutable(
+        'npm',
+        <String>['view', package.name, 'version', '--json'],
+        timeout: const Duration(seconds: 45),
+        displayCommand: 'npm view ${psQuote(package.name)} version --json',
+      );
+      try {
+        latestByPackageKey[package.key] = parseSingleVersionValue(
+          fallback,
+          managerName: definition.displayName,
+        );
+      } catch (_) {
+        latestByPackageKey[package.key] = package.version;
+      }
+    }
+    return latestByPackageKey;
   }
 
   Future<ManagedPackage> _readBunPackage({

@@ -59,6 +59,14 @@ PackageCommand buildPowerShellCommand({
   );
 }
 
+dynamic _parseJsonOrThrow(String raw, {required String managerName}) {
+  try {
+    return jsonDecode(raw);
+  } on FormatException catch (error) {
+    throw PackageAdapterException(managerName, '解析 JSON 输出失败：$error');
+  }
+}
+
 dynamic decodeJson(ShellResult result, {required String managerName}) {
   if (!result.isSuccess) {
     throw PackageAdapterException(managerName, result.combinedOutput);
@@ -161,6 +169,227 @@ String? firstNonEmptyLine(String text) {
     }
   }
   return null;
+}
+
+Map<String, String> parseNpmOutdatedLatestVersions(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess && result.exitCode != 1) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final trimmed = result.stdout.trim();
+  if (trimmed.isEmpty) {
+    return const <String, String>{};
+  }
+
+  final raw = extractJsonPayload(trimmed);
+  final decoded = _parseJsonOrThrow(raw, managerName: managerName);
+  if (decoded is! Map<String, dynamic>) {
+    return const <String, String>{};
+  }
+
+  final latestVersions = <String, String>{};
+  for (final entry in decoded.entries) {
+    final info = entry.value;
+    final latest = info is Map<String, dynamic>
+        ? '${info['latest'] ?? ''}'
+        : '';
+    if (latest.isNotEmpty) {
+      latestVersions[entry.key.toLowerCase()] = latest;
+    }
+  }
+  return latestVersions;
+}
+
+Map<String, String> parsePnpmOutdatedLatestVersions(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess && result.exitCode != 1) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final trimmed = result.stdout.trim();
+  if (trimmed.isEmpty) {
+    return const <String, String>{};
+  }
+
+  final raw = extractJsonPayload(trimmed);
+  final decoded = _parseJsonOrThrow(raw, managerName: managerName);
+  if (decoded is! Map<String, dynamic>) {
+    return const <String, String>{};
+  }
+
+  final latestVersions = <String, String>{};
+  for (final entry in decoded.entries) {
+    final info = entry.value;
+    final latest = info is Map<String, dynamic>
+        ? '${info['latest'] ?? ''}'
+        : '';
+    if (latest.isNotEmpty) {
+      latestVersions[entry.key.toLowerCase()] = latest;
+    }
+  }
+  return latestVersions;
+}
+
+Map<String, String> parseYarnGlobalOutdatedLatestVersions(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess && result.exitCode != 1) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final latestVersions = <String, String>{};
+  for (final line in LineSplitter.split(result.stdout)) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) continue;
+
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map<String, dynamic> &&
+          decoded['type'] == 'table' &&
+          decoded['data'] is Map<String, dynamic>) {
+        final data = decoded['data'] as Map<String, dynamic>;
+        final headers = data['headers'];
+        final body = data['body'];
+        if (body is List && headers is List) {
+          final nameIdx = headers.indexOf('name');
+          final latestIdx = headers.indexOf('latest');
+          if (nameIdx < 0 || latestIdx < 0) continue;
+          for (final row in body) {
+            if (row is List && row.length > nameIdx && row.length > latestIdx) {
+              final name = '${row[nameIdx]}'.trim();
+              final latest = '${row[latestIdx]}'.trim();
+              if (name.isNotEmpty && latest.isNotEmpty) {
+                latestVersions[name.toLowerCase()] = latest;
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {
+      continue;
+    }
+  }
+
+  final jsonPayload = extractJsonPayload(result.stdout);
+  if (latestVersions.isEmpty && jsonPayload.isNotEmpty) {
+    try {
+      final decoded = jsonDecode(jsonPayload);
+      if (decoded is Map<String, dynamic>) {
+        for (final entry in decoded.entries) {
+          final info = entry.value;
+          final latest = info is Map<String, dynamic>
+              ? '${info['latest'] ?? ''}'
+              : '';
+          if (latest.isNotEmpty) {
+            latestVersions[entry.key.toLowerCase()] = latest;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  return latestVersions;
+}
+
+Map<String, String> parsePipOutdatedLatestVersions(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess && result.exitCode != 1) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final trimmed = result.stdout.trim();
+  if (trimmed.isEmpty) {
+    return const <String, String>{};
+  }
+
+  final raw = extractJsonPayload(trimmed);
+  final decoded = _parseJsonOrThrow(raw, managerName: managerName);
+  if (decoded is! List) {
+    return const <String, String>{};
+  }
+
+  final latestVersions = <String, String>{};
+  for (final entry in decoded) {
+    if (entry is! Map<String, dynamic>) continue;
+    final name = '${entry['name'] ?? ''}'.trim();
+    final latest = '${entry['latest_version'] ?? ''}'.trim();
+    if (name.isNotEmpty && latest.isNotEmpty) {
+      latestVersions[name.toLowerCase()] = latest;
+    }
+  }
+  return latestVersions;
+}
+
+Map<String, String> parseBunOutdatedLatestVersions(
+  ShellResult result, {
+  required String managerName,
+}) {
+  if (!result.isSuccess && result.exitCode != 1) {
+    throw PackageAdapterException(managerName, result.combinedOutput);
+  }
+
+  final lines = LineSplitter.split(result.stdout)
+      .map((line) => line.trimRight())
+      .where((line) => line.trim().isNotEmpty)
+      .toList(growable: false);
+
+  final headerLine = lines.cast<String?>().firstWhere((line) {
+    if (line == null) return false;
+    final trimmed = line.trim();
+    final content = trimmed
+        .replaceAll(RegExp(r'[│┌┬┐├┼┤└┴┘─┏┯┓┝┰┥┗┷┛]'), '')
+        .trim();
+    return content.contains('Package') && content.contains('Latest');
+  }, orElse: () => null);
+  if (headerLine == null) {
+    return const <String, String>{};
+  }
+
+  final headerIndex = lines.indexOf(headerLine);
+  final headerCells = _parseTableBorderLine(headerLine);
+  final latestIdx = headerCells.indexWhere(
+    (cell) => cell.trim().toLowerCase() == 'latest',
+  );
+  if (latestIdx < 0) {
+    return const <String, String>{};
+  }
+
+  final latestVersions = <String, String>{};
+  for (final line in lines.skip(headerIndex + 1)) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || RegExp(r'^[└┴┘─]+$').hasMatch(trimmed)) {
+      continue;
+    }
+
+    final cells = _parseTableBorderLine(line);
+    if (cells.isEmpty) continue;
+
+    final name = cells.first.trim();
+    final latest = latestIdx < cells.length ? cells[latestIdx].trim() : '';
+    if (name.isNotEmpty && latest.isNotEmpty) {
+      latestVersions[name.toLowerCase()] = latest;
+    }
+  }
+  return latestVersions;
+}
+
+List<String> _parseTableBorderLine(String line) {
+  return line
+      .split(RegExp(r'│'))
+      .where((cell) => cell.trim().isNotEmpty)
+      .map(
+        (cell) => cell.replaceAll(RegExp(r'[┌┬┐├┼┤└┴┘─┏┯┓┝┰┥┗┷┛]'), '').trim(),
+      )
+      .where((cell) => cell.isNotEmpty)
+      .toList(growable: false);
 }
 
 String parseSingleVersionValue(

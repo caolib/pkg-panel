@@ -15,6 +15,7 @@ class PnpmAdapter extends PackageManagerAdapter
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
+        BatchLatestVersionLookupCapability,
         PackageDetailsCapability {
   const PnpmAdapter()
     : super(
@@ -218,7 +219,12 @@ class PnpmAdapter extends PackageManagerAdapter
 
   @override
   String latestVersionLookupCommand(ManagedPackage package) {
-    return 'pnpm view ${psQuote(package.name)} version --json';
+    return 'pnpm outdated -g --format json';
+  }
+
+  @override
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    return 'pnpm outdated -g --format json';
   }
 
   @override
@@ -226,28 +232,56 @@ class PnpmAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
+    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
+      package,
+    ]);
+    return latestVersions[package.key] ?? package.version;
+  }
+
+  @override
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    if (packages.isEmpty) {
+      return const <String, String>{};
+    }
+
     final result = await shell.runExecutable(
       'pnpm',
-      <String>['view', package.name, 'version', '--json'],
+      const <String>['outdated', '-g', '--format', 'json'],
       timeout: const Duration(seconds: 45),
-      displayCommand: 'pnpm view ${psQuote(package.name)} version --json',
+      displayCommand: 'pnpm outdated -g --format json',
     );
-    if (result.isSuccess) {
-      return parseSingleVersionValue(
+    if (result.isSuccess || result.exitCode == 1) {
+      final latestByName = parsePnpmOutdatedLatestVersions(
         result,
         managerName: definition.displayName,
       );
+      if (latestByName.isNotEmpty) {
+        return <String, String>{
+          for (final package in packages)
+            package.key:
+                latestByName[package.name.trim().toLowerCase()] ??
+                package.version,
+        };
+      }
     }
 
     final fallback = await shell.runExecutable(
       'npm',
-      <String>['view', package.name, 'version', '--json'],
+      const <String>['outdated', '-g', '--json'],
       timeout: const Duration(seconds: 45),
-      displayCommand: 'npm view ${psQuote(package.name)} version --json',
+      displayCommand: 'npm outdated -g --json',
     );
-    return parseSingleVersionValue(
+    final latestByName = parseNpmOutdatedLatestVersions(
       fallback,
       managerName: definition.displayName,
     );
+    return <String, String>{
+      for (final package in packages)
+        package.key:
+            latestByName[package.name.trim().toLowerCase()] ?? package.version,
+    };
   }
 }

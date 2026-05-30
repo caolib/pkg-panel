@@ -17,6 +17,7 @@ class YarnAdapter extends PackageManagerAdapter
         PackageActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
+        BatchLatestVersionLookupCapability,
         PackageDetailsCapability {
   const YarnAdapter()
     : super(
@@ -192,8 +193,12 @@ class YarnAdapter extends PackageManagerAdapter
 
   @override
   String latestVersionLookupCommand(ManagedPackage package) {
-    final target = package.identifier ?? package.name;
-    return 'npm view ${psQuote(target)} version --json';
+    return 'yarn global outdated --json';
+  }
+
+  @override
+  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
+    return 'yarn global outdated --json';
   }
 
   @override
@@ -201,14 +206,57 @@ class YarnAdapter extends PackageManagerAdapter
     ShellExecutor shell,
     ManagedPackage package,
   ) async {
-    final target = package.identifier ?? package.name;
+    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
+      package,
+    ]);
+    return latestVersions[package.key] ?? package.version;
+  }
+
+  @override
+  Future<Map<String, String>> lookupLatestVersions(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    if (packages.isEmpty) {
+      return const <String, String>{};
+    }
+
     final result = await shell.runExecutable(
-      'npm',
-      <String>['view', target, 'version', '--json'],
+      'yarn',
+      const <String>['global', 'outdated', '--json'],
       timeout: const Duration(seconds: 45),
-      displayCommand: 'npm view ${psQuote(target)} version --json',
+      displayCommand: 'yarn global outdated --json',
     );
-    return parseSingleVersionValue(result, managerName: definition.displayName);
+    if (result.isSuccess || result.exitCode == 1) {
+      final latestByName = parseYarnGlobalOutdatedLatestVersions(
+        result,
+        managerName: definition.displayName,
+      );
+      if (latestByName.isNotEmpty) {
+        return <String, String>{
+          for (final package in packages)
+            package.key:
+                latestByName[package.name.trim().toLowerCase()] ??
+                package.version,
+        };
+      }
+    }
+
+    final fallback = await shell.runExecutable(
+      'npm',
+      const <String>['outdated', '-g', '--json'],
+      timeout: const Duration(seconds: 45),
+      displayCommand: 'npm outdated -g --json',
+    );
+    final latestByName = parseNpmOutdatedLatestVersions(
+      fallback,
+      managerName: definition.displayName,
+    );
+    return <String, String>{
+      for (final package in packages)
+        package.key:
+            latestByName[package.name.trim().toLowerCase()] ?? package.version,
+    };
   }
 
   Future<ManagedPackage> _readYarnPackage({

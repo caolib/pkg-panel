@@ -142,7 +142,10 @@ class ShellExecutor {
     );
   }
 
-  Future<bool> cancelExecution(String executionKey, {bool force = false}) async {
+  Future<bool> cancelExecution(
+    String executionKey, {
+    bool force = false,
+  }) async {
     final execution = _state.activeExecutions[executionKey];
     if (execution == null || execution.cancellationRequested) {
       return false;

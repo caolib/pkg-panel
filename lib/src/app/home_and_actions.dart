@@ -503,15 +503,15 @@ class _RunningCommandToast extends StatelessWidget {
                                         maxLines: 1,
                                         softWrap: false,
                                         overflow: TextOverflow.ellipsis,
-                                        style:
-                                            theme.textTheme.bodyMedium?.copyWith(
-                                          fontWeight: FontWeight.w600,
-                                          fontFamily: 'Cascadia Code',
-                                          fontFamilyFallback: theme
-                                              .textTheme
-                                              .bodyMedium
-                                              ?.fontFamilyFallback,
-                                        ),
+                                        style: theme.textTheme.bodyMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              fontFamily: 'Cascadia Code',
+                                              fontFamilyFallback: theme
+                                                  .textTheme
+                                                  .bodyMedium
+                                                  ?.fontFamilyFallback,
+                                            ),
                                       ),
                                     ),
                                   ),
