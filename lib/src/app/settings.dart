@@ -1598,6 +1598,34 @@ class _HomeFilterGroupEditDialogState
     });
   }
 
+  String _selectedIconSummary(
+    BuildContext context,
+    List<PackageManagerVisibilityState> managerStates,
+  ) {
+    final iconPath = _selectedIconPath?.trim();
+    if (iconPath == null || iconPath.isEmpty) {
+      return context.l10n.iconNotSet;
+    }
+
+    final builtInManagerId = _builtInManagerIconIdFromPath(iconPath);
+    if (builtInManagerId == null) {
+      return iconPath;
+    }
+
+    String? managerName;
+    for (final state in managerStates) {
+      if (state.manager.id == builtInManagerId) {
+        managerName = widget.controller.displayNameForManagerId(
+          state.manager.id,
+        );
+        break;
+      }
+    }
+    return context.l10n.builtInIconSelectionLabel(
+      managerName ?? builtInManagerId,
+    );
+  }
+
   void _save() {
     final displayName = _nameController.text.trim();
     if (displayName.isEmpty) {
@@ -1649,6 +1677,15 @@ class _HomeFilterGroupEditDialogState
         .toList(growable: false);
     final hasIcon =
         _selectedIconPath != null && _selectedIconPath!.trim().isNotEmpty;
+    final selectedBuiltInManagerIconId = _builtInManagerIconIdFromPath(
+      _selectedIconPath,
+    );
+    final selectedBuiltInDropdownValue =
+        managerStates.any(
+          (state) => state.manager.id == selectedBuiltInManagerIconId,
+        )
+        ? selectedBuiltInManagerIconId!
+        : '';
 
     return AlertDialog(
       title: Text(
@@ -1703,7 +1740,7 @@ class _HomeFilterGroupEditDialogState
                     if (hasIcon) const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        _selectedIconPath ?? l10n.iconNotSet,
+                        _selectedIconSummary(context, managerStates),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -1721,6 +1758,60 @@ class _HomeFilterGroupEditDialogState
                 spacing: 8,
                 runSpacing: 8,
                 children: <Widget>[
+                  SizedBox(
+                    width: 220,
+                    child: DropdownButtonFormField<String>(
+                      value: selectedBuiltInDropdownValue,
+                      isDense: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.builtInIconLabel,
+                        border: OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                      ),
+                      items: <DropdownMenuItem<String>>[
+                        DropdownMenuItem<String>(
+                          value: '',
+                          child: Text(l10n.iconNotSet),
+                        ),
+                        ...managerStates.map((state) {
+                          final managerId = state.manager.id;
+                          return DropdownMenuItem<String>(
+                            value: managerId,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                _ManagerIcon(
+                                  managerId: managerId,
+                                  customIconPath: null,
+                                  fallbackIcon: state.manager.icon,
+                                  fallbackColor: state.manager.color,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  widget.controller.displayNameForManagerId(
+                                    managerId,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                      onChanged: _isSaving
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _selectedIconPath =
+                                    value == null || value.isEmpty
+                                    ? null
+                                    : _builtInManagerIconPath(value);
+                              });
+                            },
+                    ),
+                  ),
                   FilledButton.tonalIcon(
                     onPressed: _isSaving ? null : _pickIcon,
                     icon: const Icon(Icons.folder_open_outlined),

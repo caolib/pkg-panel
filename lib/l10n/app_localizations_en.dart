@@ -254,6 +254,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get buttonChangeIcon => 'Change icon';
 
   @override
+  String get builtInIconLabel => 'Built-in icons';
+
+  @override
+  String builtInIconSelectionLabel(Object managerName) {
+    return 'Built-in icon: $managerName';
+  }
+
+  @override
   String get buttonDeleteGroup => 'Delete group';
 
   @override

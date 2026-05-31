@@ -25,7 +25,6 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   int _currentTabIndex = 0;
   int _currentSettingsTabIndex = 0;
   bool _hasQueuedStartupUpdateCheck = false;
-  bool _isRunningCommandToastCollapsed = false;
   Timer? _relativeTimeRefreshTimer;
 
   @override
@@ -138,13 +137,6 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                         bottom: 32,
                         child: _RunningCommandToast(
                           commands: runningCommands,
-                          collapsed: _isRunningCommandToastCollapsed,
-                          onToggleCollapsed: () {
-                            setState(() {
-                              _isRunningCommandToastCollapsed =
-                                  !_isRunningCommandToastCollapsed;
-                            });
-                          },
                           onCancelCommand: (command) =>
                               unawaited(_cancelRunningCommand(command)),
                         ),
@@ -414,150 +406,81 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
 }
 
 class _RunningCommandToast extends StatelessWidget {
-  const _RunningCommandToast({
-    required this.commands,
-    required this.collapsed,
-    this.onToggleCollapsed,
-    this.onCancelCommand,
-  });
+  const _RunningCommandToast({required this.commands, this.onCancelCommand});
 
   final List<RunningCommandInfo> commands;
-  final bool collapsed;
-  final VoidCallback? onToggleCollapsed;
+  final void Function(RunningCommandInfo command)? onCancelCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Material(
+        color: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320, maxHeight: 180),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                for (final command in commands)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: _RunningCommandToastItem(
+                      command: command,
+                      onCancelCommand: onCancelCommand,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RunningCommandToastItem extends StatelessWidget {
+  const _RunningCommandToastItem({required this.command, this.onCancelCommand});
+
+  final RunningCommandInfo command;
   final void Function(RunningCommandInfo command)? onCancelCommand;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final queuedCount = commands
-        .where((command) => _isQueuedStatus(command.statusLabel))
-        .length;
-    final runningCount = commands.length - queuedCount;
-    final countLabel = queuedCount == 0
-        ? '$runningCount'
-        : '$runningCount·$queuedCount';
-    final toggleButton = IconButton(
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-      padding: EdgeInsets.zero,
-      onPressed: onToggleCollapsed,
-      icon: Icon(collapsed ? Icons.unfold_more : Icons.unfold_less, size: 16),
-    );
-    return RepaintBoundary(
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          constraints: collapsed
-              ? const BoxConstraints(maxWidth: 240)
-              : const BoxConstraints(maxWidth: 420, maxHeight: 300),
-          padding: EdgeInsets.symmetric(
-            horizontal: collapsed ? 10 : 10,
-            vertical: collapsed ? 6 : 8,
-          ),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: Colors.black.withAlpha(16),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Flexible(
+          child: Tooltip(
+            message: command.command,
+            waitDuration: const Duration(milliseconds: 300),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(color: theme.colorScheme.outlineVariant),
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                mainAxisSize: MainAxisSize.max,
-                children: <Widget>[
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: _BusyIndicator(size: 14),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      countLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ),
-                  toggleButton,
-                ],
-              ),
-              if (!collapsed) ...<Widget>[
-                const SizedBox(height: 4),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        for (final command in commands)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainer,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: theme.colorScheme.outlineVariant,
-                                ),
-                              ),
-                              child: Row(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: Tooltip(
-                                      message: command.command,
-                                      waitDuration: const Duration(
-                                        milliseconds: 300,
-                                      ),
-                                      child: Text(
-                                        command.command,
-                                        maxLines: 1,
-                                        softWrap: false,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w600,
-                                              fontFamily: 'Cascadia Code',
-                                              fontFamilyFallback: theme
-                                                  .textTheme
-                                                  .bodySmall
-                                                  ?.fontFamilyFallback,
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  _CommandQueueAction(
-                                    command: command,
-                                    onCancelCommand: onCancelCommand,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+              child: Text(
+                command.command,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Cascadia Code',
+                  fontFamilyFallback:
+                      theme.textTheme.bodySmall?.fontFamilyFallback,
                 ),
-              ],
-            ],
+              ),
+            ),
           ),
         ),
-      ),
+        const SizedBox(width: 3),
+        _CommandQueueAction(command: command, onCancelCommand: onCancelCommand),
+      ],
     );
   }
 }
@@ -1818,6 +1741,24 @@ class _ManagerIcon extends StatelessWidget {
     final customPath = customIconPath?.trim();
     final fallback = _buildFallbackIcon();
     if (customPath != null && customPath.isNotEmpty) {
+      final builtInManagerId = _builtInManagerIconIdFromPath(customPath);
+      if (builtInManagerId != null) {
+        final assetPath = _managerSvgAsset(builtInManagerId);
+        final builtInFallback = Icon(
+          _managerIcon(builtInManagerId),
+          size: size,
+          color: _managerAccent(builtInManagerId),
+        );
+        if (assetPath == null) {
+          return builtInFallback;
+        }
+        return _AssetManagerIcon(
+          assetPath: assetPath,
+          size: size,
+          fallback: builtInFallback,
+        );
+      }
+
       return LocalIconImage(
         filePath: customPath,
         size: size,
@@ -1843,6 +1784,23 @@ class _ManagerIcon extends StatelessWidget {
     }
     return Icon(fallbackIcon, size: size, color: fallbackColor);
   }
+}
+
+const String _builtInManagerIconPathPrefix = 'manager:';
+
+String _builtInManagerIconPath(String managerId) {
+  return '$_builtInManagerIconPathPrefix$managerId';
+}
+
+String? _builtInManagerIconIdFromPath(String? iconPath) {
+  final value = iconPath?.trim();
+  if (value == null || !value.startsWith(_builtInManagerIconPathPrefix)) {
+    return null;
+  }
+  final managerId = value
+      .substring(_builtInManagerIconPathPrefix.length)
+      .trim();
+  return managerId.isEmpty ? null : managerId;
 }
 
 class _AssetManagerIcon extends StatelessWidget {

@@ -247,6 +247,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get buttonChangeIcon => '更换图标';
 
   @override
+  String get builtInIconLabel => '内置图标';
+
+  @override
+  String builtInIconSelectionLabel(Object managerName) {
+    return '内置图标：$managerName';
+  }
+
+  @override
   String get buttonDeleteGroup => '删除组';
 
   @override

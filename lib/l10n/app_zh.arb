@@ -119,6 +119,13 @@
   "buttonResetDefaultIcon": "恢复默认图标",
   "buttonSelectIcon": "选择图标",
   "buttonChangeIcon": "更换图标",
+  "builtInIconLabel": "内置图标",
+  "builtInIconSelectionLabel": "内置图标：{managerName}",
+  "@builtInIconSelectionLabel": {
+    "placeholders": {
+      "managerName": {}
+    }
+  },
   "buttonDeleteGroup": "删除组",
   "buttonConfirm": "确定",
   "buttonInstallInputVersion": "安装输入版本",

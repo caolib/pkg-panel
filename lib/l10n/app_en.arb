@@ -112,6 +112,13 @@
   "buttonResetDefaultIcon": "Use default icon",
   "buttonSelectIcon": "Select icon",
   "buttonChangeIcon": "Change icon",
+  "builtInIconLabel": "Built-in icons",
+  "builtInIconSelectionLabel": "Built-in icon: {managerName}",
+  "@builtInIconSelectionLabel": {
+    "placeholders": {
+      "managerName": {}
+    }
+  },
   "buttonDeleteGroup": "Delete group",
   "buttonConfirm": "Confirm",
   "buttonInstallInputVersion": "Install typed version",

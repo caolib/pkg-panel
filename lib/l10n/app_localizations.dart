@@ -554,6 +554,18 @@ abstract class AppLocalizations {
   /// **'更换图标'**
   String get buttonChangeIcon;
 
+  /// No description provided for @builtInIconLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'内置图标'**
+  String get builtInIconLabel;
+
+  /// No description provided for @builtInIconSelectionLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'内置图标：{managerName}'**
+  String builtInIconSelectionLabel(Object managerName);
+
   /// No description provided for @buttonDeleteGroup.
   ///
   /// In zh, this message translates to:
