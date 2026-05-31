@@ -109,44 +109,52 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Stack(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            Expanded(
+              child: Stack(
                 children: <Widget>[
-                  _buildNavigationRow(context),
-                  const SizedBox(height: 16),
-                  Expanded(child: _buildCurrentTabBody()),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        _buildNavigationRow(context),
+                        const SizedBox(height: 16),
+                        Expanded(child: _buildCurrentTabBody()),
+                      ],
+                    ),
+                  ),
+                  AnimatedBuilder(
+                    animation: widget.controller,
+                    builder: (context, _) {
+                      final runningCommands = widget.controller.runningCommands;
+                      if (runningCommands.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Positioned(
+                        right: 24,
+                        bottom: 32,
+                        child: _RunningCommandToast(
+                          commands: runningCommands,
+                          collapsed: _isRunningCommandToastCollapsed,
+                          onToggleCollapsed: () {
+                            setState(() {
+                              _isRunningCommandToastCollapsed =
+                                  !_isRunningCommandToastCollapsed;
+                            });
+                          },
+                          onCancelCommand: (command) =>
+                              unawaited(_cancelRunningCommand(command)),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
-            AnimatedBuilder(
-              animation: widget.controller,
-              builder: (context, _) {
-                final runningCommands = widget.controller.runningCommands;
-                if (runningCommands.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                return Positioned(
-                  right: 24,
-                  bottom: 24,
-                  child: _RunningCommandToast(
-                    commands: runningCommands,
-                    collapsed: _isRunningCommandToastCollapsed,
-                    onToggleCollapsed: () {
-                      setState(() {
-                        _isRunningCommandToastCollapsed =
-                            !_isRunningCommandToastCollapsed;
-                      });
-                    },
-                    onCancelCommand: (command) =>
-                        unawaited(_cancelRunningCommand(command)),
-                  ),
-                );
-              },
-            ),
+            _StatusBar(controller: widget.controller),
           ],
         ),
       ),
@@ -169,7 +177,6 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
               _ActionBar(
                 controller: widget.controller,
                 searchController: _searchController,
-                onRefreshAll: widget.controller.refreshCurrentSelection,
                 onBatchCheckLatest: _handleBatchCheckLatestForSelectedManager,
                 onShowLoadErrors: _showLoadErrorsDialog,
                 onBatchUpdate: () async {
@@ -590,7 +597,6 @@ class _ActionBar extends StatelessWidget {
   const _ActionBar({
     required this.controller,
     required this.searchController,
-    required this.onRefreshAll,
     required this.onBatchCheckLatest,
     required this.onShowLoadErrors,
     required this.onBatchUpdate,
@@ -598,7 +604,6 @@ class _ActionBar extends StatelessWidget {
 
   final PackagePanelController controller;
   final TextEditingController searchController;
-  final Future<void> Function() onRefreshAll;
   final Future<void> Function() onBatchCheckLatest;
   final Future<void> Function() onShowLoadErrors;
   final Future<void> Function() onBatchUpdate;
@@ -613,7 +618,6 @@ class _ActionBar extends StatelessWidget {
         controller.isBatchCheckingLatestForCurrentSelection;
     final startupStatus = controller.startupUpdateCheckStatus;
     final hasLoadErrors = controller.errorManagers > 0;
-    final visibleCount = controller.visiblePackages.length;
     final showBatchUpdate =
         controller.selectedPackageCount > 1 && batchCommand != null;
 
@@ -639,19 +643,6 @@ class _ActionBar extends StatelessWidget {
                     onCleared: () => controller.setSearchQuery(''),
                   ),
                 ],
-              ),
-            ),
-            IconButton.filled(
-              onPressed: controller.isRefreshingCurrentSelection
-                  ? null
-                  : onRefreshAll,
-              icon: controller.isRefreshingCurrentSelection
-                  ? const _BusyIndicator(size: 14)
-                  : const Icon(Icons.sync, size: 18),
-              tooltip: l10n.buttonRefresh,
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                minimumSize: WidgetStatePropertyAll(Size(36, 36)),
               ),
             ),
             if (hasLoadErrors)
@@ -680,10 +671,6 @@ class _ActionBar extends StatelessWidget {
               ),
             if (startupStatus.isVisible)
               _StartupUpdateStatusChip(status: startupStatus),
-            Chip(
-              avatar: const Icon(Icons.inventory_2_outlined, size: 18),
-              label: Text(l10n.visiblePackageCount(visibleCount)),
-            ),
           ],
         ),
       ),
@@ -2742,5 +2729,139 @@ class _EmptyPackages extends StatelessWidget {
     return searchQuery.isEmpty
         ? l10n.emptyClickRefresh
         : l10n.emptyNoSearchResult(searchQuery);
+  }
+}
+
+class _StatusBar extends StatelessWidget {
+  const _StatusBar({required this.controller});
+
+  final PackagePanelController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final visibleCount = controller.visiblePackages.length;
+        final selectedGroup = controller.selectedHomeFilterGroup;
+        final groupLabel = selectedGroup != null
+            ? _homeFilterGroupDisplayName(context, selectedGroup)
+            : l10n.homeFilterGroupAll;
+        final isRefreshing = controller.isRefreshingCurrentSelection;
+
+        return Container(
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            border: Border(
+              top: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
+          ),
+          child: Row(
+            children: <Widget>[
+              // Selected group name
+              Icon(
+                Icons.filter_alt_outlined,
+                size: 14,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                groupLabel,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Package count
+              Text(
+                l10n.visiblePackageCount(visibleCount),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              const Spacer(),
+              // Theme mode toggle
+              _ThemeToggleButton(controller: controller),
+              const SizedBox(width: 4),
+              // Refresh button
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: IconButton(
+                  onPressed: isRefreshing
+                      ? null
+                      : controller.refreshCurrentSelection,
+                  icon: isRefreshing
+                      ? const _BusyIndicator(size: 12)
+                      : const Icon(Icons.sync, size: 14),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: l10n.buttonRefresh,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ThemeToggleButton extends StatelessWidget {
+  const _ThemeToggleButton({required this.controller});
+
+  final PackagePanelController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final currentMode = controller.themeMode;
+
+    Icon icon;
+    String tooltip;
+    final l10n = context.l10n;
+
+    switch (currentMode) {
+      case ThemeMode.light:
+        icon = const Icon(Icons.light_mode_outlined, size: 14);
+        tooltip = l10n.themeModeLight;
+      case ThemeMode.dark:
+        icon = const Icon(Icons.dark_mode_outlined, size: 14);
+        tooltip = l10n.themeModeDark;
+      case ThemeMode.system:
+        icon = const Icon(Icons.brightness_auto_outlined, size: 14);
+        tooltip = l10n.themeModeSystem;
+    }
+
+    // Determine next mode on tap
+    final nextMode = switch (currentMode) {
+      ThemeMode.light => ThemeMode.dark,
+      ThemeMode.dark => ThemeMode.system,
+      ThemeMode.system => ThemeMode.light,
+    };
+
+    return SizedBox(
+      width: 24,
+      height: 24,
+      child: IconButton(
+        onPressed: () => controller.setThemeMode(nextMode),
+        icon: icon,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        tooltip: tooltip,
+        style: ButtonStyle(
+          iconColor: WidgetStatePropertyAll(
+            currentMode == ThemeMode.system
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.primary,
+          ),
+        ),
+      ),
+    );
   }
 }
