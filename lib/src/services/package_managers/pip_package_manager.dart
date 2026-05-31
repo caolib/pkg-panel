@@ -10,8 +10,6 @@ class PipAdapter extends PackageManagerAdapter
         InstalledPackageCapability,
         VersionedPackageInstallCapability,
         PackageActionCapability,
-        LatestVersionLookupCapability,
-        BatchLatestVersionLookupCapability,
         PackageDetailsCapability {
   const PipAdapter()
     : super(
@@ -124,52 +122,5 @@ class PipAdapter extends PackageManagerAdapter
       displayCommand: 'pip show ${psQuote(package.name)}',
     );
     return parseDetailOutput(result, managerName: definition.displayName);
-  }
-
-  @override
-  String latestVersionLookupCommand(ManagedPackage package) {
-    return 'pip list --outdated --format=json';
-  }
-
-  @override
-  String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
-    return 'pip list --outdated --format=json';
-  }
-
-  @override
-  Future<String> lookupLatestVersion(
-    ShellExecutor shell,
-    ManagedPackage package,
-  ) async {
-    final latestVersions = await lookupLatestVersions(shell, <ManagedPackage>[
-      package,
-    ]);
-    return latestVersions[package.key] ?? package.version;
-  }
-
-  @override
-  Future<Map<String, String>> lookupLatestVersions(
-    ShellExecutor shell,
-    List<ManagedPackage> packages,
-  ) async {
-    if (packages.isEmpty) {
-      return const <String, String>{};
-    }
-
-    final result = await shell.runExecutable(
-      'pip',
-      const <String>['list', '--outdated', '--format=json'],
-      timeout: const Duration(seconds: 45),
-      displayCommand: 'pip list --outdated --format=json',
-    );
-    final latestByName = parsePipOutdatedLatestVersions(
-      result,
-      managerName: definition.displayName,
-    );
-    return <String, String>{
-      for (final package in packages)
-        package.key:
-            latestByName[package.name.trim().toLowerCase()] ?? package.version,
-    };
   }
 }

@@ -65,6 +65,45 @@
   "buttonOpenSettings": "Open settings",
   "buttonCheckUpdates": "Check updates",
   "buttonBatchUpdate": "Batch update",
+  "startupUpdateCheckingStatus": "Current {current}/{total} packages -> {updates} updates",
+  "@startupUpdateCheckingStatus": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "updates": {
+        "type": "int"
+      }
+    }
+  },
+  "startupUpdateCompleteStatus": "Startup check complete: {processed}/{total} · {updates} updates",
+  "@startupUpdateCompleteStatus": {
+    "placeholders": {
+      "processed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "updates": {
+        "type": "int"
+      }
+    }
+  },
+  "startupUpdateIssueSummary": "{failed} failed · {skipped} skipped",
+  "@startupUpdateIssueSummary": {
+    "placeholders": {
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "buttonGitHubRepo": "GitHub repo",
   "buttonOpenReleasePage": "Open release page",
   "buttonDownload": "Download",
@@ -80,7 +119,7 @@
   "searchInstallHint": "Search installable packages",
   "clearTooltip": "Clear",
   "viewLoadErrorsButton": "View load errors ({count})",
-  "visiblePackageCount": "{count} packages visible",
+  "visiblePackageCount": "{count}",
   "managerLoadFailedSuffix": "{managerName} (load failed)",
   "packageListHeader": "Packages",
   "countLabel": "{count} items",
@@ -88,6 +127,7 @@
   "packageNameColumn": "Package",
   "currentVersionColumn": "Current",
   "latestVersionColumn": "Latest",
+  "lastCheckedAtColumn": "Checked",
   "extraInfoColumn": "Extra",
   "versionColumn": "Version",
   "sourceColumn": "Source",
@@ -103,6 +143,8 @@
   "detailsUnavailable": "Details failed to load or returned no content.",
   "confirmRunCommandTitle": "Confirm command",
   "confirmRunCommandBody": "The following command will be executed:",
+  "confirmRunCommandAdminNotice": "This command will run as administrator.",
+  "contextMenuAdminHint": "Shift-click commands to run as administrator.",
   "copyToClipboardSuccess": "Copied to clipboard.",
   "noErrorOutput": "No error output was returned.",
   "loadErrorsTitle": "Load error details",
@@ -232,5 +274,54 @@
   "multiManagerCount": "{count} managers",
   "identifierValue": "Identifier: {identifier}",
   "installedManagersValue": "Installed: {managers}",
-  "lastCheckedAtValue": "Last checked {value}"
+  "relativeTimeJustNow": "Just now",
+  "relativeTimeMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
+  "@relativeTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "@relativeTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeDaysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@relativeTimeDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeWeeksAgo": "{count, plural, =1{1 week ago} other{{count} weeks ago}}",
+  "@relativeTimeWeeksAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeMonthsAgo": "{count, plural, =1{1 month ago} other{{count} months ago}}",
+  "@relativeTimeMonthsAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeYearsAgo": "{count, plural, =1{1 year ago} other{{count} years ago}}",
+  "@relativeTimeYearsAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lastCheckedAtValue": "{value}"
 }

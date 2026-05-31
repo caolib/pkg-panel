@@ -26,6 +26,7 @@ class PackageSettingsPage extends StatelessWidget {
     '霞鹜文楷',
     'JetBrains Mono',
   ];
+  static const double _settingsActionColumnWidth = 116;
 
   String? _managerCustomizationSummary(
     BuildContext context,
@@ -688,8 +689,8 @@ class PackageSettingsPage extends StatelessWidget {
                               ),
                             ),
                           ),
-                          Expanded(
-                            flex: 2,
+                          SizedBox(
+                            width: _settingsActionColumnWidth,
                             child: Text(
                               l10n.enabledColumn,
                               textAlign: TextAlign.right,
@@ -833,14 +834,14 @@ class PackageSettingsPage extends StatelessWidget {
                                     ],
                                   ),
                                 ),
-                                Expanded(
-                                  flex: 2,
+                                SizedBox(
+                                  width: _settingsActionColumnWidth,
                                   child: Align(
                                     alignment: Alignment.centerRight,
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       children: <Widget>[
-                                        OutlinedButton.icon(
+                                        IconButton.outlined(
                                           onPressed: () => _editHomeFilterGroup(
                                             context,
                                             group,
@@ -849,7 +850,7 @@ class PackageSettingsPage extends StatelessWidget {
                                             Icons.edit_outlined,
                                             size: 18,
                                           ),
-                                          label: Text(l10n.buttonEdit),
+                                          tooltip: l10n.buttonEdit,
                                         ),
                                         const SizedBox(width: 8),
                                         Switch(
@@ -913,8 +914,8 @@ class PackageSettingsPage extends StatelessWidget {
                               ),
                             ),
                           ),
-                          Expanded(
-                            flex: 2,
+                          SizedBox(
+                            width: _settingsActionColumnWidth,
                             child: Text(
                               l10n.enabledColumn,
                               textAlign: TextAlign.right,
@@ -1062,21 +1063,21 @@ class PackageSettingsPage extends StatelessWidget {
                                     ],
                                   ),
                                 ),
-                                Expanded(
-                                  flex: 2,
+                                SizedBox(
+                                  width: _settingsActionColumnWidth,
                                   child: Align(
                                     alignment: Alignment.centerRight,
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       children: <Widget>[
-                                        OutlinedButton.icon(
+                                        IconButton.outlined(
                                           onPressed: () =>
                                               _editManager(context, state),
                                           icon: const Icon(
                                             Icons.edit_outlined,
                                             size: 18,
                                           ),
-                                          label: Text(l10n.buttonEdit),
+                                          tooltip: l10n.buttonEdit,
                                         ),
                                         const SizedBox(width: 8),
                                         Switch(

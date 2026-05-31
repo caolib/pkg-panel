@@ -72,6 +72,45 @@
   "buttonOpenSettings": "打开设置",
   "buttonCheckUpdates": "检查更新",
   "buttonBatchUpdate": "批量更新",
+  "startupUpdateCheckingStatus": "当前 {current}/{total} 个包 -> {updates} 个可更新",
+  "@startupUpdateCheckingStatus": {
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "updates": {
+        "type": "int"
+      }
+    }
+  },
+  "startupUpdateCompleteStatus": "启动检查完成：{processed}/{total} · {updates} 个可更新",
+  "@startupUpdateCompleteStatus": {
+    "placeholders": {
+      "processed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "updates": {
+        "type": "int"
+      }
+    }
+  },
+  "startupUpdateIssueSummary": "{failed} 失败 · {skipped} 跳过",
+  "@startupUpdateIssueSummary": {
+    "placeholders": {
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
   "buttonGitHubRepo": "GitHub 仓库",
   "buttonOpenReleasePage": "打开 Release 页面",
   "buttonDownload": "下载",
@@ -94,7 +133,7 @@
       }
     }
   },
-  "visiblePackageCount": "当前 {count} 个包",
+  "visiblePackageCount": "{count}",
   "@visiblePackageCount": {
     "placeholders": {
       "count": {
@@ -133,6 +172,7 @@
   "packageNameColumn": "包名",
   "currentVersionColumn": "当前版本",
   "latestVersionColumn": "最新版本",
+  "lastCheckedAtColumn": "检查时间",
   "extraInfoColumn": "附加信息",
   "versionColumn": "版本",
   "sourceColumn": "来源",
@@ -148,6 +188,8 @@
   "detailsUnavailable": "详情加载失败或没有返回内容。",
   "confirmRunCommandTitle": "确认执行命令",
   "confirmRunCommandBody": "将执行下面的命令：",
+  "confirmRunCommandAdminNotice": "该命令将以管理员身份运行。",
+  "contextMenuAdminHint": "按住 Shift 点击命令可用管理员身份运行。",
   "copyToClipboardSuccess": "已复制到剪贴板。",
   "noErrorOutput": "没有返回错误输出。",
   "loadErrorsTitle": "加载错误详情",
@@ -598,7 +640,56 @@
       }
     }
   },
-  "lastCheckedAtValue": "上次检查 {value}",
+  "relativeTimeJustNow": "刚刚",
+  "relativeTimeMinutesAgo": "{count} 分钟前",
+  "@relativeTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeHoursAgo": "{count} 小时前",
+  "@relativeTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeDaysAgo": "{count} 天前",
+  "@relativeTimeDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeWeeksAgo": "{count} 周前",
+  "@relativeTimeWeeksAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeMonthsAgo": "{count} 个月前",
+  "@relativeTimeMonthsAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "relativeTimeYearsAgo": "{count} 年前",
+  "@relativeTimeYearsAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "lastCheckedAtValue": "{value}",
   "@lastCheckedAtValue": {
     "placeholders": {
       "value": {

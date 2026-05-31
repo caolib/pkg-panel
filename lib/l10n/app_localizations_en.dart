@@ -215,6 +215,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get buttonBatchUpdate => 'Batch update';
 
   @override
+  String startupUpdateCheckingStatus(int current, int total, int updates) {
+    return 'Current $current/$total packages -> $updates updates';
+  }
+
+  @override
+  String startupUpdateCompleteStatus(int processed, int total, int updates) {
+    return 'Startup check complete: $processed/$total · $updates updates';
+  }
+
+  @override
+  String startupUpdateIssueSummary(int failed, int skipped) {
+    return '$failed failed · $skipped skipped';
+  }
+
+  @override
   String get buttonGitHubRepo => 'GitHub repo';
 
   @override
@@ -263,7 +278,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String visiblePackageCount(int count) {
-    return '$count packages visible';
+    return '$count';
   }
 
   @override
@@ -292,6 +307,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get latestVersionColumn => 'Latest';
+
+  @override
+  String get lastCheckedAtColumn => 'Checked';
 
   @override
   String get extraInfoColumn => 'Extra';
@@ -338,6 +356,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get confirmRunCommandBody => 'The following command will be executed:';
+
+  @override
+  String get confirmRunCommandAdminNotice =>
+      'This command will run as administrator.';
+
+  @override
+  String get contextMenuAdminHint =>
+      'Shift-click commands to run as administrator.';
 
   @override
   String get copyToClipboardSuccess => 'Copied to clipboard.';
@@ -829,7 +855,76 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get relativeTimeJustNow => 'Just now';
+
+  @override
+  String relativeTimeMinutesAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes ago',
+      one: '1 minute ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String relativeTimeHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours ago',
+      one: '1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String relativeTimeDaysAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days ago',
+      one: '1 day ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String relativeTimeWeeksAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count weeks ago',
+      one: '1 week ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String relativeTimeMonthsAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count months ago',
+      one: '1 month ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String relativeTimeYearsAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count years ago',
+      one: '1 year ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String lastCheckedAtValue(String value) {
-    return 'Last checked $value';
+    return '$value';
   }
 }

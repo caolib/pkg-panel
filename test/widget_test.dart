@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pkg_panel/src/app.dart';
 import 'package:pkg_panel/src/models/package_models.dart';
@@ -15,12 +14,14 @@ import 'package:pkg_panel/src/services/package_snapshot_store.dart';
 import 'package:pkg_panel/src/services/shell_executor.dart';
 import 'package:pkg_panel/src/services/winget_package_icon_resolver.dart';
 import 'package:pkg_panel/src/widgets/linkified_selectable_text.dart';
+import 'package:pkg_panel/l10n/app_localizations.dart';
 
 void main() {
   testWidgets('renders seeded package data', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
+    final checkedAt = DateTime.now();
     final controller = PackagePanelController(
       shell: const ShellExecutor(),
       adapters: PackageManagerRegistry.defaultAdapters,
@@ -32,13 +33,14 @@ void main() {
               .firstWhere((adapter) => adapter.definition.id == 'npm')
               .definition,
           loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
+          packages: <ManagedPackage>[
             ManagedPackage(
               name: 'eslint',
               managerId: 'npm',
               managerName: 'npm',
               version: '9.0.0',
               latestVersion: '9.1.0',
+              latestVersionCheckedAt: checkedAt,
               source: 'global',
             ),
           ],
@@ -52,8 +54,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('eslint'), findsOneWidget);
-    expect(find.text('刷新'), findsOneWidget);
+    expect(find.text('刷新'), findsNothing);
     expect(find.text('设置'), findsOneWidget);
+    expect(find.text('检查时间'), findsOneWidget);
+    expect(find.text('刚刚'), findsOneWidget);
+    expect(find.text('附加信息'), findsNothing);
+    expect(find.textContaining('上次检查'), findsNothing);
     expect(find.text('批量更新'), findsNothing);
     expect(find.text('操作'), findsNothing);
     expect(find.text('检查更新'), findsOneWidget);
@@ -73,54 +79,51 @@ void main() {
     expect(find.text('删除'), findsOneWidget);
   });
 
-  testWidgets(
-    'pip manager shows batch check button and keeps single-package lookup',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+  testWidgets('pip manager hides global update check controls', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final controller = PackagePanelController(
-        shell: const ShellExecutor(),
-        adapters: PackageManagerRegistry.defaultAdapters,
-        initialVisibleManagerIds: const <String>{'pip'},
-        initialManagerAvailability: const <String, bool>{'pip': true},
-        initialSnapshots: <ManagerSnapshot>[
-          ManagerSnapshot(
-            manager: PackageManagerRegistry.defaultAdapters
-                .firstWhere((adapter) => adapter.definition.id == 'pip')
-                .definition,
-            loadState: ManagerLoadState.ready,
-            packages: const <ManagedPackage>[
-              ManagedPackage(
-                name: 'ruff',
-                managerId: 'pip',
-                managerName: 'pip',
-                version: '0.8.6',
-              ),
-            ],
-          ),
-        ],
-      );
-      controller.selectManager('pip');
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: PackageManagerRegistry.defaultAdapters,
+      initialVisibleManagerIds: const <String>{'pip'},
+      initialManagerAvailability: const <String, bool>{'pip': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: PackageManagerRegistry.defaultAdapters
+              .firstWhere((adapter) => adapter.definition.id == 'pip')
+              .definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'ruff',
+              managerId: 'pip',
+              managerName: 'pip',
+              version: '0.8.6',
+            ),
+          ],
+        ),
+      ],
+    );
+    controller.selectManager('pip');
 
-      await tester.pumpWidget(
-        PkgPanelApp(controller: controller, autoLoad: false),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(FilledButton, '检查更新'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '检查更新'), findsNothing);
 
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.text('ruff').last),
-        kind: PointerDeviceKind.mouse,
-        buttons: kSecondaryMouseButton,
-      );
-      await gesture.up();
-      await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('ruff').last),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
 
-      expect(find.text('检查更新'), findsAtLeast(1));
-    },
-  );
+    expect(find.text('检查更新'), findsNothing);
+  });
 
   testWidgets('linkified selectable text opens detected links', (tester) async {
     String? openedUrl;
@@ -167,7 +170,7 @@ void main() {
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[npmAdapter, pipAdapter],
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm', 'pip'},
       initialManagerAvailability: const <String, bool>{
@@ -227,7 +230,7 @@ void main() {
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[adapter],
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm'},
       initialManagerAvailability: const <String, bool>{'npm': true},
@@ -287,7 +290,7 @@ void main() {
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[adapter],
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'pnpm'},
       initialManagerAvailability: const <String, bool>{'pnpm': true},
@@ -325,55 +328,204 @@ void main() {
     );
   });
 
-  test('controller batch latest check uses pip list outdated once', () async {
-    const adapter = PipAdapter();
-    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
-      'pip list --outdated --format=json': const ShellResult(
-        exitCode: 1,
-        stdout:
-            '[{"name":"ruff","version":"0.8.6","latest_version":"0.9.0",'
-            '"latest_filetype":"wheel"}]',
-        stderr: '',
-      ),
-    });
+  test('controller skips pip and uv global update checks', () async {
+    const pipAdapter = PipAdapter();
+    const uvAdapter = UvToolAdapter();
+    const pipPackage = ManagedPackage(
+      name: 'ruff',
+      managerId: 'pip',
+      managerName: 'pip',
+      version: '0.8.6',
+    );
+    const uvPackage = ManagedPackage(
+      name: 'uipro-cli',
+      managerId: 'uv',
+      managerName: 'uv',
+      version: '2.2.3',
+    );
+    final shell = _RecordingShellExecutor(const <Pattern, ShellResult>{});
     final controller = PackagePanelController(
       shell: shell,
-      adapters: <PackageManagerAdapter>[adapter],
-      settingsStore: const _MemorySettingsStore(),
+      adapters: const <PackageManagerAdapter>[pipAdapter, uvAdapter],
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
-      initialVisibleManagerIds: const <String>{'pip'},
-      initialManagerAvailability: const <String, bool>{'pip': true},
+      initialVisibleManagerIds: const <String>{'pip', 'uv'},
+      initialManagerAvailability: const <String, bool>{'pip': true, 'uv': true},
       initialSnapshots: <ManagerSnapshot>[
         ManagerSnapshot(
-          manager: adapter.definition,
+          manager: pipAdapter.definition,
           loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
-            ManagedPackage(
-              name: 'ruff',
-              managerId: 'pip',
-              managerName: 'pip',
-              version: '0.8.6',
-            ),
-          ],
+          packages: const <ManagedPackage>[pipPackage],
+        ),
+        ManagerSnapshot(
+          manager: uvAdapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[uvPackage],
         ),
       ],
     );
 
     controller.selectManager('pip');
+    expect(controller.canCheckLatestVersion(pipPackage), isFalse);
+    expect(controller.canBatchCheckLatestForSelectedManager, isFalse);
     await controller.batchCheckLatestVersionsForSelectedManager();
+    expect(await controller.checkLatestVersion(pipPackage), isNull);
 
-    expect(
-      shell.commands.where(
-        (command) => command == 'pip list --outdated --format=json',
-      ),
-      hasLength(1),
-    );
-    final packages = controller.selectedManagerSnapshot!.packages;
-    expect(
-      packages.firstWhere((package) => package.name == 'ruff').latestVersion,
-      '0.9.0',
-    );
+    controller.selectManager('uv');
+    expect(controller.canCheckLatestVersion(uvPackage), isFalse);
+    expect(controller.canBatchCheckLatestForSelectedManager, isFalse);
+    await controller.batchCheckLatestVersionsForSelectedManager();
+    expect(await controller.checkLatestVersion(uvPackage), isNull);
+
+    expect(shell.commands, isEmpty);
   });
+
+  test(
+    'startup latest check updates supported managers and skips pip uv',
+    () async {
+      const npmAdapter = NpmAdapter();
+      const pipAdapter = PipAdapter();
+      const uvAdapter = UvToolAdapter();
+      const npmPackage = ManagedPackage(
+        name: 'eslint',
+        managerId: 'npm',
+        managerName: 'npm',
+        version: '9.0.0',
+      );
+      const pipPackage = ManagedPackage(
+        name: 'ruff',
+        managerId: 'pip',
+        managerName: 'pip',
+        version: '0.8.6',
+      );
+      const uvPackage = ManagedPackage(
+        name: 'uipro-cli',
+        managerId: 'uv',
+        managerName: 'uv',
+        version: '2.2.3',
+      );
+      final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+        'npm outdated -g --json': const ShellResult(
+          exitCode: 1,
+          stdout:
+              '{"eslint":{"current":"9.0.0","wanted":"9.1.0","latest":"9.1.0"}}',
+          stderr: '',
+        ),
+      });
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: const <PackageManagerAdapter>[
+          npmAdapter,
+          pipAdapter,
+          uvAdapter,
+        ],
+        settingsStore: _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm', 'pip', 'uv'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pip': true,
+          'uv': true,
+        },
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: npmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[npmPackage],
+          ),
+          ManagerSnapshot(
+            manager: pipAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[pipPackage],
+          ),
+          ManagerSnapshot(
+            manager: uvAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[uvPackage],
+          ),
+        ],
+      );
+
+      await controller.checkStartupLatestVersions();
+
+      expect(shell.commands, <String>['npm outdated -g --json']);
+      expect(
+        controller.startupUpdateCheckStatus.phase,
+        StartupUpdateCheckPhase.complete,
+      );
+      expect(controller.startupUpdateCheckStatus.totalManagers, 1);
+      expect(controller.startupUpdateCheckStatus.processedManagers, 1);
+      expect(controller.startupUpdateCheckStatus.updatedPackages, 1);
+
+      final packages = controller.visiblePackages;
+      expect(
+        packages
+            .firstWhere((package) => package.name == 'eslint')
+            .latestVersion,
+        '9.1.0',
+      );
+      expect(
+        packages.firstWhere((package) => package.name == 'ruff').latestVersion,
+        isNull,
+      );
+      expect(
+        packages
+            .firstWhere((package) => package.name == 'uipro-cli')
+            .latestVersion,
+        isNull,
+      );
+    },
+  );
+
+  test(
+    'startup latest check does not show running command toast entries',
+    () async {
+      const adapter = NpmAdapter();
+      final shell = _DelayedShellExecutor(
+        const <Pattern, ShellResult>{},
+        delayedCommand: 'npm outdated -g --json',
+        delayedResult: const ShellResult(
+          exitCode: 1,
+          stdout:
+              '{"eslint":{"current":"9.0.0","wanted":"9.1.0","latest":"9.1.0"}}',
+          stderr: '',
+        ),
+      );
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: const <PackageManagerAdapter>[adapter],
+        settingsStore: _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm'},
+        initialManagerAvailability: const <String, bool>{'npm': true},
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: adapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final checkFuture = controller.checkStartupLatestVersions();
+      await shell.waitForDelayedCommand();
+
+      expect(controller.startupUpdateCheckStatus.isRunning, isTrue);
+      expect(controller.runningCommands, isEmpty);
+
+      shell.completeDelayed();
+      await checkFuture;
+
+      expect(controller.runningCommands, isEmpty);
+    },
+  );
 
   test('controller batch latest check uses choco outdated once', () async {
     const adapter = ChocolateyAdapter();
@@ -396,7 +548,7 @@ Chocolatey has determined 2 package(s) are outdated.
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[adapter],
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'choco'},
       initialManagerAvailability: const <String, bool>{'choco': true},
@@ -468,23 +620,20 @@ git|2.48.1
   });
 
   test(
-    'cargo batch latest check uses cargo install-update list output',
+    'cargo batch latest check uses cargo install-update -l output',
     () async {
       const adapter = CargoAdapter();
       final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
-        'cargo install-update --list': const ShellResult(
+        'cargo install-update -l': const ShellResult(
           exitCode: 0,
           stdout: '''
-    Polling registry 'https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/'.....
+    Polling registry 'https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/'....
 
-Package         Installed  Latest   Needs update
-cargo-binstall  v1.17.7    v1.17.8  Yes
-tauri-cli       v2.6.2     v2.10.1  Yes
-zoxide          v0.9.8     v0.9.9   Yes
-cargo-sweep     v0.8.0     v0.8.0   No
-cargo-update    v18.2.0    v18.2.0  No
-
-cargo-binstall contains removed executables (cargo-binstall), which will be re-installed on update
+Package       Installed  Latest   Needs update
+cargo-update  v19.0.1    v20.0.0  Yes
+tauri-cli     v2.10.1    v2.11.2  Yes
+cargo-sweep   v0.8.0     v0.8.0   No
+zoxide        v0.9.9     v0.9.9   No
 ''',
           stderr: '',
         ),
@@ -492,7 +641,7 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[adapter],
-        settingsStore: const _MemorySettingsStore(),
+        settingsStore: _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'cargo'},
         initialManagerAvailability: const <String, bool>{'cargo': true},
@@ -502,10 +651,10 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
             loadState: ManagerLoadState.ready,
             packages: const <ManagedPackage>[
               ManagedPackage(
-                name: 'cargo-binstall',
+                name: 'cargo-update',
                 managerId: 'cargo',
                 managerName: 'cargo',
-                version: '1.17.7',
+                version: '19.0.1',
               ),
               ManagedPackage(
                 name: 'cargo-sweep',
@@ -522,17 +671,15 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
       await controller.batchCheckLatestVersionsForSelectedManager();
 
       expect(
-        shell.commands.where(
-          (command) => command == 'cargo install-update --list',
-        ),
+        shell.commands.where((command) => command == 'cargo install-update -l'),
         hasLength(1),
       );
       final packages = controller.selectedManagerSnapshot!.packages;
       expect(
         packages
-            .firstWhere((package) => package.name == 'cargo-binstall')
+            .firstWhere((package) => package.name == 'cargo-update')
             .latestVersion,
-        '1.17.8',
+        '20.0.0',
       );
       expect(
         packages
@@ -542,6 +689,57 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
       );
     },
   );
+
+  test('cargo install-update -l lookup reads latest column', () async {
+    final versions = await const CargoAdapter().lookupLatestVersions(
+      _MappedShellExecutor(<Pattern, ShellResult>{
+        'cargo install-update -l': const ShellResult(
+          exitCode: 0,
+          stdout: '''
+    Polling registry 'https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/'....
+
+Package       Installed  Latest   Needs update
+cargo-update  v19.0.1    v20.0.0  Yes
+tauri-cli     v2.10.1    v2.11.2  Yes
+cargo-sweep   v0.8.0     v0.8.0   No
+zoxide        v0.9.9     v0.9.9   No
+''',
+          stderr: '',
+        ),
+      }),
+      const <ManagedPackage>[
+        ManagedPackage(
+          name: 'cargo-update',
+          managerId: 'cargo',
+          managerName: 'cargo',
+          version: '19.0.1',
+        ),
+        ManagedPackage(
+          name: 'tauri-cli',
+          managerId: 'cargo',
+          managerName: 'cargo',
+          version: '2.10.1',
+        ),
+        ManagedPackage(
+          name: 'cargo-sweep',
+          managerId: 'cargo',
+          managerName: 'cargo',
+          version: '0.8.0',
+        ),
+        ManagedPackage(
+          name: 'zoxide',
+          managerId: 'cargo',
+          managerName: 'cargo',
+          version: '0.9.9',
+        ),
+      ],
+    );
+
+    expect(versions['cargo::cargo-update::'], '20.0.0');
+    expect(versions['cargo::tauri-cli::'], '2.11.2');
+    expect(versions['cargo::cargo-sweep::'], '0.8.0');
+    expect(versions['cargo::zoxide::'], '0.9.9');
+  });
 
   test(
     'cargo batch latest prerequisite command installs cargo-update when missing',
@@ -557,7 +755,7 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[adapter],
-        settingsStore: const _MemorySettingsStore(),
+        settingsStore: _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'cargo'},
         initialManagerAvailability: const <String, bool>{'cargo': true},
@@ -601,7 +799,7 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
           ),
         }),
         adapters: <PackageManagerAdapter>[const CargoAdapter()],
-        settingsStore: const _MemorySettingsStore(),
+        settingsStore: _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'cargo'},
         initialManagerAvailability: const <String, bool>{'cargo': true},
@@ -666,7 +864,7 @@ cargo-binstall contains removed executables (cargo-binstall), which will be re-i
         ),
       }),
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
     );
 
     await controller.ensureLoaded();
@@ -813,7 +1011,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
         ),
       }),
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       wingetIconResolver: const _FakeWingetIconResolver(r'C:\icons\vscode.ico'),
     );
 
@@ -848,7 +1046,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     final controller = PackagePanelController(
       shell: shell,
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm'},
       initialSnapshots: <ManagerSnapshot>[
@@ -878,6 +1076,58 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(controller.visiblePackages.single.name, 'prettier');
   });
 
+  testWidgets('startup update check status hides after completion', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      'npm outdated -g --json': const ShellResult(
+        exitCode: 1,
+        stdout:
+            '{"eslint":{"current":"9.0.0","wanted":"9.1.0","latest":"9.1.0"}}',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: <PackageManagerAdapter>[const NpmAdapter()],
+      settingsStore: _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: const NpmAdapter().definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.runAsync(controller.checkStartupLatestVersions);
+
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pump();
+
+    expect(
+      controller.startupUpdateCheckStatus.phase,
+      StartupUpdateCheckPhase.complete,
+    );
+    expect(controller.startupUpdateCheckStatus.isVisible, isFalse);
+    expect(find.textContaining('启动检查'), findsNothing);
+  });
+
   testWidgets('latest-version lookup toast shows current command', (
     tester,
   ) async {
@@ -894,7 +1144,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     final controller = PackagePanelController(
       shell: shell,
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm'},
       initialManagerAvailability: const <String, bool>{'npm': true},
@@ -936,6 +1186,94 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     expect(find.text('npm outdated -g --json'), findsNothing);
   });
 
+  testWidgets('winget and uv rows show load check time', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
+      'winget list --disable-interactivity': const ShellResult(
+        exitCode: 0,
+        stdout: '''
+Name                           Id                               Version     Available Source
+---------------------------------------------------------------------------------------------
+Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.100.0   winget
+''',
+        stderr: '',
+      ),
+      'uv tool list': const ShellResult(
+        exitCode: 0,
+        stdout: '''
+ruff v0.8.6
+- ruff
+''',
+        stderr: '',
+      ),
+    });
+    final controller = PackagePanelController(
+      shell: shell,
+      adapters: const <PackageManagerAdapter>[WingetAdapter(), UvToolAdapter()],
+      settingsStore: _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'winget', 'uv'},
+      initialManagerAvailability: const <String, bool>{
+        'winget': true,
+        'uv': true,
+      },
+      wingetIconResolver: const _FakeWingetIconResolver(r'C:\icons\vscode.ico'),
+    );
+
+    await controller.ensureLoaded();
+    await tester.pumpWidget(
+      PkgPanelApp(controller: controller, autoLoad: false),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(controller.visiblePackages, hasLength(2));
+    expect(
+      controller.visiblePackages.every(
+        (package) => package.latestVersionCheckedAt != null,
+      ),
+      isTrue,
+    );
+    expect(find.text('检查时间'), findsOneWidget);
+    expect(find.text('刚刚'), findsNWidgets(2));
+    expect(shell.commands, isNot(contains('uv tool upgrade --all')));
+  });
+
+  testWidgets('install search table hides extra info column', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const adapter = _FakeSearchAdapter();
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: const <PackageManagerAdapter>[adapter],
+      settingsStore: _MemorySettingsStore(),
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'fake'},
+      initialManagerAvailability: const <String, bool>{'fake': true},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: PackageInstallPage(controller: controller)),
+      ),
+    );
+    await tester.pump();
+
+    await controller.searchPackages(query: 'demo');
+    await tester.pumpAndSettle();
+
+    expect(controller.searchResults, hasLength(1));
+    expect(find.text('附加信息'), findsNothing);
+    expect(find.text('说明文本'), findsNothing);
+    expect(find.text('demo-package'), findsOneWidget);
+  });
+
   testWidgets('install page shows a single running command toast', (
     tester,
   ) async {
@@ -951,7 +1289,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     final controller = PackagePanelController(
       shell: shell,
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm'},
       initialManagerAvailability: const <String, bool>{'npm': true},
@@ -979,7 +1317,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     );
     await tester.pump();
 
-    expect(find.text('正在执行命令'), findsOneWidget);
+    expect(find.text('正在执行命令 (1)'), findsOneWidget);
     expect(find.text(commandText), findsOneWidget);
 
     shell.completeDelayed();
@@ -1007,7 +1345,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     final controller = PackagePanelController(
       shell: shell,
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'winget'},
       initialManagerAvailability: const <String, bool>{'winget': true},
@@ -1070,7 +1408,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
       final controller = PackagePanelController(
         shell: shell,
         adapters: PackageManagerRegistry.defaultAdapters,
-        settingsStore: const _MemorySettingsStore(),
+        settingsStore: _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'npm'},
         initialManagerAvailability: const <String, bool>{'npm': true},
@@ -1122,7 +1460,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
       final controller = PackagePanelController(
         shell: shell,
         adapters: PackageManagerRegistry.defaultAdapters,
-        settingsStore: const _MemorySettingsStore(),
+        settingsStore: _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'npm'},
         initialManagerAvailability: const <String, bool>{'npm': true},
@@ -1179,7 +1517,7 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
     final controller = PackagePanelController(
       shell: shell,
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm'},
       initialManagerAvailability: const <String, bool>{'npm': true},
@@ -1224,6 +1562,43 @@ Microsoft Visual Studio Code   Microsoft.VisualStudioCode       1.99.0      1.10
   });
 
   test(
+    'runCommand routes administrator requests through elevated shell',
+    () async {
+      const commandText = 'npm install -g eslint';
+      final shell = _ElevatedRecordingShellExecutor(
+        const ShellResult(exitCode: 7, stdout: '', stderr: 'failed'),
+      );
+      final controller = PackagePanelController(
+        shell: shell,
+        adapters: PackageManagerRegistry.defaultAdapters,
+        settingsStore: _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm'},
+        initialManagerAvailability: const <String, bool>{'npm': true},
+      );
+
+      final result = await controller.runCommand(
+        PackageCommand(
+          managerId: 'npm',
+          busyKey: 'admin-install',
+          label: '安装 eslint',
+          request: ShellRequest.process(
+            executable: 'npm',
+            arguments: const <String>['install', '-g', 'eslint'],
+            displayCommand: commandText,
+          ),
+        ),
+        runAsAdministrator: true,
+      );
+
+      expect(result.exitCode, 7);
+      expect(shell.commands, isEmpty);
+      expect(shell.elevatedCommands, <String>[commandText]);
+      expect(controller.runningCommands, isEmpty);
+    },
+  );
+
+  test(
     'controller tracks scoop batch latest command while lookup runs',
     () async {
       const adapter = ScoopAdapter();
@@ -1245,7 +1620,7 @@ Name  Installed Version Latest Version Missing Dependencies Info
       final controller = PackagePanelController(
         shell: shell,
         adapters: <PackageManagerAdapter>[adapter],
-        settingsStore: const _MemorySettingsStore(),
+        settingsStore: _MemorySettingsStore(),
         snapshotStore: const _MemorySnapshotStore(),
         initialVisibleManagerIds: const <String>{'scoop'},
         initialManagerAvailability: const <String, bool>{'scoop': true},
@@ -1286,7 +1661,7 @@ Name  Installed Version Latest Version Missing Dependencies Info
     final controller = PackagePanelController(
       shell: const ShellExecutor(),
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'npm', 'pip'},
       initialManagerOrderIds: const <String>['npm', 'pip'],
@@ -1385,7 +1760,7 @@ Name  Installed Version Latest Version Missing Dependencies Info
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[adapter],
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'bun'},
       initialManagerAvailability: const <String, bool>{'bun': true},
@@ -1595,7 +1970,7 @@ chafa 1.16.2            1.18.1
     final controller = PackagePanelController(
       shell: shell,
       adapters: <PackageManagerAdapter>[adapter],
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       snapshotStore: const _MemorySnapshotStore(),
       initialVisibleManagerIds: const <String>{'scoop'},
       initialManagerAvailability: const <String, bool>{'scoop': true},
@@ -1712,32 +2087,6 @@ Claude Code 配置管理器 - 命令行版本 ronghuaxueleng.ClaudeCodeConfigMan
   });
 }
 
-class _FakeShellExecutor extends ShellExecutor {
-  const _FakeShellExecutor(this.result);
-
-  final ShellResult result;
-
-  @override
-  Future<ShellResult> runRequest(
-    ShellRequest request, {
-    Duration timeout = const Duration(seconds: 30),
-    String? executionKey,
-  }) async {
-    return result;
-  }
-}
-
-class _ExecutableAvailabilityShellExecutor extends ShellExecutor {
-  const _ExecutableAvailabilityShellExecutor(this.availabilityByExecutable);
-
-  final Map<String, bool> availabilityByExecutable;
-
-  @override
-  Future<bool> isExecutableAvailable(String executable) async {
-    return availabilityByExecutable[executable] ?? false;
-  }
-}
-
 class _MappedShellExecutor extends ShellExecutor {
   const _MappedShellExecutor(this.results);
 
@@ -1796,6 +2145,34 @@ class _RecordingShellExecutor extends ShellExecutor {
   }
 }
 
+class _ElevatedRecordingShellExecutor extends ShellExecutor {
+  _ElevatedRecordingShellExecutor(this.result);
+
+  final ShellResult result;
+  final List<String> commands = <String>[];
+  final List<String> elevatedCommands = <String>[];
+
+  @override
+  Future<ShellResult> runRequest(
+    ShellRequest request, {
+    Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
+  }) async {
+    commands.add(request.displayCommand);
+    return result;
+  }
+
+  @override
+  Future<ShellResult> runRequestAsAdministrator(
+    ShellRequest request, {
+    Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
+  }) async {
+    elevatedCommands.add(request.displayCommand);
+    return result;
+  }
+}
+
 class _SequenceShellExecutor extends ShellExecutor {
   _SequenceShellExecutor(this.results);
 
@@ -1835,7 +2212,7 @@ class _SequenceShellExecutor extends ShellExecutor {
 }
 
 class _MemorySettingsStore extends PackageManagerSettingsStore {
-  const _MemorySettingsStore();
+  _MemorySettingsStore();
 
   @override
   Future<Set<String>?> loadVisibleManagerIds() async => null;
@@ -1854,6 +2231,28 @@ class _MemorySettingsStore extends PackageManagerSettingsStore {
 
   @override
   Future<void> saveManagerOrderIds(List<String> managerIds) async {}
+
+  @override
+  Future<LocalPackageTableColumnWidths>
+  loadLocalPackageTableColumnWidths() async {
+    return LocalPackageTableColumnWidths.defaults;
+  }
+
+  @override
+  Future<void> saveLocalPackageTableColumnWidths(
+    LocalPackageTableColumnWidths widths,
+  ) async {}
+
+  @override
+  Future<InstallSearchTableColumnWidths>
+  loadInstallSearchTableColumnWidths() async {
+    return InstallSearchTableColumnWidths.defaults;
+  }
+
+  @override
+  Future<void> saveInstallSearchTableColumnWidths(
+    InstallSearchTableColumnWidths widths,
+  ) async {}
 
   @override
   Future<Map<String, String>> loadCustomManagerIconPaths() async {
@@ -1943,6 +2342,28 @@ class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveManagerOrderIds(List<String> managerIds) async {}
 
   @override
+  Future<LocalPackageTableColumnWidths>
+  loadLocalPackageTableColumnWidths() async {
+    return LocalPackageTableColumnWidths.defaults;
+  }
+
+  @override
+  Future<void> saveLocalPackageTableColumnWidths(
+    LocalPackageTableColumnWidths widths,
+  ) async {}
+
+  @override
+  Future<InstallSearchTableColumnWidths>
+  loadInstallSearchTableColumnWidths() async {
+    return InstallSearchTableColumnWidths.defaults;
+  }
+
+  @override
+  Future<void> saveInstallSearchTableColumnWidths(
+    InstallSearchTableColumnWidths widths,
+  ) async {}
+
+  @override
   Future<Map<String, String>> loadCustomManagerIconPaths() async {
     return const <String, String>{};
   }
@@ -1987,6 +2408,39 @@ class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveGithubMirrorBaseUrl(String value) async {}
 }
 
+class _FakeSearchAdapter extends PackageManagerAdapter
+    with PackageSearchCapability {
+  const _FakeSearchAdapter()
+    : super(
+        const PackageManagerDefinition(
+          id: 'fake',
+          displayName: 'Fake',
+          executable: 'fake',
+          description: 'Fake search manager',
+          color: Colors.blue,
+          icon: Icons.extension_outlined,
+        ),
+      );
+
+  @override
+  Future<List<SearchPackage>> searchPackages(
+    ShellExecutor shell,
+    String query,
+  ) async {
+    return const <SearchPackage>[
+      SearchPackage(
+        name: 'demo-package',
+        managerId: 'fake',
+        managerName: 'Fake',
+        version: '1.2.3',
+        description: '说明文本',
+        identifier: 'demo.package',
+        source: 'fake-source',
+      ),
+    ];
+  }
+}
+
 class _MemorySnapshotStore extends PackageSnapshotStore {
   const _MemorySnapshotStore();
 
@@ -2029,6 +2483,9 @@ class _DelayedShellExecutor extends ShellExecutor {
   final String delayedCommand;
   final ShellResult delayedResult;
   final Completer<void> _completer = Completer<void>();
+  final Completer<void> _delayedCommandCompleter = Completer<void>();
+
+  Future<void> waitForDelayedCommand() => _delayedCommandCompleter.future;
 
   void completeDelayed() {
     if (!_completer.isCompleted) {
@@ -2044,6 +2501,9 @@ class _DelayedShellExecutor extends ShellExecutor {
   }) async {
     final command = request.displayCommand;
     if (command == delayedCommand) {
+      if (!_delayedCommandCompleter.isCompleted) {
+        _delayedCommandCompleter.complete();
+      }
       await _completer.future;
       return delayedResult;
     }

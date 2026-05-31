@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import '../models/package_models.dart';
 
 class PackageManagerSettingsStore {
-  const PackageManagerSettingsStore();
+  PackageManagerSettingsStore();
+
+  /// A completer-based mutex that serializes save operations so concurrent
+  /// unawaited calls never clobber each other (read-modify-write race).
+  Completer<void>? _saveLock;
 
   Future<Set<String>?> loadVisibleManagerIds() async {
     try {
@@ -91,6 +96,96 @@ class PackageManagerSettingsStore {
           .map((value) => value.trim())
           .where((value) => value.isNotEmpty)
           .toList(growable: false);
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
+  Future<LocalPackageTableColumnWidths>
+  loadLocalPackageTableColumnWidths() async {
+    try {
+      final decoded = await _loadSettings();
+      final values = decoded?['localPackageTableColumnWidths'];
+      if (values is! Map<String, dynamic>) {
+        return LocalPackageTableColumnWidths.defaults;
+      }
+      return LocalPackageTableColumnWidths(
+        packageName:
+            _readDouble(values['packageName']) ??
+            LocalPackageTableColumnWidths.defaults.packageName,
+        currentVersion:
+            _readDouble(values['currentVersion']) ??
+            LocalPackageTableColumnWidths.defaults.currentVersion,
+        latestVersion:
+            _readDouble(values['latestVersion']) ??
+            LocalPackageTableColumnWidths.defaults.latestVersion,
+        checkedAt:
+            _readDouble(values['checkedAt']) ??
+            LocalPackageTableColumnWidths.defaults.checkedAt,
+      ).normalized();
+    } catch (_) {
+      return LocalPackageTableColumnWidths.defaults;
+    }
+  }
+
+  Future<void> saveLocalPackageTableColumnWidths(
+    LocalPackageTableColumnWidths widths,
+  ) async {
+    try {
+      final normalized = widths.normalized();
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['localPackageTableColumnWidths'] = <String, double>{
+        'packageName': normalized.packageName,
+        'currentVersion': normalized.currentVersion,
+        'latestVersion': normalized.latestVersion,
+        'checkedAt': normalized.checkedAt,
+      };
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
+  Future<InstallSearchTableColumnWidths>
+  loadInstallSearchTableColumnWidths() async {
+    try {
+      final decoded = await _loadSettings();
+      final values = decoded?['installSearchTableColumnWidths'];
+      if (values is! Map<String, dynamic>) {
+        return InstallSearchTableColumnWidths.defaults;
+      }
+      return InstallSearchTableColumnWidths(
+        packageName:
+            _readDouble(values['packageName']) ??
+            InstallSearchTableColumnWidths.defaults.packageName,
+        version:
+            _readDouble(values['version']) ??
+            InstallSearchTableColumnWidths.defaults.version,
+        source:
+            _readDouble(values['source']) ??
+            InstallSearchTableColumnWidths.defaults.source,
+        manager:
+            _readDouble(values['manager']) ??
+            InstallSearchTableColumnWidths.defaults.manager,
+      ).normalized();
+    } catch (_) {
+      return InstallSearchTableColumnWidths.defaults;
+    }
+  }
+
+  Future<void> saveInstallSearchTableColumnWidths(
+    InstallSearchTableColumnWidths widths,
+  ) async {
+    try {
+      final normalized = widths.normalized();
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['installSearchTableColumnWidths'] = <String, double>{
+        'packageName': normalized.packageName,
+        'version': normalized.version,
+        'source': normalized.source,
+        'manager': normalized.manager,
+      };
       await _saveSettings(payload);
     } catch (_) {
       // Best-effort settings persistence.
@@ -529,18 +624,67 @@ class PackageManagerSettingsStore {
     }
 
     final raw = await file.readAsString();
-    final decoded = jsonDecode(raw);
+    final decoded = _tryParseJson(raw);
     if (decoded is! Map<String, dynamic>) {
       return null;
     }
     return decoded;
   }
 
+  /// Tries to parse [raw] as JSON. If the content has trailing garbage (e.g.
+  /// a duplicate closing brace from a previous corrupted write), attempts a
+  /// best-effort recovery by stripping non-JSON tail characters.
+  dynamic _tryParseJson(String raw) {
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      // Try to recover by finding the last valid top-level closing brace.
+      var depth = 0;
+      var lastValidEnd = -1;
+      for (var i = 0; i < raw.length; i++) {
+        final ch = raw[i];
+        if (ch == '{' || ch == '[') {
+          depth++;
+        } else if (ch == '}' || ch == ']') {
+          depth--;
+          if (depth == 0) {
+            lastValidEnd = i + 1;
+            break;
+          }
+        }
+      }
+      if (lastValidEnd > 0) {
+        try {
+          return jsonDecode(raw.substring(0, lastValidEnd));
+        } catch (_) {
+          // Recovery failed — fall through.
+        }
+      }
+      return null;
+    }
+  }
+
   Future<void> _saveSettings(Map<String, dynamic> payload) async {
-    final file = await _resolveFile();
-    await file.parent.create(recursive: true);
-    final encoder = const JsonEncoder.withIndent('  ');
-    await file.writeAsString(encoder.convert(payload));
+    // Serialize saves: wait for any in-progress save to finish first.
+    while (_saveLock != null) {
+      try {
+        await _saveLock!.future;
+      } catch (_) {
+        // Previous save failed — that's fine, we proceed.
+      }
+    }
+    _saveLock = Completer<void>();
+    try {
+      final file = await _resolveFile();
+      await file.parent.create(recursive: true);
+      final encoder = const JsonEncoder.withIndent('  ');
+      await file.writeAsString(encoder.convert(payload));
+      _saveLock!.complete();
+    } catch (e) {
+      _saveLock!.completeError(e);
+    } finally {
+      _saveLock = null;
+    }
   }
 
   Future<File> _resolveFile() async {
@@ -552,5 +696,12 @@ class PackageManagerSettingsStore {
     return File(
       '${directory.path}${Platform.pathSeparator}manager_settings.json',
     );
+  }
+
+  double? _readDouble(Object? value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    return double.tryParse('${value ?? ''}'.trim());
   }
 }

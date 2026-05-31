@@ -96,6 +96,25 @@ class ShellExecutor {
     );
   }
 
+  Future<ShellResult> runRequestAsAdministrator(
+    ShellRequest request, {
+    Duration timeout = const Duration(seconds: 30),
+    String? executionKey,
+  }) async {
+    if (!Platform.isWindows) {
+      return const ShellResult(
+        exitCode: 126,
+        stdout: '',
+        stderr: '当前平台不支持以管理员身份运行命令。',
+      );
+    }
+    return _runElevatedProcess(
+      request.executable,
+      request.arguments,
+      timeout: timeout,
+    );
+  }
+
   Future<ShellResult> runExecutable(
     String executable,
     List<String> arguments, {
@@ -281,6 +300,195 @@ class ShellExecutor {
     }
   }
 
+  Future<ShellResult> _runElevatedProcess(
+    String executable,
+    List<String> arguments, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final workingDirectory = await _resolveWorkingDirectory();
+    final searchEnvironment = await _executableSearchEnvironment();
+    final resolvedExecutable =
+        await locateExecutable(executable) ?? executable.trim();
+    final requestId = [
+      'elevated',
+      DateTime.now().microsecondsSinceEpoch,
+      resolvedExecutable.hashCode.abs(),
+    ].join('_');
+    final stdoutFile = File(
+      '$workingDirectory${Platform.pathSeparator}$requestId.out',
+    );
+    final stderrFile = File(
+      '$workingDirectory${Platform.pathSeparator}$requestId.err',
+    );
+    final powerShell = _windowsPowerShellExecutablePath();
+    final elevatedCommand = _buildElevatedChildCommand(
+      executable: resolvedExecutable,
+      arguments: arguments,
+      workingDirectory: workingDirectory,
+      stdoutPath: stdoutFile.path,
+      stderrPath: stderrFile.path,
+      environment: searchEnvironment.processOverrides,
+    );
+    final parentCommand = _buildElevatedParentCommand(
+      powerShell: powerShell,
+      encodedChildCommand: _encodePowerShellCommand(elevatedCommand),
+    );
+
+    try {
+      final process = await Process.start(
+        powerShell,
+        <String>[
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          parentCommand,
+        ],
+        workingDirectory: workingDirectory,
+        environment: searchEnvironment.processOverrides,
+        includeParentEnvironment: true,
+      );
+      final stdoutFuture = _collectProcessOutput(process.stdout);
+      final stderrFuture = _collectProcessOutput(process.stderr);
+
+      var didTimeout = false;
+      final exitCode = await process.exitCode.timeout(
+        timeout,
+        onTimeout: () async {
+          didTimeout = true;
+          await _terminateProcess(process, force: true);
+          return process.exitCode;
+        },
+      );
+      final parentStdout = _decodeProcessOutput(await stdoutFuture);
+      final parentStderr = _decodeProcessOutput(await stderrFuture);
+      final stdout = _mergeOutput(<String>[
+        await _readOutputFile(stdoutFile),
+        parentStdout,
+      ]);
+      final stderr = _mergeOutput(<String>[
+        await _readOutputFile(stderrFile),
+        if (didTimeout) '管理员命令等待超时，后台进程可能仍在继续运行。',
+        parentStderr,
+      ]);
+
+      if (!didTimeout) {
+        await _deleteIfExists(stdoutFile);
+        await _deleteIfExists(stderrFile);
+      }
+
+      if (didTimeout) {
+        return ShellResult(
+          exitCode: 124,
+          stdout: stdout,
+          stderr: stderr,
+          didTimeout: true,
+        );
+      }
+
+      return ShellResult(exitCode: exitCode, stdout: stdout, stderr: stderr);
+    } on ProcessException catch (error) {
+      return ShellResult(
+        exitCode: error.errorCode,
+        stdout: await _readOutputFile(stdoutFile),
+        stderr: _mergeOutput(<String>[
+          await _readOutputFile(stderrFile),
+          error.message,
+        ]),
+      );
+    } catch (error) {
+      return ShellResult(
+        exitCode: 1,
+        stdout: await _readOutputFile(stdoutFile),
+        stderr: _mergeOutput(<String>[
+          await _readOutputFile(stderrFile),
+          '$error',
+        ]),
+      );
+    } finally {
+      await _deleteIfExists(stdoutFile);
+      await _deleteIfExists(stderrFile);
+    }
+  }
+
+  String _buildElevatedChildCommand({
+    required String executable,
+    required List<String> arguments,
+    required String workingDirectory,
+    required String stdoutPath,
+    required String stderrPath,
+    required Map<String, String> environment,
+  }) {
+    final environmentAssignments = environment.entries
+        .map(
+          (entry) =>
+              r'$env:'
+              '${entry.key} = ${_powerShellSingleQuoted(entry.value)}',
+        )
+        .toList(growable: false);
+    final argumentArray = arguments.isEmpty
+        ? '@()'
+        : '@(${arguments.map(_powerShellSingleQuoted).join(', ')})';
+    return <String>[
+      r'$utf8NoBom = [System.Text.UTF8Encoding]::new($false)',
+      r'[Console]::InputEncoding = $utf8NoBom',
+      r'[Console]::OutputEncoding = $utf8NoBom',
+      r'$OutputEncoding = $utf8NoBom',
+      r"$ErrorActionPreference = 'Continue'",
+      '\$stdoutPath = ${_powerShellSingleQuoted(stdoutPath)}',
+      '\$stderrPath = ${_powerShellSingleQuoted(stderrPath)}',
+      r'$tempStderrPath = [System.IO.Path]::GetTempFileName()',
+      'Set-Location -LiteralPath ${_powerShellSingleQuoted(workingDirectory)}',
+      ...environmentAssignments,
+      '\$arguments = $argumentArray',
+      r'try {',
+      '  & ${_powerShellSingleQuoted(executable)} @arguments '
+          r'2> $tempStderrPath | Out-File -LiteralPath $stdoutPath '
+          r'-Encoding utf8 -Width 20000',
+      r'  $exitCode = if ($null -eq $global:LASTEXITCODE) '
+          r'{ 0 } else { $global:LASTEXITCODE }',
+      r'  if (Test-Path -LiteralPath $tempStderrPath) {',
+      r'    Get-Content -LiteralPath $tempStderrPath -Raw '
+          r'-ErrorAction SilentlyContinue | Out-File '
+          r'-LiteralPath $stderrPath -Encoding utf8 -Width 20000',
+      r'  }',
+      r'  if (-not (Test-Path -LiteralPath $stderrPath)) {',
+      r"    [System.IO.File]::WriteAllText($stderrPath, '', $utf8NoBom)",
+      r'  }',
+      r'} catch {',
+      r'  $_ | Out-String | Out-File -LiteralPath $stderrPath '
+          r'-Encoding utf8 -Width 20000',
+      r'  $exitCode = 1',
+      r'} finally {',
+      r'  Remove-Item -LiteralPath $tempStderrPath -Force '
+          r'-ErrorAction SilentlyContinue',
+      r'}',
+      r'exit $exitCode',
+    ].join('; ');
+  }
+
+  String _buildElevatedParentCommand({
+    required String powerShell,
+    required String encodedChildCommand,
+  }) {
+    final argumentList = <String>[
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-EncodedCommand',
+      encodedChildCommand,
+    ].map(_powerShellSingleQuoted).join(', ');
+    return <String>[
+      r"$ErrorActionPreference = 'Stop'",
+      r'$process = Start-Process '
+          '-FilePath ${_powerShellSingleQuoted(powerShell)} '
+          "-ArgumentList @($argumentList) "
+          r'-Verb RunAs -Wait -PassThru -WindowStyle Hidden',
+      r'if ($null -ne $process.ExitCode) { exit $process.ExitCode }',
+      r'exit 0',
+    ].join('; ');
+  }
+
   Future<String?> _resolveExplicitExecutablePath(String executable) async {
     final file = File(executable);
     if (await file.exists()) {
@@ -449,7 +657,7 @@ class ShellExecutor {
     }
 
     try {
-      return _utf8.decode(output);
+      return _stripUtf8Bom(_utf8.decode(output));
     } catch (_) {
       return systemEncoding.decode(output);
     }
@@ -534,8 +742,53 @@ class ShellExecutor {
     return '$output\n\n$message';
   }
 
+  String _mergeOutput(List<String> parts) {
+    return parts
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .join('\n\n');
+  }
+
+  String _stripUtf8Bom(String value) {
+    if (value.startsWith('\uFEFF')) {
+      return value.substring(1);
+    }
+    return value;
+  }
+
+  Future<String> _readOutputFile(File file) async {
+    try {
+      if (!await file.exists()) {
+        return '';
+      }
+      return _decodeProcessOutput(await file.readAsBytes());
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> _deleteIfExists(File file) async {
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
   String _escapePowerShellSingleQuoted(String value) {
     return value.replaceAll("'", "''");
+  }
+
+  String _powerShellSingleQuoted(String value) {
+    return "'${_escapePowerShellSingleQuoted(value)}'";
+  }
+
+  String _encodePowerShellCommand(String command) {
+    final bytes = ByteData(command.length * 2);
+    for (var i = 0; i < command.length; i++) {
+      bytes.setUint16(i * 2, command.codeUnitAt(i), Endian.little);
+    }
+    return base64Encode(bytes.buffer.asUint8List());
   }
 
   Future<_ExecutableSearchEnvironment> _executableSearchEnvironment() async {

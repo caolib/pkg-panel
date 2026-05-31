@@ -34,8 +34,14 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
     );
   }
 
-  Future<void> _runCommandWithFeedback(PackageCommand command) async {
-    final result = await widget.controller.runCommand(command);
+  Future<void> _runCommandWithFeedback(
+    PackageCommand command, {
+    bool runAsAdministrator = false,
+  }) async {
+    final result = await widget.controller.runCommand(
+      command,
+      runAsAdministrator: runAsAdministrator,
+    );
     if (!mounted) {
       return;
     }
@@ -194,7 +200,9 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final compact = constraints.maxWidth < 900;
-                    final borderRadius = BorderRadius.circular(18);
+                    final borderRadius = BorderRadius.circular(8);
+                    final columnWidths =
+                        widget.controller.installSearchTableColumnWidths;
                     return Container(
                       decoration: BoxDecoration(
                         color: theme.colorScheme.surface,
@@ -211,8 +219,10 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                           : Column(
                               children: <Widget>[
                                 _SearchPackageHeaderRow(
+                                  controller: widget.controller,
                                   compact: compact,
                                   count: results.length,
+                                  columnWidths: columnWidths,
                                 ),
                                 Expanded(
                                   child: ListView.separated(
@@ -226,6 +236,7 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                                         package: results[index],
                                         controller: widget.controller,
                                         compact: compact,
+                                        columnWidths: columnWidths,
                                         onInstall: _runCommandWithFeedback,
                                       );
                                     },
@@ -267,10 +278,17 @@ class _InstallSearchEmpty extends StatelessWidget {
 }
 
 class _SearchPackageHeaderRow extends StatelessWidget {
-  const _SearchPackageHeaderRow({required this.compact, required this.count});
+  const _SearchPackageHeaderRow({
+    required this.controller,
+    required this.compact,
+    required this.count,
+    required this.columnWidths,
+  });
 
+  final PackagePanelController controller;
   final bool compact;
   final int count;
+  final InstallSearchTableColumnWidths columnWidths;
 
   @override
   Widget build(BuildContext context) {
@@ -283,7 +301,7 @@ class _SearchPackageHeaderRow extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: compact
@@ -294,27 +312,24 @@ class _SearchPackageHeaderRow extends StatelessWidget {
                 Text(l10n.countLabel(count), style: style),
               ],
             )
-          : Row(
-              children: <Widget>[
-                Expanded(
-                  flex: 5,
-                  child: Text(l10n.packageNameColumn, style: style),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(l10n.versionColumn, style: style),
-                ),
-                Expanded(flex: 3, child: Text(l10n.sourceColumn, style: style)),
-                Expanded(
-                  flex: 5,
-                  child: Text(l10n.extraInfoColumn, style: style),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(l10n.packageManagerColumn, style: style),
+          : _ResizableTableColumns(
+              widths: columnWidths.values,
+              onResize: (boundaryIndex, deltaPixels, availableWidth) {
+                controller.setInstallSearchTableColumnWidths(
+                  controller.installSearchTableColumnWidths.resizeBoundary(
+                    boundaryIndex: boundaryIndex,
+                    deltaPixels: deltaPixels,
+                    availableWidth: availableWidth,
                   ),
+                );
+              },
+              children: <Widget>[
+                Text(l10n.packageNameColumn, style: style),
+                Text(l10n.versionColumn, style: style),
+                Text(l10n.sourceColumn, style: style),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(l10n.packageManagerColumn, style: style),
                 ),
               ],
             ),
@@ -327,13 +342,15 @@ class _SearchPackageListTile extends StatelessWidget {
     required this.package,
     required this.controller,
     required this.compact,
+    required this.columnWidths,
     required this.onInstall,
   });
 
   final SearchPackage package;
   final PackagePanelController controller;
   final bool compact;
-  final Future<void> Function(PackageCommand command) onInstall;
+  final InstallSearchTableColumnWidths columnWidths;
+  final _RunPackageCommand onInstall;
 
   @override
   Widget build(BuildContext context) {
@@ -351,6 +368,7 @@ class _SearchPackageListTile extends StatelessWidget {
         ? Row(
             children: <Widget>[
               Expanded(
+                flex: 5,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
@@ -386,51 +404,7 @@ class _SearchPackageListTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              Wrap(spacing: 6, runSpacing: 6, children: icons),
-            ],
-          )
-        : Row(
-            children: <Widget>[
-              Expanded(
-                flex: 5,
-                child: Text(
-                  package.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  package.version ?? '-',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Expanded(
-                flex: 3,
-                child: Text(
-                  source,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 5,
-                child: Text(
-                  extra.isEmpty ? '-' : extra,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Expanded(
+              Flexible(
                 flex: 2,
                 child: Align(
                   alignment: Alignment.centerRight,
@@ -440,6 +414,39 @@ class _SearchPackageListTile extends StatelessWidget {
                     runSpacing: 6,
                     children: icons,
                   ),
+                ),
+              ),
+            ],
+          )
+        : _TableColumns(
+            widths: columnWidths.values,
+            children: <Widget>[
+              Text(
+                package.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                package.version ?? '-',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                source,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: icons,
                 ),
               ),
             ],
@@ -521,11 +528,12 @@ class _SearchPackageListTile extends StatelessWidget {
             enabled: enabled,
             onPressed: !enabled
                 ? null
-                : () => _showInstallOptionsDialog(
+                : (runAsAdministrator) => _showInstallOptionsDialog(
                     context: context,
                     controller: controller,
                     option: option,
                     startWithVersionSearch: canOpenInstalledAction,
+                    runAsAdministrator: runAsAdministrator,
                     onInstall: onInstall,
                   ),
           );
@@ -536,6 +544,7 @@ class _SearchPackageListTile extends StatelessWidget {
       context: context,
       globalPosition: globalPosition,
       items: items,
+      hint: l10n.contextMenuAdminHint,
     );
   }
 }
@@ -621,32 +630,46 @@ String _searchPackageExtraLine(BuildContext context, SearchPackage package) {
 }
 
 String _extraLine(BuildContext context, ManagedPackage package) {
-  final parts = <String>[
-    if (package.notes != null && package.notes!.trim().isNotEmpty)
-      package.notes!,
-    if (package.latestVersionCheckedAt != null)
-      context.l10n.lastCheckedAtValue(
-        _formatCheckedAt(package.latestVersionCheckedAt!),
-      ),
-  ];
-  return parts.join(' · ');
+  final checkedAt = package.latestVersionCheckedAt;
+  if (checkedAt == null) {
+    return '';
+  }
+  return _formatRelativeCheckedAt(context, checkedAt);
 }
 
-String _formatCheckedAt(DateTime value) {
-  final local = value.toLocal();
-  final year = local.year.toString().padLeft(4, '0');
-  final month = local.month.toString().padLeft(2, '0');
-  final day = local.day.toString().padLeft(2, '0');
-  final hour = local.hour.toString().padLeft(2, '0');
-  final minute = local.minute.toString().padLeft(2, '0');
-  return '$year-$month-$day $hour:$minute';
+String _formatRelativeCheckedAt(BuildContext context, DateTime value) {
+  final difference = DateTime.now().difference(value.toLocal());
+  final l10n = context.l10n;
+  if (difference.isNegative || difference < const Duration(minutes: 1)) {
+    return l10n.relativeTimeJustNow;
+  }
+  if (difference < const Duration(hours: 1)) {
+    return l10n.relativeTimeMinutesAgo(difference.inMinutes);
+  }
+  if (difference < const Duration(days: 1)) {
+    return l10n.relativeTimeHoursAgo(difference.inHours);
+  }
+  if (difference < const Duration(days: 7)) {
+    return l10n.relativeTimeDaysAgo(difference.inDays);
+  }
+  if (difference < const Duration(days: 30)) {
+    return l10n.relativeTimeWeeksAgo(math.max(1, difference.inDays ~/ 7));
+  }
+  if (difference < const Duration(days: 365)) {
+    return l10n.relativeTimeMonthsAgo(math.max(1, difference.inDays ~/ 30));
+  }
+  return l10n.relativeTimeYearsAgo(math.max(1, difference.inDays ~/ 365));
 }
 
-bool _isRangeSelectionPressed() {
+bool _isShiftPressed() {
   final keys = HardwareKeyboard.instance.logicalKeysPressed;
   return keys.contains(LogicalKeyboardKey.shiftLeft) ||
       keys.contains(LogicalKeyboardKey.shiftRight);
 }
+
+bool _isRangeSelectionPressed() => _isShiftPressed();
+
+bool _isAdministratorLaunchPressed() => _isShiftPressed();
 
 bool _isAdditiveSelectionPressed() {
   final keys = HardwareKeyboard.instance.logicalKeysPressed;

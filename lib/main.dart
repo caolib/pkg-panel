@@ -9,7 +9,7 @@ import 'package:pkg_panel/src/services/shell_executor.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  const managerSettingsStore = PackageManagerSettingsStore();
+  final managerSettingsStore = PackageManagerSettingsStore();
   const snapshotStore = PackageSnapshotStore();
   final initialVisibleManagerIds = await managerSettingsStore
       .loadVisibleManagerIds();
@@ -21,6 +21,10 @@ Future<void> main() async {
       .loadCustomManagerIconPaths();
   final initialCustomManagerDisplayNames = await managerSettingsStore
       .loadCustomManagerDisplayNames();
+  final initialLocalPackageTableColumnWidths = await managerSettingsStore
+      .loadLocalPackageTableColumnWidths();
+  final initialInstallSearchTableColumnWidths = await managerSettingsStore
+      .loadInstallSearchTableColumnWidths();
   final initialLocaleCode = await managerSettingsStore.loadLocaleCode();
   final initialThemePaletteId = await managerSettingsStore.loadThemePaletteId();
   final initialThemeModeName = await managerSettingsStore.loadThemeModeName();
@@ -54,6 +58,9 @@ Future<void> main() async {
     initialManagerOrderIds: initialManagerOrderIds,
     initialCustomManagerIconPaths: initialCustomManagerIconPaths,
     initialCustomManagerDisplayNames: initialCustomManagerDisplayNames,
+    initialLocalPackageTableColumnWidths: initialLocalPackageTableColumnWidths,
+    initialInstallSearchTableColumnWidths:
+        initialInstallSearchTableColumnWidths,
     initialLocale: switch (initialLocaleCode) {
       'en' => const Locale('en'),
       _ => const Locale('zh'),

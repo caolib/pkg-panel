@@ -208,6 +208,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get buttonBatchUpdate => '批量更新';
 
   @override
+  String startupUpdateCheckingStatus(int current, int total, int updates) {
+    return '当前 $current/$total 个包 -> $updates 个可更新';
+  }
+
+  @override
+  String startupUpdateCompleteStatus(int processed, int total, int updates) {
+    return '启动检查完成：$processed/$total · $updates 个可更新';
+  }
+
+  @override
+  String startupUpdateIssueSummary(int failed, int skipped) {
+    return '$failed 失败 · $skipped 跳过';
+  }
+
+  @override
   String get buttonGitHubRepo => 'GitHub 仓库';
 
   @override
@@ -256,7 +271,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String visiblePackageCount(int count) {
-    return '当前 $count 个包';
+    return '$count';
   }
 
   @override
@@ -285,6 +300,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get latestVersionColumn => '最新版本';
+
+  @override
+  String get lastCheckedAtColumn => '检查时间';
 
   @override
   String get extraInfoColumn => '附加信息';
@@ -330,6 +348,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get confirmRunCommandBody => '将执行下面的命令：';
+
+  @override
+  String get confirmRunCommandAdminNotice => '该命令将以管理员身份运行。';
+
+  @override
+  String get contextMenuAdminHint => '按住 Shift 点击命令可用管理员身份运行。';
 
   @override
   String get copyToClipboardSuccess => '已复制到剪贴板。';
@@ -803,7 +827,40 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String get relativeTimeJustNow => '刚刚';
+
+  @override
+  String relativeTimeMinutesAgo(int count) {
+    return '$count 分钟前';
+  }
+
+  @override
+  String relativeTimeHoursAgo(int count) {
+    return '$count 小时前';
+  }
+
+  @override
+  String relativeTimeDaysAgo(int count) {
+    return '$count 天前';
+  }
+
+  @override
+  String relativeTimeWeeksAgo(int count) {
+    return '$count 周前';
+  }
+
+  @override
+  String relativeTimeMonthsAgo(int count) {
+    return '$count 个月前';
+  }
+
+  @override
+  String relativeTimeYearsAgo(int count) {
+    return '$count 年前';
+  }
+
+  @override
   String lastCheckedAtValue(String value) {
-    return '上次检查 $value';
+    return '$value';
   }
 }

@@ -1,5 +1,8 @@
 part of '../app.dart';
 
+typedef _RunPackageCommand =
+    Future<void> Function(PackageCommand command, {bool runAsAdministrator});
+
 class PackagePanelHome extends StatefulWidget {
   const PackagePanelHome({
     super.key,
@@ -23,6 +26,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   int _currentSettingsTabIndex = 0;
   bool _hasQueuedStartupUpdateCheck = false;
   bool _isRunningCommandToastCollapsed = false;
+  Timer? _relativeTimeRefreshTimer;
 
   @override
   void initState() {
@@ -34,13 +38,26 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     _searchController = TextEditingController(
       text: widget.controller.searchQuery,
     );
+    _relativeTimeRefreshTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
 
     if (widget.autoLoad) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.controller.ensureLoaded();
+        unawaited(_loadAndCheckStartupUpdates());
         _queueStartupUpdateCheck();
       });
     }
+  }
+
+  Future<void> _loadAndCheckStartupUpdates() async {
+    await widget.controller.ensureLoaded(waitForRefresh: true);
+    if (!mounted) {
+      return;
+    }
+    await widget.controller.checkStartupLatestVersions();
   }
 
   void _queueStartupUpdateCheck() {
@@ -63,6 +80,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
   void dispose() {
     _tabController.removeListener(_handleTabSelectionChanged);
     _settingsTabController.removeListener(_handleSettingsTabSelectionChanged);
+    _relativeTimeRefreshTimer?.cancel();
     _tabController.dispose();
     _settingsTabController.dispose();
     _searchController.dispose();
@@ -247,18 +265,27 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
     _showCompactSnackBar(context, context.l10n.cancelRequested);
   }
 
-  Future<void> _confirmAndRunCommand(PackageCommand command) async {
+  Future<void> _confirmAndRunCommand(
+    PackageCommand command, {
+    bool runAsAdministrator = false,
+  }) async {
     final shouldRun =
         await showDialog<bool>(
           context: context,
-          builder: (context) => _CommandDialog(command: command),
+          builder: (context) => _CommandDialog(
+            command: command,
+            runAsAdministrator: runAsAdministrator,
+          ),
         ) ??
         false;
     if (!shouldRun || !mounted) {
       return;
     }
 
-    final result = await widget.controller.runCommand(command);
+    final result = await widget.controller.runCommand(
+      command,
+      runAsAdministrator: runAsAdministrator,
+    );
     if (!mounted) {
       return;
     }
@@ -614,6 +641,7 @@ class _ActionBar extends StatelessWidget {
         controller.canBatchCheckLatestForCurrentSelection;
     final isBatchCheckingLatest =
         controller.isBatchCheckingLatestForCurrentSelection;
+    final startupStatus = controller.startupUpdateCheckStatus;
     final hasLoadErrors = controller.errorManagers > 0;
     final visibleCount = controller.visiblePackages.length;
     final showBatchUpdate =
@@ -648,14 +676,14 @@ class _ActionBar extends StatelessWidget {
                 ],
               ),
             ),
-            FilledButton.icon(
+            IconButton.filled(
               onPressed: controller.isRefreshingCurrentSelection
                   ? null
                   : onRefreshAll,
               icon: controller.isRefreshingCurrentSelection
                   ? const _BusyIndicator(size: 16)
                   : const Icon(Icons.sync),
-              label: Text(l10n.buttonRefresh),
+              tooltip: l10n.buttonRefresh,
             ),
             if (hasLoadErrors)
               FilledButton.tonalIcon(
@@ -681,6 +709,8 @@ class _ActionBar extends StatelessWidget {
                 icon: const Icon(Icons.system_update_alt),
                 label: Text(l10n.buttonBatchUpdate),
               ),
+            if (startupStatus.isVisible)
+              _StartupUpdateStatusChip(status: startupStatus),
             Chip(
               avatar: const Icon(Icons.inventory_2_outlined, size: 18),
               label: Text(l10n.visiblePackageCount(visibleCount)),
@@ -689,6 +719,60 @@ class _ActionBar extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _StartupUpdateStatusChip extends StatelessWidget {
+  const _StartupUpdateStatusChip({required this.status});
+
+  final StartupUpdateCheckStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = _statusLabel(context);
+    final icon = status.isRunning
+        ? const _BusyIndicator(size: 18)
+        : Icon(
+            status.hasIssues
+                ? Icons.warning_amber_outlined
+                : Icons.check_circle_outline,
+            size: 18,
+            color: status.hasIssues
+                ? theme.colorScheme.tertiary
+                : theme.colorScheme.primary,
+          );
+    return Tooltip(
+      message: label,
+      child: Chip(
+        avatar: icon,
+        label: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ),
+    );
+  }
+
+  String _statusLabel(BuildContext context) {
+    final l10n = context.l10n;
+    if (status.isRunning) {
+      return l10n.startupUpdateCheckingStatus(
+        status.processedPackages,
+        status.totalPackages,
+        status.updatedPackages,
+      );
+    }
+
+    final base = l10n.startupUpdateCompleteStatus(
+      status.processedManagers,
+      status.totalManagers,
+      status.updatedPackages,
+    );
+    if (!status.hasIssues) {
+      return base;
+    }
+    return '$base · ${l10n.startupUpdateIssueSummary(status.failedManagers, status.skippedManagers)}';
   }
 }
 
@@ -764,7 +848,7 @@ class _PackageListView extends StatelessWidget {
   });
 
   final PackagePanelController controller;
-  final Future<void> Function(PackageCommand command) onRunAction;
+  final _RunPackageCommand onRunAction;
   final Future<void> Function() onOpenSettings;
   final Future<void> Function() onShowLoadErrors;
 
@@ -776,7 +860,8 @@ class _PackageListView extends StatelessWidget {
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 600;
         final theme = Theme.of(context);
-        final borderRadius = BorderRadius.circular(18);
+        final borderRadius = BorderRadius.circular(8);
+        final columnWidths = controller.localPackageTableColumnWidths;
 
         return Container(
           decoration: BoxDecoration(
@@ -796,9 +881,11 @@ class _PackageListView extends StatelessWidget {
               : Column(
                   children: <Widget>[
                     _PackageHeaderRow(
+                      controller: controller,
                       compact: compact,
                       count: packages.length,
                       selectedCount: controller.selectedPackageCount,
+                      columnWidths: columnWidths,
                     ),
                     Expanded(
                       child: ListView.builder(
@@ -820,6 +907,7 @@ class _PackageListView extends StatelessWidget {
                               controller: controller,
                               onRunAction: onRunAction,
                               compact: compact,
+                              columnWidths: columnWidths,
                             ),
                           );
                         },
@@ -835,14 +923,18 @@ class _PackageListView extends StatelessWidget {
 
 class _PackageHeaderRow extends StatelessWidget {
   const _PackageHeaderRow({
+    required this.controller,
     required this.compact,
     required this.count,
     required this.selectedCount,
+    required this.columnWidths,
   });
 
+  final PackagePanelController controller;
   final bool compact;
   final int count;
   final int selectedCount;
+  final LocalPackageTableColumnWidths columnWidths;
 
   @override
   Widget build(BuildContext context) {
@@ -855,7 +947,7 @@ class _PackageHeaderRow extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: compact
@@ -871,28 +963,168 @@ class _PackageHeaderRow extends StatelessWidget {
                 ),
               ],
             )
-          : Row(
+          : _ResizableTableColumns(
+              widths: columnWidths.values,
+              onResize: (boundaryIndex, deltaPixels, availableWidth) {
+                controller.setLocalPackageTableColumnWidths(
+                  controller.localPackageTableColumnWidths.resizeBoundary(
+                    boundaryIndex: boundaryIndex,
+                    deltaPixels: deltaPixels,
+                    availableWidth: availableWidth,
+                  ),
+                );
+              },
               children: <Widget>[
-                Expanded(
-                  flex: 5,
-                  child: Text(l10n.packageNameColumn, style: style),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(l10n.currentVersionColumn, style: style),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(l10n.latestVersionColumn, style: style),
-                ),
-                Expanded(
-                  flex: 8,
-                  child: Text(l10n.extraInfoColumn, style: style),
-                ),
+                Text(l10n.packageNameColumn, style: style),
+                Text(l10n.currentVersionColumn, style: style),
+                Text(l10n.latestVersionColumn, style: style),
+                Text(l10n.lastCheckedAtColumn, style: style),
               ],
             ),
     );
   }
+}
+
+typedef _ColumnResizeCallback =
+    void Function(int boundaryIndex, double deltaPixels, double availableWidth);
+
+class _ResizableTableColumns extends StatelessWidget {
+  const _ResizableTableColumns({
+    required this.widths,
+    required this.children,
+    required this.onResize,
+  });
+
+  final List<double> widths;
+  final List<Widget> children;
+  final _ColumnResizeCallback onResize;
+
+  static const double _handleWidth = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!_hasUsableTableWidth(constraints.maxWidth, widths, children)) {
+          return _TableColumns(widths: widths, children: children);
+        }
+        final columnWidths = _resolveTableColumnWidths(
+          widths,
+          constraints.maxWidth,
+        );
+        var offset = 0.0;
+        final boundaryOffsets = <double>[];
+        for (var i = 0; i < columnWidths.length - 1; i++) {
+          offset += columnWidths[i];
+          boundaryOffsets.add(offset);
+        }
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                for (var i = 0; i < children.length; i++)
+                  SizedBox(width: columnWidths[i], child: children[i]),
+              ],
+            ),
+            for (var i = 0; i < boundaryOffsets.length; i++)
+              Positioned(
+                left: (boundaryOffsets[i] - _handleWidth / 2)
+                    .clamp(
+                      0.0,
+                      math.max(0.0, constraints.maxWidth - _handleWidth),
+                    )
+                    .toDouble(),
+                top: 0,
+                bottom: 0,
+                width: _handleWidth,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.resizeLeftRight,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (details) =>
+                        onResize(i, details.delta.dx, constraints.maxWidth),
+                    child: Center(
+                      child: Container(
+                        width: 2,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TableColumns extends StatelessWidget {
+  const _TableColumns({required this.widths, required this.children});
+
+  final List<double> widths;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!_hasUsableTableWidth(constraints.maxWidth, widths, children)) {
+          return Row(
+            children: <Widget>[
+              for (final child in children) Expanded(child: child),
+            ],
+          );
+        }
+        final columnWidths = _resolveTableColumnWidths(
+          widths,
+          constraints.maxWidth,
+        );
+        return Row(
+          children: <Widget>[
+            for (var i = 0; i < children.length; i++)
+              SizedBox(width: columnWidths[i], child: children[i]),
+          ],
+        );
+      },
+    );
+  }
+}
+
+bool _hasUsableTableWidth(
+  double maxWidth,
+  List<double> widths,
+  List<Widget> children,
+) {
+  return maxWidth.isFinite &&
+      maxWidth > 0 &&
+      widths.length == children.length &&
+      widths.every((width) => width.isFinite && width > 0);
+}
+
+List<double> _resolveTableColumnWidths(List<double> weights, double maxWidth) {
+  final total = weights.fold<double>(0, (sum, width) => sum + width);
+  if (total <= 0) {
+    final fallback = maxWidth / weights.length;
+    return List<double>.filled(weights.length, fallback);
+  }
+
+  var usedWidth = 0.0;
+  final columnWidths = <double>[];
+  for (var i = 0; i < weights.length; i++) {
+    final width = i == weights.length - 1
+        ? math.max(0.0, maxWidth - usedWidth)
+        : maxWidth * weights[i] / total;
+    columnWidths.add(width);
+    usedWidth += width;
+  }
+  return columnWidths;
 }
 
 class _PackageListTile extends StatelessWidget {
@@ -901,12 +1133,14 @@ class _PackageListTile extends StatelessWidget {
     required this.controller,
     required this.onRunAction,
     required this.compact,
+    required this.columnWidths,
   });
 
   final ManagedPackage package;
   final PackagePanelController controller;
-  final Future<void> Function(PackageCommand command) onRunAction;
+  final _RunPackageCommand onRunAction;
   final bool compact;
+  final LocalPackageTableColumnWidths columnWidths;
 
   @override
   Widget build(BuildContext context) {
@@ -959,61 +1193,50 @@ class _PackageListTile extends StatelessWidget {
               ),
             ],
           )
-        : Row(
+        : _TableColumns(
+            widths: columnWidths.values,
             children: <Widget>[
-              Expanded(
-                flex: 5,
-                child: Row(
-                  children: <Widget>[
-                    _ManagerIcon(
-                      managerId: package.managerId,
-                      customIconPath: tileState.iconPath,
-                      fallbackIcon: _managerIcon(package.managerId),
-                      fallbackColor: tileState.accent,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        package.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  package.version,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  package.latestVersion ?? '-',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: package.hasUpdate ? theme.colorScheme.primary : null,
-                    fontWeight: package.hasUpdate
-                        ? FontWeight.w700
-                        : FontWeight.w400,
+              Row(
+                children: <Widget>[
+                  _ManagerIcon(
+                    managerId: package.managerId,
+                    customIconPath: tileState.iconPath,
+                    fallbackIcon: _managerIcon(package.managerId),
+                    fallbackColor: tileState.accent,
                   ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      package.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                package.version,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                package.latestVersion ?? '-',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: package.hasUpdate ? theme.colorScheme.primary : null,
+                  fontWeight: package.hasUpdate
+                      ? FontWeight.w700
+                      : FontWeight.w400,
                 ),
               ),
-              Expanded(
-                flex: 8,
-                child: Text(
-                  extra.isEmpty ? '-' : extra,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              Text(
+                extra.isEmpty ? '-' : extra,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -1082,14 +1305,14 @@ class _PackageListTile extends StatelessWidget {
           icon: Icons.info_outline,
           label: l10n.viewDetailsAction,
           enabled: !isLoadingDetails,
-          onPressed: () => _openPackageDetails(context),
+          onPressed: (_) => _openPackageDetails(context),
         ),
       if (canCheckLatest)
         _ContextMenuActionItem(
           icon: Icons.find_replace_outlined,
           label: l10n.checkUpdatesAction,
           enabled: !isCheckingLatest,
-          onPressed: () async {
+          onPressed: (_) async {
             final latestVersion = await controller.checkLatestVersion(package);
             if (!context.mounted) {
               return;
@@ -1133,18 +1356,22 @@ class _PackageListTile extends StatelessWidget {
           icon: Icons.system_update_alt,
           label: package.hasUpdate ? l10n.upgradeAction : l10n.updateAction,
           enabled: !isUpdating,
-          onPressed: () => onRunAction(updateCommand),
+          onPressed: (runAsAdministrator) => onRunAction(
+            updateCommand,
+            runAsAdministrator: runAsAdministrator,
+          ),
         ),
       if (canInstallSpecificVersion)
         _ContextMenuActionItem(
           icon: Icons.pin_outlined,
           label: l10n.installSpecificVersionAction,
           enabled: !isInstallingSpecificVersion,
-          onPressed: () => _showSpecificVersionInstallDialog(
+          onPressed: (runAsAdministrator) => _showSpecificVersionInstallDialog(
             context: context,
             controller: controller,
             option: versionInstallOption,
             onInstall: onRunAction,
+            runAsAdministrator: runAsAdministrator,
           ),
         ),
       if (removeCommand != null)
@@ -1152,7 +1379,10 @@ class _PackageListTile extends StatelessWidget {
           icon: Icons.delete_outline,
           label: l10n.removeAction,
           enabled: !isRemoving,
-          onPressed: () => onRunAction(removeCommand),
+          onPressed: (runAsAdministrator) => onRunAction(
+            removeCommand,
+            runAsAdministrator: runAsAdministrator,
+          ),
         ),
     ];
 
@@ -1160,6 +1390,7 @@ class _PackageListTile extends StatelessWidget {
       context: context,
       globalPosition: globalPosition,
       items: items,
+      hint: l10n.contextMenuAdminHint,
     );
   }
 
@@ -1214,7 +1445,7 @@ class _ContextMenuActionItem {
   final IconData? icon;
   final Widget? leading;
   final bool enabled;
-  final Future<void> Function()? onPressed;
+  final Future<void> Function(bool runAsAdministrator)? onPressed;
 }
 
 class _DesktopContextMenu {
@@ -1228,6 +1459,7 @@ class _DesktopContextMenu {
     required BuildContext context,
     required Offset globalPosition,
     required List<_ContextMenuActionItem> items,
+    String? hint,
   }) {
     hide();
     if (items.isEmpty) {
@@ -1241,8 +1473,9 @@ class _DesktopContextMenu {
 
     final overlay = Overlay.of(context, rootOverlay: true);
     final renderBox = overlay.context.findRenderObject() as RenderBox;
-    final width = _estimateWidth(items);
-    final estimatedHeight = items.length * 40.0 + 16.0;
+    final width = _estimateWidth(items, hint: hint);
+    final estimatedHeight =
+        items.length * 40.0 + 16.0 + (hint == null ? 0 : 34);
     final left = globalPosition.dx.clamp(
       8.0,
       renderBox.size.width - width - 8.0,
@@ -1279,17 +1512,27 @@ class _DesktopContextMenu {
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
-                  children: items
-                      .map(
-                        (item) => _DesktopContextMenuItem(
-                          item: item,
-                          onPressed: () async {
-                            hide();
-                            await item.onPressed?.call();
-                          },
-                        ),
-                      )
-                      .toList(growable: false),
+                  children: <Widget>[
+                    ...items.map(
+                      (item) => _DesktopContextMenuItem(
+                        item: item,
+                        onPressed: () async {
+                          final runAsAdministrator =
+                              _isAdministratorLaunchPressed();
+                          hide();
+                          await item.onPressed?.call(runAsAdministrator);
+                        },
+                      ),
+                    ),
+                    if (hint != null) ...<Widget>[
+                      Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: theme.colorScheme.outlineVariant,
+                      ),
+                      _DesktopContextMenuHint(text: hint),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -1300,13 +1543,18 @@ class _DesktopContextMenu {
     overlay.insert(_entry!);
   }
 
-  static double _estimateWidth(List<_ContextMenuActionItem> items) {
+  static double _estimateWidth(
+    List<_ContextMenuActionItem> items, {
+    String? hint,
+  }) {
     final maxLabelLength = items.fold<int>(
       0,
       (maxValue, item) =>
           item.label.length > maxValue ? item.label.length : maxValue,
     );
-    return (maxLabelLength * 14.0 + 76.0).clamp(148.0, 260.0);
+    final actionWidth = maxLabelLength * 14.0 + 76.0;
+    final hintWidth = hint == null ? 0.0 : hint.length * 7.5 + 42.0;
+    return math.max(actionWidth, hintWidth).clamp(148.0, 360.0);
   }
 
   static void hide() {
@@ -1360,6 +1608,40 @@ class _DesktopContextMenuItem extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DesktopContextMenuHint extends StatelessWidget {
+  const _DesktopContextMenuHint({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 7),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            Icons.admin_panel_settings_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1636,9 +1918,13 @@ class _AssetManagerIcon extends StatelessWidget {
 }
 
 class _CommandDialog extends StatelessWidget {
-  const _CommandDialog({required this.command});
+  const _CommandDialog({
+    required this.command,
+    required this.runAsAdministrator,
+  });
 
   final PackageCommand command;
+  final bool runAsAdministrator;
 
   @override
   Widget build(BuildContext context) {
@@ -1650,6 +1936,10 @@ class _CommandDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(l10n.confirmRunCommandBody),
+          if (runAsAdministrator) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(l10n.confirmRunCommandAdminNotice),
+          ],
           const SizedBox(height: 12),
           _CommandPreview(command: command.command),
         ],
@@ -1744,7 +2034,8 @@ Future<void> _showInstallOptionsDialog({
   required PackagePanelController controller,
   required SearchPackageInstallOption option,
   bool startWithVersionSearch = false,
-  required Future<void> Function(PackageCommand command) onInstall,
+  bool runAsAdministrator = false,
+  required _RunPackageCommand onInstall,
 }) async {
   final command = await showDialog<PackageCommand>(
     context: context,
@@ -1757,14 +2048,15 @@ Future<void> _showInstallOptionsDialog({
   if (command == null || !context.mounted) {
     return;
   }
-  await onInstall(command);
+  await onInstall(command, runAsAdministrator: runAsAdministrator);
 }
 
 Future<void> _showSpecificVersionInstallDialog({
   required BuildContext context,
   required PackagePanelController controller,
   required SearchPackageInstallOption option,
-  required Future<void> Function(PackageCommand command) onInstall,
+  bool runAsAdministrator = false,
+  required _RunPackageCommand onInstall,
 }) async {
   final version = await showDialog<String>(
     context: context,
@@ -1779,7 +2071,7 @@ Future<void> _showSpecificVersionInstallDialog({
   if (command == null) {
     return;
   }
-  await onInstall(command);
+  await onInstall(command, runAsAdministrator: runAsAdministrator);
 }
 
 class _InstallOptionsDialog extends StatefulWidget {

@@ -488,6 +488,24 @@ abstract class AppLocalizations {
   /// **'批量更新'**
   String get buttonBatchUpdate;
 
+  /// No description provided for @startupUpdateCheckingStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前 {current}/{total} 个包 -> {updates} 个可更新'**
+  String startupUpdateCheckingStatus(int current, int total, int updates);
+
+  /// No description provided for @startupUpdateCompleteStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动检查完成：{processed}/{total} · {updates} 个可更新'**
+  String startupUpdateCompleteStatus(int processed, int total, int updates);
+
+  /// No description provided for @startupUpdateIssueSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'{failed} 失败 · {skipped} 跳过'**
+  String startupUpdateIssueSummary(int failed, int skipped);
+
   /// No description provided for @buttonGitHubRepo.
   ///
   /// In zh, this message translates to:
@@ -581,7 +599,7 @@ abstract class AppLocalizations {
   /// No description provided for @visiblePackageCount.
   ///
   /// In zh, this message translates to:
-  /// **'当前 {count} 个包'**
+  /// **'{count}'**
   String visiblePackageCount(int count);
 
   /// No description provided for @managerLoadFailedSuffix.
@@ -625,6 +643,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'最新版本'**
   String get latestVersionColumn;
+
+  /// No description provided for @lastCheckedAtColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查时间'**
+  String get lastCheckedAtColumn;
 
   /// No description provided for @extraInfoColumn.
   ///
@@ -715,6 +739,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'将执行下面的命令：'**
   String get confirmRunCommandBody;
+
+  /// No description provided for @confirmRunCommandAdminNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'该命令将以管理员身份运行。'**
+  String get confirmRunCommandAdminNotice;
+
+  /// No description provided for @contextMenuAdminHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'按住 Shift 点击命令可用管理员身份运行。'**
+  String get contextMenuAdminHint;
 
   /// No description provided for @copyToClipboardSuccess.
   ///
@@ -1490,10 +1526,52 @@ abstract class AppLocalizations {
   /// **'已安装: {managers}'**
   String installedManagersValue(String managers);
 
+  /// No description provided for @relativeTimeJustNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'刚刚'**
+  String get relativeTimeJustNow;
+
+  /// No description provided for @relativeTimeMinutesAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 分钟前'**
+  String relativeTimeMinutesAgo(int count);
+
+  /// No description provided for @relativeTimeHoursAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 小时前'**
+  String relativeTimeHoursAgo(int count);
+
+  /// No description provided for @relativeTimeDaysAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 天前'**
+  String relativeTimeDaysAgo(int count);
+
+  /// No description provided for @relativeTimeWeeksAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 周前'**
+  String relativeTimeWeeksAgo(int count);
+
+  /// No description provided for @relativeTimeMonthsAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 个月前'**
+  String relativeTimeMonthsAgo(int count);
+
+  /// No description provided for @relativeTimeYearsAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 年前'**
+  String relativeTimeYearsAgo(int count);
+
   /// No description provided for @lastCheckedAtValue.
   ///
   /// In zh, this message translates to:
-  /// **'上次检查 {value}'**
+  /// **'{value}'**
   String lastCheckedAtValue(String value);
 }
 

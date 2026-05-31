@@ -36,6 +36,8 @@ class PackagePanelController extends ChangeNotifier {
     Set<String>? initialManuallyHiddenManagerIds,
     Map<String, String>? initialCustomManagerIconPaths,
     Map<String, String>? initialCustomManagerDisplayNames,
+    LocalPackageTableColumnWidths? initialLocalPackageTableColumnWidths,
+    InstallSearchTableColumnWidths? initialInstallSearchTableColumnWidths,
     Locale? initialLocale,
     String? initialThemePaletteId,
     ThemeMode? initialThemeMode,
@@ -50,7 +52,7 @@ class PackagePanelController extends ChangeNotifier {
     WingetPackageIconResolver? wingetIconResolver,
   }) : _shell = shell,
        _appUpdateService = appUpdateService ?? const AppUpdateService(),
-       _settingsStore = settingsStore ?? const PackageManagerSettingsStore(),
+       _settingsStore = settingsStore ?? PackageManagerSettingsStore(),
        _snapshotStore = snapshotStore ?? const PackageSnapshotStore(),
        _wingetIconResolver =
            wingetIconResolver ?? const WingetPackageIconResolver(),
@@ -73,6 +75,14 @@ class PackagePanelController extends ChangeNotifier {
        _customManagerDisplayNames = Map<String, String>.from(
          initialCustomManagerDisplayNames ?? const <String, String>{},
        ),
+       _localPackageTableColumnWidths =
+           (initialLocalPackageTableColumnWidths ??
+                   LocalPackageTableColumnWidths.defaults)
+               .normalized(),
+       _installSearchTableColumnWidths =
+           (initialInstallSearchTableColumnWidths ??
+                   InstallSearchTableColumnWidths.defaults)
+               .normalized(),
        _locale = _normalizeLocale(initialLocale),
        _themePaletteId = _normalizeThemePaletteId(initialThemePaletteId),
        _customThemeSeedColor = _normalizeThemeSeedColor(
@@ -94,7 +104,11 @@ class PackagePanelController extends ChangeNotifier {
        _hasCachedSnapshots = initialSnapshots != null,
        _hasInitializedManagerVisibility =
            initialVisibleManagerIds != null ||
-           initialManuallyHiddenManagerIds != null {
+           initialManuallyHiddenManagerIds != null,
+       _hasInitializedLocalPackageTableColumnWidths =
+           initialLocalPackageTableColumnWidths != null,
+       _hasInitializedInstallSearchTableColumnWidths =
+           initialInstallSearchTableColumnWidths != null {
     _applyManagerOrder(initialManagerOrderIds ?? const <String>[]);
   }
 
@@ -125,6 +139,8 @@ class PackagePanelController extends ChangeNotifier {
   final Map<String, String> _packageIconPaths = <String, String>{};
   final List<SearchPackage> _searchResults = <SearchPackage>[];
   int _searchRequestId = 0;
+  LocalPackageTableColumnWidths _localPackageTableColumnWidths;
+  InstallSearchTableColumnWidths _installSearchTableColumnWidths;
 
   String _searchQuery = '';
   String _installSearchQuery = '';
@@ -139,8 +155,13 @@ class PackagePanelController extends ChangeNotifier {
   bool _hasCachedSnapshots;
   bool _hasTriggeredInitialRefresh = false;
   bool _hasInitializedManagerVisibility;
+  bool _hasInitializedLocalPackageTableColumnWidths;
+  bool _hasInitializedInstallSearchTableColumnWidths;
   bool _isCheckingAppUpdate = false;
   bool _isBatchCheckingLatestForGroup = false;
+  Future<void>? _initialRefreshFuture;
+  StartupUpdateCheckStatus _startupUpdateCheckStatus =
+      const StartupUpdateCheckStatus.idle();
   Locale _locale;
   String _themePaletteId;
   Color _customThemeSeedColor;
@@ -225,6 +246,15 @@ class PackagePanelController extends ChangeNotifier {
   String get githubMirrorBaseUrl => _githubMirrorBaseUrl;
 
   bool get isCheckingAppUpdate => _isCheckingAppUpdate;
+
+  LocalPackageTableColumnWidths get localPackageTableColumnWidths =>
+      _localPackageTableColumnWidths;
+
+  InstallSearchTableColumnWidths get installSearchTableColumnWidths =>
+      _installSearchTableColumnWidths;
+
+  StartupUpdateCheckStatus get startupUpdateCheckStatus =>
+      _startupUpdateCheckStatus;
 
   String? get customFontFamily =>
       _customFontFamily == null || _customFontFamily!.trim().isEmpty
@@ -750,6 +780,36 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setLocalPackageTableColumnWidths(LocalPackageTableColumnWidths widths) {
+    final normalized = widths.normalized();
+    if (_sameDoubleList(
+      _localPackageTableColumnWidths.values,
+      normalized.values,
+    )) {
+      return;
+    }
+    _localPackageTableColumnWidths = normalized;
+    _hasInitializedLocalPackageTableColumnWidths = true;
+    notifyListeners();
+    unawaited(_settingsStore.saveLocalPackageTableColumnWidths(normalized));
+  }
+
+  void setInstallSearchTableColumnWidths(
+    InstallSearchTableColumnWidths widths,
+  ) {
+    final normalized = widths.normalized();
+    if (_sameDoubleList(
+      _installSearchTableColumnWidths.values,
+      normalized.values,
+    )) {
+      return;
+    }
+    _installSearchTableColumnWidths = normalized;
+    _hasInitializedInstallSearchTableColumnWidths = true;
+    notifyListeners();
+    unawaited(_settingsStore.saveInstallSearchTableColumnWidths(normalized));
+  }
+
   Future<AppUpdateInfo> checkForAppUpdate() async {
     if (_isCheckingAppUpdate) {
       throw StateError('正在检查更新，请稍候。');
@@ -1059,23 +1119,35 @@ class PackagePanelController extends ChangeNotifier {
     );
   }
 
-  Future<void> ensureLoaded() async {
+  Future<void> ensureLoaded({bool waitForRefresh = false}) async {
     await _ensureManagerVisibilityInitialized();
     if (_hasTriggeredInitialRefresh) {
       _realignSelection();
       notifyListeners();
+      if (waitForRefresh) {
+        await _initialRefreshFuture;
+      }
       return;
     }
 
     _hasTriggeredInitialRefresh = true;
     _realignSelection();
     notifyListeners();
-    if (_hasCachedSnapshots) {
-      unawaited(loadAll());
+    final refreshFuture = loadAll();
+    _initialRefreshFuture = refreshFuture;
+    unawaited(
+      refreshFuture.whenComplete(() {
+        if (identical(_initialRefreshFuture, refreshFuture)) {
+          _initialRefreshFuture = null;
+        }
+      }),
+    );
+    if (_hasCachedSnapshots && !waitForRefresh) {
+      unawaited(refreshFuture);
       return;
     }
 
-    await loadAll();
+    await refreshFuture;
   }
 
   Future<void> loadAll() async {
@@ -1153,7 +1225,13 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final packages = await capability.listPackages(_shell);
+      final loadedPackages = await capability.listPackages(_shell);
+      final refreshedAt = DateTime.now();
+      final packages = _applyLoadCheckedAt(
+        adapter,
+        loadedPackages,
+        refreshedAt,
+      );
       await _resolvePackageIcons(adapter.definition.id, packages);
       _setSnapshot(
         adapter.definition.id,
@@ -1161,7 +1239,7 @@ class PackagePanelController extends ChangeNotifier {
           packages: packages,
           loadState: ManagerLoadState.ready,
           clearError: true,
-          lastRefreshedAt: DateTime.now(),
+          lastRefreshedAt: refreshedAt,
         ),
       );
       _pushActivity(
@@ -1792,7 +1870,153 @@ class PackagePanelController extends ChangeNotifier {
     }
   }
 
-  Future<ShellResult> runCommand(PackageCommand command) async {
+  Future<void> checkStartupLatestVersions() async {
+    if (_startupUpdateCheckStatus.isRunning ||
+        _startupUpdateCheckStatus.phase == StartupUpdateCheckPhase.complete) {
+      return;
+    }
+
+    await _ensureManagerVisibilityInitialized();
+    final targets = _startupLatestVersionTargets();
+    var processedManagers = 0;
+    var processedPackages = 0;
+    var failedManagers = 0;
+    var skippedManagers = 0;
+    final totalPackages = targets.fold<int>(
+      0,
+      (sum, target) => sum + target.packages.length,
+    );
+
+    _startupUpdateCheckStatus = StartupUpdateCheckStatus(
+      phase: StartupUpdateCheckPhase.running,
+      totalManagers: targets.length,
+      totalPackages: totalPackages,
+      updatedPackages: _startupUpdateCandidateCount(),
+    );
+    _pushActivity(
+      ActivityEntry(
+        timestamp: DateTime.now(),
+        title: '启动检查更新',
+        message: targets.isEmpty
+            ? '没有需要额外检查更新的包管理器。'
+            : '准备检查 ${targets.length} 个包管理器的全局包更新。',
+      ),
+    );
+    notifyListeners();
+
+    if (targets.isEmpty) {
+      _startupUpdateCheckStatus = _startupUpdateCheckStatus.copyWith(
+        phase: StartupUpdateCheckPhase.complete,
+        updatedPackages: _startupUpdateCandidateCount(),
+      );
+      notifyListeners();
+      return;
+    }
+
+    for (final target in targets) {
+      final managerName = displayNameForManagerId(target.managerId);
+      _startupUpdateCheckStatus = _startupUpdateCheckStatus.copyWith(
+        currentManagerName: managerName,
+        processedPackages: processedPackages,
+        totalPackages: totalPackages,
+        updatedPackages: _startupUpdateCandidateCount(),
+      );
+      notifyListeners();
+
+      try {
+        final prerequisiteCommand =
+            target.capability is BatchLatestVersionPrerequisiteCapability
+            ? await (target.capability
+                      as BatchLatestVersionPrerequisiteCapability)
+                  .batchLatestVersionPrerequisiteCommand(
+                    _shell,
+                    target.packages,
+                  )
+            : null;
+        if (prerequisiteCommand != null) {
+          skippedManagers += 1;
+          _pushActivity(
+            ActivityEntry(
+              timestamp: DateTime.now(),
+              title: '已跳过 $managerName 启动检查',
+              message: '需要先执行 ${prerequisiteCommand.command}。',
+            ),
+          );
+          continue;
+        }
+
+        final busyKey = _batchLatestBusyKey(target.managerId);
+        if (_runningCommands.contains(busyKey)) {
+          skippedManagers += 1;
+          continue;
+        }
+
+        final packageBusyKeys = target.packages
+            .map(_latestVersionBusyKey)
+            .toList(growable: false);
+        _runningCommands.add(busyKey);
+        _runningCommands.addAll(packageBusyKeys);
+        notifyListeners();
+
+        try {
+          await _checkLatestVersionsInBatch(target.packages, target.capability);
+        } finally {
+          _runningCommands.remove(busyKey);
+          _runningCommands.removeAll(packageBusyKeys);
+          notifyListeners();
+        }
+      } catch (error) {
+        failedManagers += 1;
+        _pushActivity(
+          ActivityEntry(
+            timestamp: DateTime.now(),
+            title: '$managerName 启动检查更新失败',
+            message: '$error',
+            isError: true,
+          ),
+        );
+      } finally {
+        processedManagers += 1;
+        processedPackages += target.packages.length;
+        _startupUpdateCheckStatus = _startupUpdateCheckStatus.copyWith(
+          processedManagers: processedManagers,
+          processedPackages: processedPackages,
+          totalPackages: totalPackages,
+          updatedPackages: _startupUpdateCandidateCount(),
+          failedManagers: failedManagers,
+          skippedManagers: skippedManagers,
+        );
+        notifyListeners();
+      }
+    }
+
+    _startupUpdateCheckStatus = _startupUpdateCheckStatus.copyWith(
+      phase: StartupUpdateCheckPhase.complete,
+      processedManagers: processedManagers,
+      processedPackages: processedPackages,
+      totalPackages: totalPackages,
+      updatedPackages: _startupUpdateCandidateCount(),
+      failedManagers: failedManagers,
+      skippedManagers: skippedManagers,
+      clearCurrentManagerName: true,
+    );
+    _pushActivity(
+      ActivityEntry(
+        timestamp: DateTime.now(),
+        title: '启动检查更新完成',
+        message:
+            '已处理 $processedManagers/${targets.length} 个包管理器，'
+            '发现 ${_startupUpdateCandidateCount()} 个可更新包。',
+        isError: failedManagers > 0,
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<ShellResult> runCommand(
+    PackageCommand command, {
+    bool runAsAdministrator = false,
+  }) async {
     if (isBusy(command.busyKey)) {
       return const ShellResult(
         exitCode: 125,
@@ -1808,7 +2032,13 @@ class PackagePanelController extends ChangeNotifier {
     if (activeManagerBusyKey != null || hasQueuedManagerCommands) {
       final completer = Completer<ShellResult>();
       (_queuedManagerCommands[command.managerId] ??= <_QueuedPackageCommand>[])
-          .add(_QueuedPackageCommand(command: command, completer: completer));
+          .add(
+            _QueuedPackageCommand(
+              command: command,
+              completer: completer,
+              runAsAdministrator: runAsAdministrator,
+            ),
+          );
       _queuedCommands.add(command.busyKey);
       _queuedCommandInfo[command.busyKey] = RunningCommandInfo(
         busyKey: command.busyKey,
@@ -1827,41 +2057,53 @@ class PackagePanelController extends ChangeNotifier {
       return completer.future;
     }
 
-    return _runCommandNow(command);
+    return _runCommandNow(command, runAsAdministrator: runAsAdministrator);
   }
 
-  Future<ShellResult> _runCommandNow(PackageCommand command) async {
+  Future<ShellResult> _runCommandNow(
+    PackageCommand command, {
+    bool runAsAdministrator = false,
+  }) async {
     _runningCommands.add(command.busyKey);
     _activeManagerCommandBusyKeys[command.managerId] = command.busyKey;
     _runningCommandInfo[command.busyKey] = RunningCommandInfo(
       busyKey: command.busyKey,
       command: command.command,
-      canCancel: true,
+      canCancel: !runAsAdministrator,
     );
+    final activityTitle = runAsAdministrator
+        ? '${command.label}（管理员）'
+        : command.label;
     _pushActivity(
       ActivityEntry(
         timestamp: DateTime.now(),
-        title: command.label,
+        title: activityTitle,
         message: command.command,
       ),
     );
     notifyListeners();
 
     try {
-      final result = await _shell.runRequest(
-        command.request,
-        timeout: command.timeout,
-        executionKey: command.busyKey,
-      );
+      final result = runAsAdministrator
+          ? await _shell.runRequestAsAdministrator(
+              command.request,
+              timeout: command.timeout,
+              executionKey: command.busyKey,
+            )
+          : await _shell.runRequest(
+              command.request,
+              timeout: command.timeout,
+              executionKey: command.busyKey,
+            );
 
       _pushActivity(
         ActivityEntry(
           timestamp: DateTime.now(),
           title: result.isSuccess
-              ? '${command.label} 已完成'
+              ? '$activityTitle 已完成'
               : result.wasCancelled
-              ? '${command.label} 已取消'
-              : '${command.label} 失败',
+              ? '$activityTitle 已取消'
+              : '$activityTitle 失败',
           message: result.wasCancelled
               ? (result.combinedOutput.isEmpty
                     ? '命令已取消。'
@@ -1909,7 +2151,12 @@ class PackagePanelController extends ChangeNotifier {
     notifyListeners();
     unawaited(() async {
       try {
-        next.completer.complete(await _runCommandNow(next.command));
+        next.completer.complete(
+          await _runCommandNow(
+            next.command,
+            runAsAdministrator: next.runAsAdministrator,
+          ),
+        );
       } catch (error, stackTrace) {
         next.completer.completeError(error, stackTrace);
       }
@@ -2038,12 +2285,49 @@ class PackagePanelController extends ChangeNotifier {
     }
   }
 
+  List<ManagedPackage> _applyLoadCheckedAt(
+    PackageManagerAdapter adapter,
+    List<ManagedPackage> packages,
+    DateTime checkedAt,
+  ) {
+    final capability = _capabilityOf<LatestVersionLookupCapability>(adapter);
+    final shouldUseLoadTime =
+        adapter.definition.id == 'winget' || capability == null;
+    if (!shouldUseLoadTime) {
+      return packages;
+    }
+    return packages
+        .map(
+          (package) => package.latestVersionCheckedAt == null
+              ? package.copyWith(latestVersionCheckedAt: checkedAt)
+              : package,
+        )
+        .toList(growable: false);
+  }
+
   void _invalidateVisiblePackagesCache() {
     _visiblePackagesDataStamp += 1;
     _cachedVisiblePackages = null;
   }
 
+  Future<void> _ensureTableColumnWidthsInitialized() async {
+    if (!_hasInitializedLocalPackageTableColumnWidths) {
+      _localPackageTableColumnWidths =
+          (await _settingsStore.loadLocalPackageTableColumnWidths())
+              .normalized();
+      _hasInitializedLocalPackageTableColumnWidths = true;
+    }
+    if (!_hasInitializedInstallSearchTableColumnWidths) {
+      _installSearchTableColumnWidths =
+          (await _settingsStore.loadInstallSearchTableColumnWidths())
+              .normalized();
+      _hasInitializedInstallSearchTableColumnWidths = true;
+    }
+  }
+
   Future<void> _ensureManagerVisibilityInitialized() async {
+    await _ensureTableColumnWidthsInitialized();
+
     if (_hasInitializedManagerVisibility) {
       if (_managerAvailability.isEmpty) {
         _managerAvailability.addAll(await _detectManagerAvailability());
@@ -2228,6 +2512,50 @@ class PackagePanelController extends ChangeNotifier {
       return const <String>{};
     }
     return savedManagerOrderIds.toSet().difference(savedVisibleManagerIds);
+  }
+
+  List<_StartupLatestVersionTarget> _startupLatestVersionTargets() {
+    final targets = <_StartupLatestVersionTarget>[];
+    for (final adapter in _adapters) {
+      final managerId = adapter.definition.id;
+      if (!_shouldLoadManagerForHome(managerId)) {
+        continue;
+      }
+
+      final capability = _capabilityOf<LatestVersionLookupCapability>(adapter);
+      if (capability is! BatchLatestVersionLookupCapability) {
+        continue;
+      }
+
+      final snapshot = _snapshotFor(managerId);
+      if (snapshot.loadState != ManagerLoadState.ready) {
+        continue;
+      }
+
+      final packages = snapshot.packages
+          .where(capability.supportsLatestVersionLookup)
+          .toList(growable: false);
+      if (packages.isEmpty ||
+          !capability.supportsBatchLatestVersionLookup(packages)) {
+        continue;
+      }
+
+      targets.add(
+        _StartupLatestVersionTarget(
+          managerId: managerId,
+          capability: capability,
+          packages: packages,
+        ),
+      );
+    }
+    return targets;
+  }
+
+  int _startupUpdateCandidateCount() {
+    return _homeSnapshots
+        .expand((snapshot) => snapshot.packages)
+        .where((package) => package.hasUpdate)
+        .length;
   }
 
   void _replacePackage(ManagedPackage nextPackage) {
@@ -2941,9 +3269,38 @@ bool _sameStringSet(Set<String> left, Set<String> right) {
   return true;
 }
 
+bool _sameDoubleList(List<double> left, List<double> right) {
+  if (left.length != right.length) {
+    return false;
+  }
+  for (var i = 0; i < left.length; i++) {
+    if ((left[i] - right[i]).abs() > 0.0001) {
+      return false;
+    }
+  }
+  return true;
+}
+
 class _QueuedPackageCommand {
-  const _QueuedPackageCommand({required this.command, required this.completer});
+  const _QueuedPackageCommand({
+    required this.command,
+    required this.completer,
+    required this.runAsAdministrator,
+  });
 
   final PackageCommand command;
   final Completer<ShellResult> completer;
+  final bool runAsAdministrator;
+}
+
+class _StartupLatestVersionTarget {
+  const _StartupLatestVersionTarget({
+    required this.managerId,
+    required this.capability,
+    required this.packages,
+  });
+
+  final String managerId;
+  final BatchLatestVersionLookupCapability capability;
+  final List<ManagedPackage> packages;
 }

@@ -22,7 +22,7 @@ void main() {
     final controller = PackagePanelController(
       shell: const ShellExecutor(),
       adapters: PackageManagerRegistry.defaultAdapters,
-      settingsStore: const _MemorySettingsStore(),
+      settingsStore: _MemorySettingsStore(),
       initialThemeMode: ThemeMode.dark,
     );
 
@@ -95,7 +95,7 @@ class _RecordedWindowThemeConfig {
 }
 
 class _MemorySettingsStore extends PackageManagerSettingsStore {
-  const _MemorySettingsStore();
+  _MemorySettingsStore();
 
   @override
   Future<void> saveThemeModeName(String themeMode) async {}

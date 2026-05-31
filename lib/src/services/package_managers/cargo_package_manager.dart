@@ -15,6 +15,7 @@ class CargoAdapter extends PackageManagerAdapter
         PackageActionCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability,
+        BatchLatestVersionPrerequisiteCapability,
         PackageDetailsCapability {
   const CargoAdapter()
     : super(
@@ -159,7 +160,7 @@ class CargoAdapter extends PackageManagerAdapter
 
   @override
   String batchLatestVersionLookupCommand(List<ManagedPackage> packages) {
-    return 'cargo search --registry crates-io（逐个查询 ${packages.length} 个包）';
+    return 'cargo install-update -l';
   }
 
   @override
@@ -196,27 +197,50 @@ class CargoAdapter extends PackageManagerAdapter
       return const <String, String>{};
     }
 
-    final latestByPackageKey = <String, String>{};
-    for (final package in packages) {
-      final result = await shell.runExecutable(
-        'cargo',
-        <String>[
-          'search',
-          package.name,
-          '--registry',
-          'crates-io',
-          '--limit',
-          '5',
-        ],
-        timeout: const Duration(seconds: 45),
-        displayCommand: latestVersionLookupCommand(package),
-      );
-      latestByPackageKey[package.key] = parseCargoLatestVersion(
-        result,
-        managerName: definition.displayName,
-        packageName: package.name,
-      );
+    final result = await shell.runExecutable(
+      'cargo',
+      const <String>['install-update', '-l'],
+      timeout: const Duration(minutes: 2),
+      displayCommand: 'cargo install-update -l',
+    );
+    final latestByName = parseCargoInstallUpdateLatestVersions(
+      result,
+      managerName: definition.displayName,
+    );
+    return <String, String>{
+      for (final package in packages)
+        package.key:
+            latestByName[package.name.trim().toLowerCase()] ?? package.version,
+    };
+  }
+
+  @override
+  Future<PackageCommand?> batchLatestVersionPrerequisiteCommand(
+    ShellExecutor shell,
+    List<ManagedPackage> packages,
+  ) async {
+    final result = await shell.runExecutable(
+      'cargo',
+      const <String>['install-update', '--version'],
+      timeout: const Duration(seconds: 15),
+      displayCommand: 'cargo install-update --version',
+    );
+    if (result.isSuccess) {
+      return null;
     }
-    return latestByPackageKey;
+
+    return buildPackageCommand(
+      managerId: definition.id,
+      label: '安装 cargo-update',
+      executable: 'cargo',
+      arguments: const <String>['install', 'cargo-update'],
+      command: 'cargo install cargo-update',
+      timeout: const Duration(minutes: 12),
+    );
+  }
+
+  @override
+  String batchLatestVersionPrerequisitePrompt(List<ManagedPackage> packages) {
+    return 'Cargo 批量检查更新需要先安装 cargo-update，是否现在安装？';
   }
 }

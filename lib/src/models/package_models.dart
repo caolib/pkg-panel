@@ -8,6 +8,8 @@ enum PackageAction { update, remove }
 
 enum HomeFilterGroupKind { all, updates, custom }
 
+enum StartupUpdateCheckPhase { idle, running, complete }
+
 class PackageManagerDefinition {
   const PackageManagerDefinition({
     required this.id,
@@ -26,6 +28,74 @@ class PackageManagerDefinition {
   final Color color;
   final IconData icon;
   final bool supportsBatchUpdate;
+}
+
+class StartupUpdateCheckStatus {
+  const StartupUpdateCheckStatus({
+    required this.phase,
+    this.totalManagers = 0,
+    this.processedManagers = 0,
+    this.totalPackages = 0,
+    this.processedPackages = 0,
+    this.currentManagerName,
+    this.updatedPackages = 0,
+    this.failedManagers = 0,
+    this.skippedManagers = 0,
+  });
+
+  const StartupUpdateCheckStatus.idle()
+    : phase = StartupUpdateCheckPhase.idle,
+      totalManagers = 0,
+      processedManagers = 0,
+      totalPackages = 0,
+      processedPackages = 0,
+      currentManagerName = null,
+      updatedPackages = 0,
+      failedManagers = 0,
+      skippedManagers = 0;
+
+  final StartupUpdateCheckPhase phase;
+  final int totalManagers;
+  final int processedManagers;
+  final int totalPackages;
+  final int processedPackages;
+  final String? currentManagerName;
+  final int updatedPackages;
+  final int failedManagers;
+  final int skippedManagers;
+
+  bool get isVisible => isRunning;
+
+  bool get isRunning => phase == StartupUpdateCheckPhase.running;
+
+  bool get hasIssues => failedManagers > 0 || skippedManagers > 0;
+
+  StartupUpdateCheckStatus copyWith({
+    StartupUpdateCheckPhase? phase,
+    int? totalManagers,
+    int? processedManagers,
+    int? totalPackages,
+    int? processedPackages,
+    String? currentManagerName,
+    bool clearCurrentManagerName = false,
+    int? updatedPackages,
+    int? failedManagers,
+    int? skippedManagers,
+  }) {
+    return StartupUpdateCheckStatus(
+      phase: phase ?? this.phase,
+      totalManagers: totalManagers ?? this.totalManagers,
+      processedManagers: processedManagers ?? this.processedManagers,
+      totalPackages: totalPackages ?? this.totalPackages,
+      processedPackages: processedPackages ?? this.processedPackages,
+      currentManagerName: clearCurrentManagerName
+          ? null
+          : currentManagerName ?? this.currentManagerName,
+      updatedPackages: updatedPackages ?? this.updatedPackages,
+      failedManagers: failedManagers ?? this.failedManagers,
+      skippedManagers: skippedManagers ?? this.skippedManagers,
+    );
+  }
 }
 
 class ManagedPackage {
@@ -193,6 +263,174 @@ class RunningCommandInfo {
       statusLabel: statusLabel ?? this.statusLabel,
     );
   }
+}
+
+class LocalPackageTableColumnWidths {
+  const LocalPackageTableColumnWidths({
+    required this.packageName,
+    required this.currentVersion,
+    required this.latestVersion,
+    required this.checkedAt,
+  });
+
+  static const defaults = LocalPackageTableColumnWidths(
+    packageName: 8,
+    currentVersion: 2,
+    latestVersion: 2,
+    checkedAt: 2.25,
+  );
+
+  static const _minimums = <double>[3, 1.5, 1.5, 1.8];
+
+  final double packageName;
+  final double currentVersion;
+  final double latestVersion;
+  final double checkedAt;
+
+  List<double> get values => <double>[
+    packageName,
+    currentVersion,
+    latestVersion,
+    checkedAt,
+  ];
+
+  double get total => packageName + currentVersion + latestVersion + checkedAt;
+
+  LocalPackageTableColumnWidths normalized() {
+    final fallback = defaults.values;
+    final normalized = <double>[];
+    for (var i = 0; i < values.length; i++) {
+      final value = values[i];
+      normalized.add(
+        value.isFinite && value >= _minimums[i] ? value : fallback[i],
+      );
+    }
+    return LocalPackageTableColumnWidths(
+      packageName: normalized[0],
+      currentVersion: normalized[1],
+      latestVersion: normalized[2],
+      checkedAt: normalized[3],
+    );
+  }
+
+  LocalPackageTableColumnWidths resizeBoundary({
+    required int boundaryIndex,
+    required double deltaPixels,
+    required double availableWidth,
+  }) {
+    if (boundaryIndex < 0 ||
+        boundaryIndex >= values.length - 1 ||
+        availableWidth <= 0 ||
+        !deltaPixels.isFinite) {
+      return this;
+    }
+
+    final nextValues = values;
+    final delta = _tableColumnDelta(
+      values: nextValues,
+      deltaPixels: deltaPixels,
+      availableWidth: availableWidth,
+    );
+    final left = nextValues[boundaryIndex];
+    final right = nextValues[boundaryIndex + 1];
+    final minLeft = _minimums[boundaryIndex];
+    final minRight = _minimums[boundaryIndex + 1];
+    final boundedDelta = delta.clamp(minLeft - left, right - minRight);
+    nextValues[boundaryIndex] = left + boundedDelta;
+    nextValues[boundaryIndex + 1] = right - boundedDelta;
+    return LocalPackageTableColumnWidths(
+      packageName: nextValues[0],
+      currentVersion: nextValues[1],
+      latestVersion: nextValues[2],
+      checkedAt: nextValues[3],
+    ).normalized();
+  }
+}
+
+class InstallSearchTableColumnWidths {
+  const InstallSearchTableColumnWidths({
+    required this.packageName,
+    required this.version,
+    required this.source,
+    required this.manager,
+  });
+
+  static const defaults = InstallSearchTableColumnWidths(
+    packageName: 7,
+    version: 2,
+    source: 3,
+    manager: 2,
+  );
+
+  static const _minimums = <double>[3, 1.5, 1.5, 1.8];
+
+  final double packageName;
+  final double version;
+  final double source;
+  final double manager;
+
+  List<double> get values => <double>[packageName, version, source, manager];
+
+  double get total => packageName + version + source + manager;
+
+  InstallSearchTableColumnWidths normalized() {
+    final fallback = defaults.values;
+    final normalized = <double>[];
+    for (var i = 0; i < values.length; i++) {
+      final value = values[i];
+      normalized.add(
+        value.isFinite && value >= _minimums[i] ? value : fallback[i],
+      );
+    }
+    return InstallSearchTableColumnWidths(
+      packageName: normalized[0],
+      version: normalized[1],
+      source: normalized[2],
+      manager: normalized[3],
+    );
+  }
+
+  InstallSearchTableColumnWidths resizeBoundary({
+    required int boundaryIndex,
+    required double deltaPixels,
+    required double availableWidth,
+  }) {
+    if (boundaryIndex < 0 ||
+        boundaryIndex >= values.length - 1 ||
+        availableWidth <= 0 ||
+        !deltaPixels.isFinite) {
+      return this;
+    }
+
+    final nextValues = values;
+    final delta = _tableColumnDelta(
+      values: nextValues,
+      deltaPixels: deltaPixels,
+      availableWidth: availableWidth,
+    );
+    final left = nextValues[boundaryIndex];
+    final right = nextValues[boundaryIndex + 1];
+    final minLeft = _minimums[boundaryIndex];
+    final minRight = _minimums[boundaryIndex + 1];
+    final boundedDelta = delta.clamp(minLeft - left, right - minRight);
+    nextValues[boundaryIndex] = left + boundedDelta;
+    nextValues[boundaryIndex + 1] = right - boundedDelta;
+    return InstallSearchTableColumnWidths(
+      packageName: nextValues[0],
+      version: nextValues[1],
+      source: nextValues[2],
+      manager: nextValues[3],
+    ).normalized();
+  }
+}
+
+double _tableColumnDelta({
+  required List<double> values,
+  required double deltaPixels,
+  required double availableWidth,
+}) {
+  final totalWidth = values.fold<double>(0, (sum, value) => sum + value);
+  return deltaPixels / availableWidth * totalWidth;
 }
 
 class PackageVersionQueryResult {
