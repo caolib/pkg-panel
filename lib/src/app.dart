@@ -107,52 +107,44 @@ class _BusyIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return RepaintBoundary(
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(size * 0.32),
-            border: Border.all(
-              color: theme.colorScheme.primary.withValues(alpha: 0.28),
-            ),
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(size * 0.14),
-            child: FittedBox(
-              child: Icon(
-                Icons.hourglass_top_rounded,
-                size: size * 0.58,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ),
-        ),
-      ),
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CircularProgressIndicator(strokeWidth: size * 0.1),
     );
   }
+}
+
+/// Returns a suffix clear-button widget for [InputDecoration.suffixIcon] or
+/// [SearchBar.trailing]. Returns a zero-size placeholder when [controller] is
+/// empty so the input layout does not jump when text appears/disappears.
+Widget clearInputSuffix(
+  TextEditingController controller, {
+  String? tooltip,
+  VoidCallback? onCleared,
+}) {
+  return ValueListenableBuilder<TextEditingValue>(
+    valueListenable: controller,
+    builder: (context, value, _) {
+      if (value.text.isEmpty) {
+        return const SizedBox.shrink();
+      }
+      return IconButton(
+        tooltip: tooltip,
+        onPressed: () {
+          controller.clear();
+          onCleared?.call();
+        },
+        icon: const Icon(Icons.close, size: 18),
+        visualDensity: VisualDensity.compact,
+      );
+    },
+  );
 }
 
 bool _isQueuedStatus(String? statusLabel) {
   final normalized = statusLabel?.trim();
   return normalized == '排队中' || normalized == 'Queued';
-}
-
-String _localizedCommandStatus(
-  BuildContext context,
-  RunningCommandInfo command,
-) {
-  final l10n = context.l10n;
-  if (command.isCancelling) {
-    return l10n.commandCancelling;
-  }
-  if (_isQueuedStatus(command.statusLabel)) {
-    return l10n.commandStatusQueued;
-  }
-  return command.statusLabel ?? '';
 }
 
 String _homeFilterGroupDisplayName(

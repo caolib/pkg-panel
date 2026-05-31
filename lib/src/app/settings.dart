@@ -214,6 +214,7 @@ class PackageSettingsPage extends StatelessWidget {
                       decoration: InputDecoration(
                         border: OutlineInputBorder(),
                         hintText: l10n.fontStackInputHint,
+                        suffixIcon: clearInputSuffix(textController),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -1449,6 +1450,7 @@ class _ThemeSeedColorDialogState extends State<_ThemeSeedColorDialog> {
                 errorText: _candidateColor == null
                     ? l10n.colorHexInvalid
                     : null,
+                suffixIcon: clearInputSuffix(_hexController),
               ),
               onChanged: (value) {
                 setState(() {
@@ -1668,6 +1670,7 @@ class _HomeFilterGroupEditDialogState
                   labelText: l10n.groupNameLabel,
                   border: OutlineInputBorder(),
                   hintText: l10n.groupNameHint,
+                  suffixIcon: clearInputSuffix(_nameController),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1798,6 +1801,7 @@ class _HomeFilterGroupEditDialogState
                     border: OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.search),
                     hintText: l10n.searchLocalHint,
+                    suffixIcon: clearInputSuffix(_packageSearchController),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -2030,6 +2034,7 @@ class _ManagerEditDialogState extends State<_ManagerEditDialog> {
                   labelText: l10n.displayNameLabel,
                   border: OutlineInputBorder(),
                   hintText: l10n.displayNameHint,
+                  suffixIcon: clearInputSuffix(_nameController),
                 ),
               ),
               const SizedBox(height: 16),
@@ -2152,6 +2157,7 @@ class _AboutAppCard extends StatelessWidget {
               decoration: InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: l10n.githubMirrorHint,
+                suffixIcon: clearInputSuffix(textController),
               ),
             ),
           ),

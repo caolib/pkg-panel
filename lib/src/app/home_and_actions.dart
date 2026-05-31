@@ -422,42 +422,40 @@ class _RunningCommandToast extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final l10n = context.l10n;
     final queuedCount = commands
         .where((command) => _isQueuedStatus(command.statusLabel))
         .length;
     final runningCount = commands.length - queuedCount;
-    final title = queuedCount == 0
-        ? l10n.runningCommandsTitle(runningCount)
-        : l10n.commandQueueTitle(runningCount, queuedCount);
-    final titleStyle = theme.textTheme.labelLarge?.copyWith(
-      fontWeight: FontWeight.w700,
-    );
+    final countLabel = queuedCount == 0
+        ? '$runningCount'
+        : '$runningCount·$queuedCount';
     final toggleButton = IconButton(
       visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      padding: EdgeInsets.zero,
       onPressed: onToggleCollapsed,
-      icon: Icon(collapsed ? Icons.unfold_more : Icons.unfold_less),
+      icon: Icon(collapsed ? Icons.unfold_more : Icons.unfold_less, size: 16),
     );
     return RepaintBoundary(
       child: Material(
         color: Colors.transparent,
         child: Container(
           constraints: collapsed
-              ? const BoxConstraints(maxWidth: 320)
-              : const BoxConstraints(maxWidth: 520, maxHeight: 360),
+              ? const BoxConstraints(maxWidth: 240)
+              : const BoxConstraints(maxWidth: 420, maxHeight: 300),
           padding: EdgeInsets.symmetric(
-            horizontal: collapsed ? 14 : 16,
-            vertical: collapsed ? 10 : 14,
+            horizontal: collapsed ? 10 : 10,
+            vertical: collapsed ? 6 : 8,
           ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: theme.colorScheme.outlineVariant),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: Colors.black.withAlpha(24),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Colors.black.withAlpha(16),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -468,35 +466,28 @@ class _RunningCommandToast extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.max,
                 children: <Widget>[
-                  Container(
+                  SizedBox(
                     width: 20,
                     height: 20,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Icon(
-                      Icons.terminal,
-                      size: 12,
-                      color: theme.colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: titleStyle,
-                    ),
+                    child: _BusyIndicator(size: 14),
                   ),
                   const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      countLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
                   toggleButton,
                 ],
               ),
               if (!collapsed) ...<Widget>[
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Flexible(
                   child: SingleChildScrollView(
                     child: Column(
@@ -504,15 +495,15 @@ class _RunningCommandToast extends StatelessWidget {
                       children: <Widget>[
                         for (final command in commands)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.only(bottom: 4),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
+                                horizontal: 8,
+                                vertical: 6,
                               ),
                               decoration: BoxDecoration(
                                 color: theme.colorScheme.surfaceContainer,
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                   color: theme.colorScheme.outlineVariant,
                                 ),
@@ -530,19 +521,19 @@ class _RunningCommandToast extends StatelessWidget {
                                         maxLines: 1,
                                         softWrap: false,
                                         overflow: TextOverflow.ellipsis,
-                                        style: theme.textTheme.bodyMedium
+                                        style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               fontWeight: FontWeight.w600,
                                               fontFamily: 'Cascadia Code',
                                               fontFamilyFallback: theme
                                                   .textTheme
-                                                  .bodyMedium
+                                                  .bodySmall
                                                   ?.fontFamilyFallback,
                                             ),
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: 4),
                                   _CommandQueueAction(
                                     command: command,
                                     onCancelCommand: onCancelCommand,
@@ -572,47 +563,26 @@ class _CommandQueueAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = context.l10n;
-    final statusLabel = _localizedCommandStatus(context, command);
     if (command.isCancelling) {
-      return const _BusyIndicator(size: 18);
+      return const _BusyIndicator(size: 14);
     }
     if (command.canCancel) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          if (statusLabel.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Text(
-                statusLabel,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          IconButton(
-            tooltip: l10n.commandCancelTooltip,
-            onPressed: () => onCancelCommand?.call(command),
-            icon: Icon(
-              _isQueuedStatus(command.statusLabel)
-                  ? Icons.remove_circle_outline
-                  : Icons.stop_circle_outlined,
-            ),
-          ),
-        ],
+      return IconButton(
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+        padding: EdgeInsets.zero,
+        tooltip: l10n.commandCancelTooltip,
+        onPressed: () => onCancelCommand?.call(command),
+        icon: Icon(
+          _isQueuedStatus(command.statusLabel)
+              ? Icons.remove_circle_outline
+              : Icons.stop_circle_outlined,
+          size: 18,
+        ),
       );
     }
-    if (statusLabel.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return Text(
-      statusLabel,
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    );
+    return const SizedBox.shrink();
   }
 }
 
@@ -664,15 +634,10 @@ class _ActionBar extends StatelessWidget {
                 leading: const Icon(Icons.search),
                 onChanged: controller.setSearchQuery,
                 trailing: <Widget>[
-                  if (searchController.text.isNotEmpty)
-                    IconButton(
-                      tooltip: l10n.clearTooltip,
-                      onPressed: () {
-                        searchController.clear();
-                        controller.setSearchQuery('');
-                      },
-                      icon: const Icon(Icons.close),
-                    ),
+                  clearInputSuffix(
+                    searchController,
+                    onCleared: () => controller.setSearchQuery(''),
+                  ),
                 ],
               ),
             ),
@@ -681,9 +646,13 @@ class _ActionBar extends StatelessWidget {
                   ? null
                   : onRefreshAll,
               icon: controller.isRefreshingCurrentSelection
-                  ? const _BusyIndicator(size: 16)
-                  : const Icon(Icons.sync),
+                  ? const _BusyIndicator(size: 14)
+                  : const Icon(Icons.sync, size: 18),
               tooltip: l10n.buttonRefresh,
+              style: const ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                minimumSize: WidgetStatePropertyAll(Size(36, 36)),
+              ),
             ),
             if (hasLoadErrors)
               FilledButton.tonalIcon(
@@ -1046,13 +1015,11 @@ class _ResizableTableColumns extends StatelessWidget {
                     onHorizontalDragUpdate: (details) =>
                         onResize(i, details.delta.dx, constraints.maxWidth),
                     child: Center(
-                      child: Container(
+                      child: VerticalDivider(
                         width: 2,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                          borderRadius: BorderRadius.circular(1),
-                        ),
+                        thickness: 2,
+                        indent: 8,
+                        endIndent: 8,
                       ),
                     ),
                   ),
@@ -2247,6 +2214,7 @@ class _InstallOptionsDialogState extends State<_InstallOptionsDialog> {
                           decoration: InputDecoration(
                             border: OutlineInputBorder(),
                             hintText: l10n.versionSearchHint,
+                            suffixIcon: clearInputSuffix(_versionController),
                           ),
                           onChanged: (_) => setState(() {}),
                         ),
@@ -2459,6 +2427,7 @@ class _InstallSpecificVersionDialogState
               decoration: InputDecoration(
                 border: OutlineInputBorder(),
                 hintText: l10n.versionSearchHint,
+                suffixIcon: clearInputSuffix(_filterController),
               ),
               onChanged: (_) => setState(() {}),
               onSubmitted: (value) {

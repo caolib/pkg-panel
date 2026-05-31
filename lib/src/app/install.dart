@@ -100,18 +100,20 @@ class _PackageInstallPageState extends State<PackageInstallPage> {
                         hintText: l10n.searchInstallHint,
                         leading: const Icon(Icons.search),
                         onSubmitted: (_) => _runSearch(),
+                        trailing: <Widget>[
+                          clearInputSuffix(_searchController),
+                          IconButton(
+                            tooltip: l10n.buttonSearch,
+                            onPressed: widget.controller.isSearchingPackages
+                                ? null
+                                : _runSearch,
+                            icon: widget.controller.isSearchingPackages
+                                ? _BusyIndicator(size: 16)
+                                : const Icon(Icons.travel_explore_outlined),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    onPressed: widget.controller.isSearchingPackages
-                        ? null
-                        : _runSearch,
-                    icon: widget.controller.isSearchingPackages
-                        ? const _BusyIndicator(size: 16)
-                        : const Icon(Icons.travel_explore_outlined),
-                    label: Text(l10n.buttonSearch),
                   ),
                 ],
               ),
