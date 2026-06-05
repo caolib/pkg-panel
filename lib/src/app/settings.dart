@@ -1924,7 +1924,7 @@ class _HomeFilterGroupEditDialogState
                             return CheckboxListTile(
                               dense: true,
                               value: selected,
-                              title: Text(package.name),
+                              title: _PackageNameText(package.name),
                               subtitle: Text(
                                 '${widget.controller.displayNameForPackage(package)} · ${package.version}',
                               ),

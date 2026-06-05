@@ -142,6 +142,57 @@ Widget clearInputSuffix(
   );
 }
 
+class _PackageNameText extends StatelessWidget {
+  const _PackageNameText(
+    this.name, {
+    this.style,
+    this.maxLines = 1,
+    this.overflow = TextOverflow.ellipsis,
+  });
+
+  final String name;
+  final TextStyle? style;
+  final int maxLines;
+  final TextOverflow overflow;
+
+  @override
+  Widget build(BuildContext context) {
+    final separatorIndex = _scopedPackageSeparatorIndex(name);
+    if (separatorIndex == null) {
+      return Text(name, maxLines: maxLines, overflow: overflow, style: style);
+    }
+
+    final theme = Theme.of(context);
+    return Text.rich(
+      TextSpan(
+        children: <InlineSpan>[
+          TextSpan(
+            text: name.substring(0, separatorIndex),
+            style:
+                style?.copyWith(color: theme.colorScheme.primary) ??
+                TextStyle(color: theme.colorScheme.primary),
+          ),
+          TextSpan(text: name.substring(separatorIndex)),
+        ],
+      ),
+      maxLines: maxLines,
+      overflow: overflow,
+      semanticsLabel: name,
+      style: style,
+    );
+  }
+}
+
+int? _scopedPackageSeparatorIndex(String packageName) {
+  final slashIndex = packageName.indexOf('/');
+  if (!packageName.startsWith('@') ||
+      slashIndex <= 1 ||
+      slashIndex >= packageName.length - 1) {
+    return null;
+  }
+  return slashIndex;
+}
+
 bool _isQueuedStatus(String? statusLabel) {
   final normalized = statusLabel?.trim();
   return normalized == '排队中' || normalized == 'Queued';

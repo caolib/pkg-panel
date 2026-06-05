@@ -208,6 +208,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get buttonBatchUpdate => '批量更新';
 
   @override
+  String get packageFilterLabel => '筛选';
+
+  @override
+  String get packageFilterAll => '全部';
+
+  @override
+  String get packageFilterHasUpdates => '有更新';
+
+  @override
   String startupUpdateCheckingStatus(int current, int total, int updates) {
     return '当前 $current/$total 个包 -> $updates 个可更新';
   }
@@ -361,7 +370,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get confirmRunCommandAdminNotice => '该命令将以管理员身份运行。';
 
   @override
-  String get contextMenuAdminHint => '按住 Shift 点击命令可用管理员身份运行。';
+  String get contextMenuAdminHint => '按住 Shift 用管理员身份运行。';
 
   @override
   String get copyToClipboardSuccess => '已复制到剪贴板。';

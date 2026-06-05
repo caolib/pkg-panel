@@ -65,6 +65,9 @@
   "buttonOpenSettings": "Open settings",
   "buttonCheckUpdates": "Check updates",
   "buttonBatchUpdate": "Batch update",
+  "packageFilterLabel": "Filter",
+  "packageFilterAll": "All",
+  "packageFilterHasUpdates": "Has updates",
   "startupUpdateCheckingStatus": "Current {current}/{total} packages -> {updates} updates",
   "@startupUpdateCheckingStatus": {
     "placeholders": {

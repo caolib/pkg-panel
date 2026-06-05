@@ -283,6 +283,55 @@ void main() {
     );
   });
 
+  test('controller persists local update filter selection', () async {
+    const adapter = NpmAdapter();
+    final settingsStore = _MemorySettingsStore(
+      showOnlyPackagesWithUpdates: true,
+    );
+    final controller = PackagePanelController(
+      shell: const ShellExecutor(),
+      adapters: const <PackageManagerAdapter>[adapter],
+      settingsStore: settingsStore,
+      snapshotStore: const _MemorySnapshotStore(),
+      initialVisibleManagerIds: const <String>{'npm'},
+      initialManagerAvailability: const <String, bool>{'npm': true},
+      initialShowOnlyPackagesWithUpdates: await settingsStore
+          .loadShowOnlyPackagesWithUpdates(),
+      initialSnapshots: <ManagerSnapshot>[
+        ManagerSnapshot(
+          manager: adapter.definition,
+          loadState: ManagerLoadState.ready,
+          packages: const <ManagedPackage>[
+            ManagedPackage(
+              name: '@github/copilot',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '1.0.0',
+              latestVersion: '1.1.0',
+            ),
+            ManagedPackage(
+              name: 'eslint',
+              managerId: 'npm',
+              managerName: 'npm',
+              version: '9.0.0',
+              latestVersion: '9.0.0',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    expect(controller.showOnlyPackagesWithUpdates, isTrue);
+    expect(controller.visiblePackages.map((package) => package.name), <String>[
+      '@github/copilot',
+    ]);
+
+    controller.setShowOnlyPackagesWithUpdates(false);
+
+    expect(settingsStore.showOnlyPackagesWithUpdates, isFalse);
+    expect(controller.visiblePackages, hasLength(2));
+  });
+
   test('controller batch latest check uses pnpm outdated once', () async {
     const adapter = PnpmAdapter();
     final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
@@ -2219,7 +2268,9 @@ class _SequenceShellExecutor extends ShellExecutor {
 }
 
 class _MemorySettingsStore extends PackageManagerSettingsStore {
-  _MemorySettingsStore();
+  _MemorySettingsStore({this.showOnlyPackagesWithUpdates = false});
+
+  bool showOnlyPackagesWithUpdates;
 
   @override
   Future<Set<String>?> loadVisibleManagerIds() async => null;
@@ -2260,6 +2311,16 @@ class _MemorySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveInstallSearchTableColumnWidths(
     InstallSearchTableColumnWidths widths,
   ) async {}
+
+  @override
+  Future<bool> loadShowOnlyPackagesWithUpdates() async {
+    return showOnlyPackagesWithUpdates;
+  }
+
+  @override
+  Future<void> saveShowOnlyPackagesWithUpdates(bool value) async {
+    showOnlyPackagesWithUpdates = value;
+  }
 
   @override
   Future<Map<String, String>> loadCustomManagerIconPaths() async {
@@ -2369,6 +2430,12 @@ class _PersistingVisibilitySettingsStore extends PackageManagerSettingsStore {
   Future<void> saveInstallSearchTableColumnWidths(
     InstallSearchTableColumnWidths widths,
   ) async {}
+
+  @override
+  Future<bool> loadShowOnlyPackagesWithUpdates() async => false;
+
+  @override
+  Future<void> saveShowOnlyPackagesWithUpdates(bool value) async {}
 
   @override
   Future<Map<String, String>> loadCustomManagerIconPaths() async {

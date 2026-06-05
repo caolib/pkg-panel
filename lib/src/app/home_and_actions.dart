@@ -543,59 +543,123 @@ class _ActionBar extends StatelessWidget {
     final hasLoadErrors = controller.errorManagers > 0;
     final showBatchUpdate =
         controller.selectedPackageCount > 1 && batchCommand != null;
+    final controls = <Widget>[
+      SizedBox(
+        width: 320,
+        child: SearchBar(
+          controller: searchController,
+          constraints: const BoxConstraints(minHeight: 44, maxHeight: 44),
+          hintText: l10n.searchLocalHint,
+          leading: const Icon(Icons.search),
+          onChanged: controller.setSearchQuery,
+          trailing: <Widget>[
+            clearInputSuffix(
+              searchController,
+              onCleared: () => controller.setSearchQuery(''),
+            ),
+          ],
+        ),
+      ),
+      if (hasLoadErrors)
+        FilledButton.tonalIcon(
+          onPressed: onShowLoadErrors,
+          icon: const Icon(Icons.error_outline),
+          label: Text(l10n.viewLoadErrorsButton(controller.errorManagers)),
+        ),
+      if (canBatchCheckLatest)
+        FilledButton.tonalIcon(
+          onPressed: isBatchCheckingLatest ? null : onBatchCheckLatest,
+          icon: isBatchCheckingLatest
+              ? const _BusyIndicator(size: 16)
+              : const Icon(Icons.find_replace_outlined),
+          label: Text(l10n.buttonCheckUpdates),
+        ),
+      if (showBatchUpdate)
+        FilledButton.tonalIcon(
+          onPressed: controller.isBusy(batchCommand.busyKey)
+              ? null
+              : onBatchUpdate,
+          icon: const Icon(Icons.system_update_alt),
+          label: Text(l10n.buttonBatchUpdate),
+        ),
+      if (startupStatus.isVisible)
+        _StartupUpdateStatusChip(status: startupStatus),
+    ];
+    final updateFilter = _PackageUpdateFilter(controller: controller);
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: <Widget>[
-            SizedBox(
-              width: 320,
-              child: SearchBar(
-                controller: searchController,
-                constraints: const BoxConstraints(minHeight: 44, maxHeight: 44),
-                hintText: l10n.searchLocalHint,
-                leading: const Icon(Icons.search),
-                onChanged: controller.setSearchQuery,
-                trailing: <Widget>[
-                  clearInputSuffix(
-                    searchController,
-                    onCleared: () => controller.setSearchQuery(''),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 760) {
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[...controls, updateFilter],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Expanded(
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: controls,
                   ),
-                ],
-              ),
-            ),
-            if (hasLoadErrors)
-              FilledButton.tonalIcon(
-                onPressed: onShowLoadErrors,
-                icon: const Icon(Icons.error_outline),
-                label: Text(
-                  l10n.viewLoadErrorsButton(controller.errorManagers),
                 ),
-              ),
-            if (canBatchCheckLatest)
-              FilledButton.tonalIcon(
-                onPressed: isBatchCheckingLatest ? null : onBatchCheckLatest,
-                icon: isBatchCheckingLatest
-                    ? const _BusyIndicator(size: 16)
-                    : const Icon(Icons.find_replace_outlined),
-                label: Text(l10n.buttonCheckUpdates),
-              ),
-            if (showBatchUpdate)
-              FilledButton.tonalIcon(
-                onPressed: controller.isBusy(batchCommand.busyKey)
-                    ? null
-                    : onBatchUpdate,
-                icon: const Icon(Icons.system_update_alt),
-                label: Text(l10n.buttonBatchUpdate),
-              ),
-            if (startupStatus.isVisible)
-              _StartupUpdateStatusChip(status: startupStatus),
-          ],
+                const SizedBox(width: 12),
+                updateFilter,
+              ],
+            );
+          },
         ),
+      ),
+    );
+  }
+}
+
+class _PackageUpdateFilter extends StatelessWidget {
+  const _PackageUpdateFilter({required this.controller});
+
+  static const String _hasUpdatesValue = 'has_updates';
+
+  final PackagePanelController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return SizedBox(
+      width: 168,
+      child: DropdownButtonFormField<String?>(
+        value: controller.showOnlyPackagesWithUpdates ? _hasUpdatesValue : null,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: l10n.packageFilterLabel,
+          border: const OutlineInputBorder(),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
+          isDense: true,
+        ),
+        items: <DropdownMenuItem<String?>>[
+          DropdownMenuItem<String?>(
+            value: null,
+            child: Text(l10n.packageFilterAll),
+          ),
+          DropdownMenuItem<String?>(
+            value: _hasUpdatesValue,
+            child: Text(l10n.packageFilterHasUpdates),
+          ),
+        ],
+        onChanged: (value) {
+          controller.setShowOnlyPackagesWithUpdates(value == _hasUpdatesValue);
+        },
       ),
     );
   }
@@ -1041,7 +1105,7 @@ class _PackageListTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
+                    _PackageNameText(
                       package.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1083,7 +1147,7 @@ class _PackageListTile extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
+                    child: _PackageNameText(
                       package.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

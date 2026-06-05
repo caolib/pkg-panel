@@ -215,6 +215,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get buttonBatchUpdate => 'Batch update';
 
   @override
+  String get packageFilterLabel => 'Filter';
+
+  @override
+  String get packageFilterAll => 'All';
+
+  @override
+  String get packageFilterHasUpdates => 'Has updates';
+
+  @override
   String startupUpdateCheckingStatus(int current, int total, int updates) {
     return 'Current $current/$total packages -> $updates updates';
   }

@@ -192,6 +192,25 @@ class PackageManagerSettingsStore {
     }
   }
 
+  Future<bool> loadShowOnlyPackagesWithUpdates() async {
+    try {
+      final decoded = await _loadSettings();
+      return decoded?['showOnlyPackagesWithUpdates'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> saveShowOnlyPackagesWithUpdates(bool value) async {
+    try {
+      final payload = await _loadSettings() ?? <String, dynamic>{};
+      payload['showOnlyPackagesWithUpdates'] = value;
+      await _saveSettings(payload);
+    } catch (_) {
+      // Best-effort settings persistence.
+    }
+  }
+
   Future<Map<String, String>> loadCustomManagerIconPaths() async {
     try {
       final decoded = await _loadSettings();

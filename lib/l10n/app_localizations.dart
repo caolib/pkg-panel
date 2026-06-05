@@ -488,6 +488,24 @@ abstract class AppLocalizations {
   /// **'批量更新'**
   String get buttonBatchUpdate;
 
+  /// No description provided for @packageFilterLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'筛选'**
+  String get packageFilterLabel;
+
+  /// No description provided for @packageFilterAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部'**
+  String get packageFilterAll;
+
+  /// No description provided for @packageFilterHasUpdates.
+  ///
+  /// In zh, this message translates to:
+  /// **'有更新'**
+  String get packageFilterHasUpdates;
+
   /// No description provided for @startupUpdateCheckingStatus.
   ///
   /// In zh, this message translates to:
@@ -761,7 +779,7 @@ abstract class AppLocalizations {
   /// No description provided for @contextMenuAdminHint.
   ///
   /// In zh, this message translates to:
-  /// **'按住 Shift 点击命令可用管理员身份运行。'**
+  /// **'按住 Shift 用管理员身份运行。'**
   String get contextMenuAdminHint;
 
   /// No description provided for @copyToClipboardSuccess.

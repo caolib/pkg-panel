@@ -374,7 +374,7 @@ class _SearchPackageListTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
+                    _PackageNameText(
                       package.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -423,7 +423,7 @@ class _SearchPackageListTile extends StatelessWidget {
         : _TableColumns(
             widths: columnWidths.values,
             children: <Widget>[
-              Text(
+              _PackageNameText(
                 package.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

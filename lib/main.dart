@@ -25,6 +25,8 @@ Future<void> main() async {
       .loadLocalPackageTableColumnWidths();
   final initialInstallSearchTableColumnWidths = await managerSettingsStore
       .loadInstallSearchTableColumnWidths();
+  final initialShowOnlyPackagesWithUpdates = await managerSettingsStore
+      .loadShowOnlyPackagesWithUpdates();
   final initialLocaleCode = await managerSettingsStore.loadLocaleCode();
   final initialThemePaletteId = await managerSettingsStore.loadThemePaletteId();
   final initialThemeModeName = await managerSettingsStore.loadThemeModeName();
@@ -61,6 +63,7 @@ Future<void> main() async {
     initialLocalPackageTableColumnWidths: initialLocalPackageTableColumnWidths,
     initialInstallSearchTableColumnWidths:
         initialInstallSearchTableColumnWidths,
+    initialShowOnlyPackagesWithUpdates: initialShowOnlyPackagesWithUpdates,
     initialLocale: switch (initialLocaleCode) {
       'en' => const Locale('en'),
       _ => const Locale('zh'),

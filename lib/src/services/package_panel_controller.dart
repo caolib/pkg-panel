@@ -38,6 +38,7 @@ class PackagePanelController extends ChangeNotifier {
     Map<String, String>? initialCustomManagerDisplayNames,
     LocalPackageTableColumnWidths? initialLocalPackageTableColumnWidths,
     InstallSearchTableColumnWidths? initialInstallSearchTableColumnWidths,
+    bool? initialShowOnlyPackagesWithUpdates,
     Locale? initialLocale,
     String? initialThemePaletteId,
     ThemeMode? initialThemeMode,
@@ -83,6 +84,8 @@ class PackagePanelController extends ChangeNotifier {
            (initialInstallSearchTableColumnWidths ??
                    InstallSearchTableColumnWidths.defaults)
                .normalized(),
+       _showOnlyPackagesWithUpdates =
+           initialShowOnlyPackagesWithUpdates ?? false,
        _locale = _normalizeLocale(initialLocale),
        _themePaletteId = _normalizeThemePaletteId(initialThemePaletteId),
        _customThemeSeedColor = _normalizeThemeSeedColor(
@@ -144,6 +147,7 @@ class PackagePanelController extends ChangeNotifier {
 
   String _searchQuery = '';
   String _installSearchQuery = '';
+  bool _showOnlyPackagesWithUpdates;
   String? _customFontFamily;
   final List<String> _customFallbackFontFamilies;
   String? _selectedManagerId;
@@ -174,6 +178,7 @@ class PackagePanelController extends ChangeNotifier {
   int _cachedVisiblePackagesDataStamp = -1;
   String _cachedVisiblePackagesQuery = '';
   String? _cachedVisiblePackagesManagerId;
+  bool _cachedVisiblePackagesShowOnlyUpdates = false;
   List<ManagedPackage>? _cachedVisiblePackages;
 
   List<ManagerSnapshot> get snapshots =>
@@ -204,6 +209,8 @@ class PackagePanelController extends ChangeNotifier {
   String get searchQuery => _searchQuery;
 
   String get installSearchQuery => _installSearchQuery;
+
+  bool get showOnlyPackagesWithUpdates => _showOnlyPackagesWithUpdates;
 
   String? get selectedManagerId => _selectedManagerId;
 
@@ -306,11 +313,13 @@ class PackagePanelController extends ChangeNotifier {
     final selectedManagerId = _selectedManagerId;
     final selectedGroup = _selectedHomeFilterGroup;
     final query = _searchQuery.trim().toLowerCase();
+    final showOnlyPackagesWithUpdates = _showOnlyPackagesWithUpdates;
     final cached = _cachedVisiblePackages;
     if (cached != null &&
         _cachedVisiblePackagesDataStamp == _visiblePackagesDataStamp &&
         _cachedVisiblePackagesQuery == query &&
-        _cachedVisiblePackagesManagerId == selectedManagerId) {
+        _cachedVisiblePackagesManagerId == selectedManagerId &&
+        _cachedVisiblePackagesShowOnlyUpdates == showOnlyPackagesWithUpdates) {
       return cached;
     }
 
@@ -320,6 +329,9 @@ class PackagePanelController extends ChangeNotifier {
         .where((package) {
           if (selectedGroup != null &&
               !_homeFilterGroupMatchesPackage(selectedGroup, package)) {
+            return false;
+          }
+          if (showOnlyPackagesWithUpdates && !package.hasUpdate) {
             return false;
           }
           if (query.isEmpty) {
@@ -349,6 +361,7 @@ class PackagePanelController extends ChangeNotifier {
     _cachedVisiblePackagesDataStamp = _visiblePackagesDataStamp;
     _cachedVisiblePackagesQuery = query;
     _cachedVisiblePackagesManagerId = selectedManagerId;
+    _cachedVisiblePackagesShowOnlyUpdates = showOnlyPackagesWithUpdates;
     return computed;
   }
 
@@ -1667,6 +1680,17 @@ class PackagePanelController extends ChangeNotifier {
     _searchQuery = value;
     _realignSelection();
     notifyListeners();
+  }
+
+  void setShowOnlyPackagesWithUpdates(bool value) {
+    if (_showOnlyPackagesWithUpdates == value) {
+      return;
+    }
+    _showOnlyPackagesWithUpdates = value;
+    _invalidateVisiblePackagesCache();
+    _realignSelection();
+    notifyListeners();
+    unawaited(_settingsStore.saveShowOnlyPackagesWithUpdates(value));
   }
 
   PackageCommand? commandFor(PackageAction action, ManagedPackage package) {
@@ -3225,15 +3249,14 @@ class PackagePanelController extends ChangeNotifier {
         kind: HomeFilterGroupKind.all,
         displayName: '全部',
       ),
-      updateFilterId: const HomeFilterGroup(
-        id: updateFilterId,
-        kind: HomeFilterGroupKind.updates,
-        displayName: '更新',
-      ),
     };
 
     final orderedIds = <String>[];
     for (final group in initialGroups ?? const <HomeFilterGroup>[]) {
+      if (group.id == updateFilterId ||
+          group.kind == HomeFilterGroupKind.updates) {
+        continue;
+      }
       groupsById[group.id] = HomeFilterGroup(
         id: group.id,
         kind: group.kind,
@@ -3248,16 +3271,9 @@ class PackagePanelController extends ChangeNotifier {
       }
     }
 
-    for (final builtinId in <String>[allFilterId, updateFilterId]) {
+    for (final builtinId in <String>[allFilterId]) {
       if (!orderedIds.contains(builtinId)) {
-        orderedIds.insert(
-          builtinId == allFilterId
-              ? 0
-              : orderedIds.contains(allFilterId)
-              ? 1
-              : 0,
-          builtinId,
-        );
+        orderedIds.insert(0, builtinId);
       }
     }
 
