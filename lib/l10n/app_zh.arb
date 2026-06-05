@@ -72,6 +72,38 @@
   "buttonOpenSettings": "打开设置",
   "buttonCheckUpdates": "检查更新",
   "buttonBatchUpdate": "批量更新",
+  "buttonUpdateSelected": "更新已选",
+  "buttonRemoveSelected": "删除已选",
+  "packageMultiSelectButton": "多选",
+  "packageMultiSelectTooltip": "选择多个包",
+  "packageMultiSelectExitTooltip": "退出多选",
+  "selectAllPackagesTooltip": "全选当前列表",
+  "selectedUpdateConfirmTitle": "更新 {count} 个已选包？",
+  "@selectedUpdateConfirmTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectedRemoveConfirmTitle": "删除 {count} 个已选包？",
+  "@selectedRemoveConfirmTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectedCommandConfirmMessage": "将按顺序执行以下命令。",
+  "selectedPackageCommandsEmpty": "所选包没有可执行命令。",
+  "selectedPackageCommandsQueued": "已排队 {count} 个命令。",
+  "@selectedPackageCommandsQueued": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "packageFilterLabel": "筛选",
   "packageFilterAll": "全部",
   "packageFilterHasUpdates": "有更新",

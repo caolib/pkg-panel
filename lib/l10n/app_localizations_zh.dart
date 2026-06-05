@@ -208,6 +208,45 @@ class AppLocalizationsZh extends AppLocalizations {
   String get buttonBatchUpdate => '批量更新';
 
   @override
+  String get buttonUpdateSelected => '更新已选';
+
+  @override
+  String get buttonRemoveSelected => '删除已选';
+
+  @override
+  String get packageMultiSelectButton => '多选';
+
+  @override
+  String get packageMultiSelectTooltip => '选择多个包';
+
+  @override
+  String get packageMultiSelectExitTooltip => '退出多选';
+
+  @override
+  String get selectAllPackagesTooltip => '全选当前列表';
+
+  @override
+  String selectedUpdateConfirmTitle(int count) {
+    return '更新 $count 个已选包？';
+  }
+
+  @override
+  String selectedRemoveConfirmTitle(int count) {
+    return '删除 $count 个已选包？';
+  }
+
+  @override
+  String get selectedCommandConfirmMessage => '将按顺序执行以下命令。';
+
+  @override
+  String get selectedPackageCommandsEmpty => '所选包没有可执行命令。';
+
+  @override
+  String selectedPackageCommandsQueued(int count) {
+    return '已排队 $count 个命令。';
+  }
+
+  @override
   String get packageFilterLabel => '筛选';
 
   @override

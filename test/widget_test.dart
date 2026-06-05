@@ -332,6 +332,115 @@ void main() {
     expect(controller.visiblePackages, hasLength(2));
   });
 
+  test(
+    'selected package commands group packages by manager when supported',
+    () {
+      const npmAdapter = NpmAdapter();
+      const pnpmAdapter = PnpmAdapter();
+      const cargoAdapter = CargoAdapter();
+      final controller = PackagePanelController(
+        shell: const ShellExecutor(),
+        adapters: const <PackageManagerAdapter>[
+          npmAdapter,
+          pnpmAdapter,
+          cargoAdapter,
+        ],
+        settingsStore: _MemorySettingsStore(),
+        snapshotStore: const _MemorySnapshotStore(),
+        initialVisibleManagerIds: const <String>{'npm', 'pnpm', 'cargo'},
+        initialManagerAvailability: const <String, bool>{
+          'npm': true,
+          'pnpm': true,
+          'cargo': true,
+        },
+        initialSnapshots: <ManagerSnapshot>[
+          ManagerSnapshot(
+            manager: npmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'eslint',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '9.0.0',
+              ),
+              ManagedPackage(
+                name: 'typescript',
+                managerId: 'npm',
+                managerName: 'npm',
+                version: '5.6.0',
+              ),
+            ],
+          ),
+          ManagerSnapshot(
+            manager: pnpmAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: '@vue/cli',
+                managerId: 'pnpm',
+                managerName: 'pnpm',
+                version: '5.0.0',
+              ),
+              ManagedPackage(
+                name: 'serve',
+                managerId: 'pnpm',
+                managerName: 'pnpm',
+                version: '14.0.0',
+              ),
+            ],
+          ),
+          ManagerSnapshot(
+            manager: cargoAdapter.definition,
+            loadState: ManagerLoadState.ready,
+            packages: const <ManagedPackage>[
+              ManagedPackage(
+                name: 'cargo-update',
+                managerId: 'cargo',
+                managerName: 'cargo',
+                version: '19.0.1',
+              ),
+              ManagedPackage(
+                name: 'cargo-sweep',
+                managerId: 'cargo',
+                managerName: 'cargo',
+                version: '0.8.0',
+              ),
+            ],
+          ),
+        ],
+      );
+
+      controller.setPackageMultiSelectMode(true);
+      controller.setAllVisiblePackagesSelected(true);
+
+      final updateCommands = controller.commandsForSelectedPackages(
+        PackageAction.update,
+      );
+      expect(updateCommands, hasLength(4));
+      expect(
+        updateCommands.map((command) => command.command),
+        containsAll(<String>[
+          "npm update -g 'eslint' 'typescript'",
+          "pnpm update -g --latest '@vue/cli' 'serve'",
+          "cargo install 'cargo-sweep' --force",
+          "cargo install 'cargo-update' --force",
+        ]),
+      );
+
+      final removeCommands = controller.commandsForSelectedPackages(
+        PackageAction.remove,
+      );
+      expect(
+        removeCommands.map((command) => command.command),
+        containsAll(<String>[
+          "npm uninstall -g 'eslint' 'typescript'",
+          "pnpm remove -g '@vue/cli' 'serve'",
+        ]),
+      );
+    },
+  );
+
   test('controller batch latest check uses pnpm outdated once', () async {
     const adapter = PnpmAdapter();
     final shell = _RecordingShellExecutor(<Pattern, ShellResult>{

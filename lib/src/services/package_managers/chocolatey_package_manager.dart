@@ -14,6 +14,7 @@ class ChocolateyAdapter extends PackageManagerAdapter
         PackageInstallCapability,
         VersionedPackageInstallCapability,
         PackageActionCapability,
+        PackageMultiActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability {
@@ -173,6 +174,30 @@ class ChocolateyAdapter extends PackageManagerAdapter
         arguments: <String>['uninstall', package.name, '-y'],
         command: 'choco uninstall ${psQuote(package.name)} -y',
         timeout: const Duration(minutes: 10),
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  ) {
+    final quotedNames = packages
+        .map((package) => psQuote(package.name))
+        .join(' ');
+    return switch (action) {
+      PackageAction.update => buildPowerShellCommand(
+        managerId: definition.id,
+        label: '升级 ${packages.length} 个 choco 包',
+        command: 'choco upgrade $quotedNames -y',
+        timeout: const Duration(minutes: 12),
+      ),
+      PackageAction.remove => buildPowerShellCommand(
+        managerId: definition.id,
+        label: '卸载 ${packages.length} 个 choco 包',
+        command: 'choco uninstall $quotedNames -y',
+        timeout: const Duration(minutes: 12),
       ),
     };
   }

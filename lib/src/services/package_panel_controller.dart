@@ -147,6 +147,7 @@ class PackagePanelController extends ChangeNotifier {
 
   String _searchQuery = '';
   String _installSearchQuery = '';
+  bool _isPackageMultiSelectMode = false;
   bool _showOnlyPackagesWithUpdates;
   String? _customFontFamily;
   final List<String> _customFallbackFontFamilies;
@@ -212,11 +213,34 @@ class PackagePanelController extends ChangeNotifier {
 
   bool get showOnlyPackagesWithUpdates => _showOnlyPackagesWithUpdates;
 
+  bool get isPackageMultiSelectMode => _isPackageMultiSelectMode;
+
   String? get selectedManagerId => _selectedManagerId;
 
   ManagedPackage? get selectedPackage => _selectedPackage;
 
   int get selectedPackageCount => _selectedPackageKeys.length;
+
+  List<ManagedPackage> get selectedPackages => visiblePackages
+      .where((package) => _selectedPackageKeys.contains(package.key))
+      .toList(growable: false);
+
+  bool get areAllVisiblePackagesSelected {
+    final packages = visiblePackages;
+    return packages.isNotEmpty &&
+        packages.every((package) => _selectedPackageKeys.contains(package.key));
+  }
+
+  bool get hasPartialVisiblePackageSelection {
+    final packages = visiblePackages;
+    if (packages.isEmpty) {
+      return false;
+    }
+    final selectedVisibleCount = packages
+        .where((package) => _selectedPackageKeys.contains(package.key))
+        .length;
+    return selectedVisibleCount > 0 && selectedVisibleCount < packages.length;
+  }
 
   bool get isRefreshingAll => _isRefreshingAll;
 
@@ -1693,11 +1717,94 @@ class PackagePanelController extends ChangeNotifier {
     unawaited(_settingsStore.saveShowOnlyPackagesWithUpdates(value));
   }
 
+  void setPackageMultiSelectMode(bool value) {
+    if (_isPackageMultiSelectMode == value) {
+      return;
+    }
+    _isPackageMultiSelectMode = value;
+    if (!value) {
+      _collapseSelectionToSinglePackage();
+    } else {
+      _realignSelection();
+    }
+    notifyListeners();
+  }
+
+  void togglePackageMultiSelectMode() {
+    setPackageMultiSelectMode(!_isPackageMultiSelectMode);
+  }
+
+  void setAllVisiblePackagesSelected(bool selected) {
+    final packages = visiblePackages;
+    if (packages.isEmpty) {
+      if (_selectedPackageKeys.isEmpty && _selectedPackage == null) {
+        return;
+      }
+      _selectedPackage = null;
+      _selectedPackageKeys.clear();
+      _selectionAnchorKey = null;
+      notifyListeners();
+      return;
+    }
+
+    if (selected) {
+      _selectedPackageKeys
+        ..clear()
+        ..addAll(packages.map((package) => package.key));
+      _selectedPackage = packages.first;
+      _selectionAnchorKey = packages.first.key;
+    } else {
+      _selectedPackage = null;
+      _selectedPackageKeys.clear();
+      _selectionAnchorKey = null;
+    }
+    notifyListeners();
+  }
+
   PackageCommand? commandFor(PackageAction action, ManagedPackage package) {
     final capability = _capabilityOf<PackageActionCapability>(
       _adapterFor(package.managerId),
     );
     return capability?.buildCommand(action, package);
+  }
+
+  List<PackageCommand> commandsForSelectedPackages(PackageAction action) {
+    final commands = <PackageCommand>[];
+    final packagesByManager = <String, List<ManagedPackage>>{};
+    for (final package in selectedPackages) {
+      packagesByManager
+          .putIfAbsent(package.managerId, () => <ManagedPackage>[])
+          .add(package);
+    }
+
+    for (final packages in packagesByManager.values) {
+      final adapter = _adapterFor(packages.first.managerId);
+      final multiActionCapability = _capabilityOf<PackageMultiActionCapability>(
+        adapter,
+      );
+      if (packages.length > 1 && multiActionCapability != null) {
+        final command = multiActionCapability.buildMultiCommand(
+          action,
+          packages,
+        );
+        if (command != null) {
+          commands.add(command);
+          continue;
+        }
+      }
+
+      final actionCapability = _capabilityOf<PackageActionCapability>(adapter);
+      if (actionCapability == null) {
+        continue;
+      }
+      for (final package in packages) {
+        final command = actionCapability.buildCommand(action, package);
+        if (command != null) {
+          commands.add(command);
+        }
+      }
+    }
+    return commands;
   }
 
   PackageCommand? batchUpdateCommandForSelectedManager() {
@@ -2696,6 +2803,11 @@ class PackagePanelController extends ChangeNotifier {
     }
 
     if (_selectedPackageKeys.isEmpty) {
+      if (_isPackageMultiSelectMode) {
+        _selectedPackage = null;
+        _selectionAnchorKey = null;
+        return;
+      }
       final firstPackage = packages.first;
       _selectedPackage = firstPackage;
       _selectedPackageKeys
@@ -2711,6 +2823,31 @@ class PackagePanelController extends ChangeNotifier {
         !visibleKeys.contains(_selectionAnchorKey)) {
       _selectionAnchorKey = _selectedPackage?.key;
     }
+  }
+
+  void _collapseSelectionToSinglePackage() {
+    final packages = visiblePackages;
+    if (packages.isEmpty) {
+      _selectedPackage = null;
+      _selectedPackageKeys.clear();
+      _selectionAnchorKey = null;
+      return;
+    }
+
+    final selectedKey = _selectedPackage?.key;
+    ManagedPackage? package;
+    if (selectedKey != null && _selectedPackageKeys.contains(selectedKey)) {
+      final index = _indexOfPackage(packages, selectedKey);
+      if (index >= 0) {
+        package = packages[index];
+      }
+    }
+    package ??= _firstSelectedVisiblePackage(packages) ?? packages.first;
+    _selectedPackage = package;
+    _selectedPackageKeys
+      ..clear()
+      ..add(package.key);
+    _selectionAnchorKey = package.key;
   }
 
   void _pushActivity(ActivityEntry entry) {

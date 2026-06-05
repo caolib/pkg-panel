@@ -65,6 +65,38 @@
   "buttonOpenSettings": "Open settings",
   "buttonCheckUpdates": "Check updates",
   "buttonBatchUpdate": "Batch update",
+  "buttonUpdateSelected": "Update selected",
+  "buttonRemoveSelected": "Remove selected",
+  "packageMultiSelectButton": "Multi-select",
+  "packageMultiSelectTooltip": "Select multiple packages",
+  "packageMultiSelectExitTooltip": "Exit multi-select",
+  "selectAllPackagesTooltip": "Select all packages in the current list",
+  "selectedUpdateConfirmTitle": "Update {count} selected packages?",
+  "@selectedUpdateConfirmTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectedRemoveConfirmTitle": "Remove {count} selected packages?",
+  "@selectedRemoveConfirmTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectedCommandConfirmMessage": "The following commands will run in order.",
+  "selectedPackageCommandsEmpty": "No runnable commands for the selected packages.",
+  "selectedPackageCommandsQueued": "Queued {count} commands.",
+  "@selectedPackageCommandsQueued": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "packageFilterLabel": "Filter",
   "packageFilterAll": "All",
   "packageFilterHasUpdates": "Has updates",

@@ -13,6 +13,7 @@ class NpmAdapter extends PackageManagerAdapter
         VersionedPackageInstallCapability,
         LatestTagInstallCapability,
         PackageActionCapability,
+        PackageMultiActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability,
@@ -155,6 +156,33 @@ class NpmAdapter extends PackageManagerAdapter
         executable: 'npm',
         arguments: <String>['uninstall', '-g', package.name],
         command: 'npm uninstall -g ${psQuote(package.name)}',
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  ) {
+    final names = packages.map((package) => package.name).toList();
+    final quotedNames = names.map(psQuote).join(' ');
+    return switch (action) {
+      PackageAction.update => buildPackageCommand(
+        managerId: definition.id,
+        label: '更新 ${packages.length} 个 npm 包',
+        executable: 'npm',
+        arguments: <String>['update', '-g', ...names],
+        command: 'npm update -g $quotedNames',
+        timeout: const Duration(minutes: 10),
+      ),
+      PackageAction.remove => buildPackageCommand(
+        managerId: definition.id,
+        label: '删除 ${packages.length} 个 npm 包',
+        executable: 'npm',
+        arguments: <String>['uninstall', '-g', ...names],
+        command: 'npm uninstall -g $quotedNames',
+        timeout: const Duration(minutes: 10),
       ),
     };
   }

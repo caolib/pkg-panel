@@ -45,6 +45,15 @@ mixin PackageActionCapability {
   PackageCommand? buildCommand(PackageAction action, ManagedPackage package);
 }
 
+// Builds one command for the same action across multiple packages when the
+// package manager accepts more than one package name in a single invocation.
+mixin PackageMultiActionCapability on PackageActionCapability {
+  PackageCommand? buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  );
+}
+
 // Exposes a batch-update entry point when the manager supports it.
 mixin PackageBatchUpdateCapability {
   PackageCommand? buildBatchUpdateCommand();

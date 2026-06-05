@@ -10,6 +10,7 @@ class PipAdapter extends PackageManagerAdapter
         InstalledPackageCapability,
         VersionedPackageInstallCapability,
         PackageActionCapability,
+        PackageMultiActionCapability,
         PackageDetailsCapability {
   const PipAdapter()
     : super(
@@ -106,6 +107,33 @@ class PipAdapter extends PackageManagerAdapter
         executable: 'pip',
         arguments: <String>['uninstall', '-y', package.name],
         command: 'pip uninstall -y ${psQuote(package.name)}',
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  ) {
+    final names = packages.map((package) => package.name).toList();
+    final quotedNames = names.map(psQuote).join(' ');
+    return switch (action) {
+      PackageAction.update => buildPackageCommand(
+        managerId: definition.id,
+        label: '升级 ${packages.length} 个 pip 包',
+        executable: 'pip',
+        arguments: <String>['install', '--upgrade', ...names],
+        command: 'pip install --upgrade $quotedNames',
+        timeout: const Duration(minutes: 10),
+      ),
+      PackageAction.remove => buildPackageCommand(
+        managerId: definition.id,
+        label: '卸载 ${packages.length} 个 pip 包',
+        executable: 'pip',
+        arguments: <String>['uninstall', '-y', ...names],
+        command: 'pip uninstall -y $quotedNames',
+        timeout: const Duration(minutes: 10),
       ),
     };
   }

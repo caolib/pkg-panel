@@ -16,6 +16,7 @@ class BunAdapter extends PackageManagerAdapter
         VersionedPackageInstallCapability,
         LatestTagInstallCapability,
         PackageActionCapability,
+        PackageMultiActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability,
@@ -185,6 +186,33 @@ class BunAdapter extends PackageManagerAdapter
         executable: 'bun',
         arguments: <String>['remove', '-g', package.name],
         command: 'bun remove -g ${psQuote(package.name)}',
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  ) {
+    final names = packages.map((package) => package.name).toList();
+    final quotedNames = names.map(psQuote).join(' ');
+    return switch (action) {
+      PackageAction.update => buildPackageCommand(
+        managerId: definition.id,
+        label: '更新 ${packages.length} 个 bun 包',
+        executable: 'bun',
+        arguments: <String>['update', '-g', '--latest', ...names],
+        command: 'bun update -g --latest $quotedNames',
+        timeout: const Duration(minutes: 10),
+      ),
+      PackageAction.remove => buildPackageCommand(
+        managerId: definition.id,
+        label: '删除 ${packages.length} 个 bun 包',
+        executable: 'bun',
+        arguments: <String>['remove', '-g', ...names],
+        command: 'bun remove -g $quotedNames',
+        timeout: const Duration(minutes: 10),
       ),
     };
   }

@@ -13,6 +13,7 @@ class PnpmAdapter extends PackageManagerAdapter
         VersionedPackageInstallCapability,
         LatestTagInstallCapability,
         PackageActionCapability,
+        PackageMultiActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability,
@@ -188,6 +189,33 @@ class PnpmAdapter extends PackageManagerAdapter
         executable: 'pnpm',
         arguments: <String>['remove', '-g', package.name],
         command: 'pnpm remove -g ${psQuote(package.name)}',
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  ) {
+    final names = packages.map((package) => package.name).toList();
+    final quotedNames = names.map(psQuote).join(' ');
+    return switch (action) {
+      PackageAction.update => buildPackageCommand(
+        managerId: definition.id,
+        label: '更新 ${packages.length} 个 pnpm 包',
+        executable: 'pnpm',
+        arguments: <String>['update', '-g', '--latest', ...names],
+        command: 'pnpm update -g --latest $quotedNames',
+        timeout: const Duration(minutes: 10),
+      ),
+      PackageAction.remove => buildPackageCommand(
+        managerId: definition.id,
+        label: '删除 ${packages.length} 个 pnpm 包',
+        executable: 'pnpm',
+        arguments: <String>['remove', '-g', ...names],
+        command: 'pnpm remove -g $quotedNames',
+        timeout: const Duration(minutes: 10),
       ),
     };
   }

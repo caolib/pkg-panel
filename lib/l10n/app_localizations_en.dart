@@ -215,6 +215,48 @@ class AppLocalizationsEn extends AppLocalizations {
   String get buttonBatchUpdate => 'Batch update';
 
   @override
+  String get buttonUpdateSelected => 'Update selected';
+
+  @override
+  String get buttonRemoveSelected => 'Remove selected';
+
+  @override
+  String get packageMultiSelectButton => 'Multi-select';
+
+  @override
+  String get packageMultiSelectTooltip => 'Select multiple packages';
+
+  @override
+  String get packageMultiSelectExitTooltip => 'Exit multi-select';
+
+  @override
+  String get selectAllPackagesTooltip =>
+      'Select all packages in the current list';
+
+  @override
+  String selectedUpdateConfirmTitle(int count) {
+    return 'Update $count selected packages?';
+  }
+
+  @override
+  String selectedRemoveConfirmTitle(int count) {
+    return 'Remove $count selected packages?';
+  }
+
+  @override
+  String get selectedCommandConfirmMessage =>
+      'The following commands will run in order.';
+
+  @override
+  String get selectedPackageCommandsEmpty =>
+      'No runnable commands for the selected packages.';
+
+  @override
+  String selectedPackageCommandsQueued(int count) {
+    return 'Queued $count commands.';
+  }
+
+  @override
   String get packageFilterLabel => 'Filter';
 
   @override

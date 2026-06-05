@@ -14,6 +14,7 @@ class ScoopAdapter extends PackageManagerAdapter
         PackageSearchCapability,
         PackageInstallCapability,
         PackageActionCapability,
+        PackageMultiActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability {
@@ -162,6 +163,30 @@ class ScoopAdapter extends PackageManagerAdapter
         managerId: definition.id,
         label: '卸载 ${package.name}',
         command: 'scoop uninstall ${psQuote(package.name)}',
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  ) {
+    final quotedNames = packages
+        .map((package) => psQuote(package.name))
+        .join(' ');
+    return switch (action) {
+      PackageAction.update => buildPowerShellCommand(
+        managerId: definition.id,
+        label: '更新 ${packages.length} 个 scoop 应用',
+        command: 'scoop update $quotedNames',
+        timeout: const Duration(minutes: 8),
+      ),
+      PackageAction.remove => buildPowerShellCommand(
+        managerId: definition.id,
+        label: '卸载 ${packages.length} 个 scoop 应用',
+        command: 'scoop uninstall $quotedNames',
+        timeout: const Duration(minutes: 8),
       ),
     };
   }

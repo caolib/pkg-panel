@@ -488,6 +488,72 @@ abstract class AppLocalizations {
   /// **'批量更新'**
   String get buttonBatchUpdate;
 
+  /// No description provided for @buttonUpdateSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新已选'**
+  String get buttonUpdateSelected;
+
+  /// No description provided for @buttonRemoveSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除已选'**
+  String get buttonRemoveSelected;
+
+  /// No description provided for @packageMultiSelectButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'多选'**
+  String get packageMultiSelectButton;
+
+  /// No description provided for @packageMultiSelectTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择多个包'**
+  String get packageMultiSelectTooltip;
+
+  /// No description provided for @packageMultiSelectExitTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'退出多选'**
+  String get packageMultiSelectExitTooltip;
+
+  /// No description provided for @selectAllPackagesTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'全选当前列表'**
+  String get selectAllPackagesTooltip;
+
+  /// No description provided for @selectedUpdateConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新 {count} 个已选包？'**
+  String selectedUpdateConfirmTitle(int count);
+
+  /// No description provided for @selectedRemoveConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除 {count} 个已选包？'**
+  String selectedRemoveConfirmTitle(int count);
+
+  /// No description provided for @selectedCommandConfirmMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'将按顺序执行以下命令。'**
+  String get selectedCommandConfirmMessage;
+
+  /// No description provided for @selectedPackageCommandsEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选包没有可执行命令。'**
+  String get selectedPackageCommandsEmpty;
+
+  /// No description provided for @selectedPackageCommandsQueued.
+  ///
+  /// In zh, this message translates to:
+  /// **'已排队 {count} 个命令。'**
+  String selectedPackageCommandsQueued(int count);
+
   /// No description provided for @packageFilterLabel.
   ///
   /// In zh, this message translates to:

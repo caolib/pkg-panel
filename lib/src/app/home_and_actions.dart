@@ -171,6 +171,7 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
                 searchController: _searchController,
                 onBatchCheckLatest: _handleBatchCheckLatestForSelectedManager,
                 onShowLoadErrors: _showLoadErrorsDialog,
+                onRunSelectedAction: _confirmAndRunSelectedPackageCommands,
                 onBatchUpdate: () async {
                   final command = widget.controller
                       .batchUpdateCommandForSelectedManager();
@@ -306,6 +307,107 @@ class _PackagePanelHomeState extends State<PackagePanelHome>
               : result.combinedOutput,
         ),
       );
+    }
+  }
+
+  Future<void> _confirmAndRunSelectedPackageCommands(
+    PackageAction action,
+  ) async {
+    final commands = widget.controller
+        .commandsForSelectedPackages(action)
+        .where((command) => !widget.controller.isBusy(command.busyKey))
+        .toList(growable: false);
+    if (commands.isEmpty) {
+      _showCompactSnackBar(context, context.l10n.selectedPackageCommandsEmpty);
+      return;
+    }
+
+    final l10n = context.l10n;
+    final selectedPackageCount = widget.controller.selectedPackages.length;
+    final shouldRun =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(
+              action == PackageAction.update
+                  ? l10n.selectedUpdateConfirmTitle(selectedPackageCount)
+                  : l10n.selectedRemoveConfirmTitle(selectedPackageCount),
+            ),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(l10n.selectedCommandConfirmMessage),
+                  const SizedBox(height: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 280),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          for (final command in commands)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _CommandPreview(command: command.command),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(l10n.buttonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(
+                  action == PackageAction.update
+                      ? l10n.updateAction
+                      : l10n.removeAction,
+                ),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldRun || !mounted) {
+      return;
+    }
+
+    final futures = commands
+        .map((command) => widget.controller.runCommand(command))
+        .toList(growable: false);
+    _showCompactSnackBar(
+      context,
+      l10n.selectedPackageCommandsQueued(commands.length),
+    );
+
+    final results = await Future.wait(futures);
+    if (!mounted) {
+      return;
+    }
+
+    for (var index = 0; index < results.length; index++) {
+      final result = results[index];
+      if (result.isSuccess || result.wasCancelled) {
+        continue;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (context) => _CommandOutputDialog(
+          title: context.l10n.commandFailedTitle,
+          output: result.combinedOutput.isEmpty
+              ? context.l10n.noOutput
+              : result.combinedOutput,
+        ),
+      );
+      break;
     }
   }
 
@@ -522,6 +624,7 @@ class _ActionBar extends StatelessWidget {
     required this.searchController,
     required this.onBatchCheckLatest,
     required this.onShowLoadErrors,
+    required this.onRunSelectedAction,
     required this.onBatchUpdate,
   });
 
@@ -529,6 +632,7 @@ class _ActionBar extends StatelessWidget {
   final TextEditingController searchController;
   final Future<void> Function() onBatchCheckLatest;
   final Future<void> Function() onShowLoadErrors;
+  final Future<void> Function(PackageAction action) onRunSelectedAction;
   final Future<void> Function() onBatchUpdate;
 
   @override
@@ -541,8 +645,17 @@ class _ActionBar extends StatelessWidget {
         controller.isBatchCheckingLatestForCurrentSelection;
     final startupStatus = controller.startupUpdateCheckStatus;
     final hasLoadErrors = controller.errorManagers > 0;
+    final isMultiSelectMode = controller.isPackageMultiSelectMode;
+    final selectedUpdateCommands = isMultiSelectMode
+        ? controller.commandsForSelectedPackages(PackageAction.update)
+        : const <PackageCommand>[];
+    final selectedRemoveCommands = isMultiSelectMode
+        ? controller.commandsForSelectedPackages(PackageAction.remove)
+        : const <PackageCommand>[];
     final showBatchUpdate =
-        controller.selectedPackageCount > 1 && batchCommand != null;
+        !isMultiSelectMode &&
+        controller.selectedPackageCount > 1 &&
+        batchCommand != null;
     final controls = <Widget>[
       SizedBox(
         width: 320,
@@ -582,9 +695,32 @@ class _ActionBar extends StatelessWidget {
           icon: const Icon(Icons.system_update_alt),
           label: Text(l10n.buttonBatchUpdate),
         ),
+      if (isMultiSelectMode) ...<Widget>[
+        FilledButton.tonalIcon(
+          onPressed:
+              selectedUpdateCommands.any(
+                (command) => !controller.isBusy(command.busyKey),
+              )
+              ? () => onRunSelectedAction(PackageAction.update)
+              : null,
+          icon: const Icon(Icons.system_update_alt),
+          label: Text(l10n.buttonUpdateSelected),
+        ),
+        FilledButton.tonalIcon(
+          onPressed:
+              selectedRemoveCommands.any(
+                (command) => !controller.isBusy(command.busyKey),
+              )
+              ? () => onRunSelectedAction(PackageAction.remove)
+              : null,
+          icon: const Icon(Icons.delete_outline),
+          label: Text(l10n.buttonRemoveSelected),
+        ),
+      ],
       if (startupStatus.isVisible)
         _StartupUpdateStatusChip(status: startupStatus),
     ];
+    final multiSelectButton = _PackageMultiSelectButton(controller: controller);
     final updateFilter = _PackageUpdateFilter(controller: controller);
 
     return Card(
@@ -597,7 +733,11 @@ class _ActionBar extends StatelessWidget {
                 spacing: 12,
                 runSpacing: 12,
                 crossAxisAlignment: WrapCrossAlignment.center,
-                children: <Widget>[...controls, updateFilter],
+                children: <Widget>[
+                  ...controls,
+                  multiSelectButton,
+                  updateFilter,
+                ],
               );
             }
 
@@ -613,11 +753,50 @@ class _ActionBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
+                multiSelectButton,
+                const SizedBox(width: 8),
                 updateFilter,
               ],
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _PackageMultiSelectButton extends StatelessWidget {
+  const _PackageMultiSelectButton({required this.controller});
+
+  final PackagePanelController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final isActive = controller.isPackageMultiSelectMode;
+    final tooltip = isActive
+        ? l10n.packageMultiSelectExitTooltip
+        : l10n.packageMultiSelectTooltip;
+    final icon = Icon(
+      isActive ? Icons.checklist_rtl : Icons.check_box_outline_blank,
+    );
+    final label = Text(l10n.packageMultiSelectButton);
+
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        height: 44,
+        child: isActive
+            ? FilledButton.tonalIcon(
+                onPressed: controller.togglePackageMultiSelectMode,
+                icon: icon,
+                label: label,
+              )
+            : OutlinedButton.icon(
+                onPressed: controller.togglePackageMultiSelectMode,
+                icon: icon,
+                label: label,
+              ),
       ),
     );
   }
@@ -886,6 +1065,21 @@ class _PackageHeaderRow extends StatelessWidget {
       color: Theme.of(context).colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w700,
     );
+    final isMultiSelectMode = controller.isPackageMultiSelectMode;
+    final selectAllCheckbox = Tooltip(
+      message: l10n.selectAllPackagesTooltip,
+      child: Checkbox(
+        tristate: true,
+        value: controller.areAllVisiblePackagesSelected
+            ? true
+            : controller.hasPartialVisiblePackageSelection
+            ? null
+            : false,
+        onChanged: (_) => controller.setAllVisiblePackagesSelected(
+          !controller.areAllVisiblePackagesSelected,
+        ),
+      ),
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -896,6 +1090,10 @@ class _PackageHeaderRow extends StatelessWidget {
       child: compact
           ? Row(
               children: <Widget>[
+                if (isMultiSelectMode) ...<Widget>[
+                  selectAllCheckbox,
+                  const SizedBox(width: 4),
+                ],
                 Text(l10n.packageListHeader, style: style),
                 const Spacer(),
                 Text(
@@ -918,7 +1116,15 @@ class _PackageHeaderRow extends StatelessWidget {
                 );
               },
               children: <Widget>[
-                Text(l10n.packageNameColumn, style: style),
+                Row(
+                  children: <Widget>[
+                    if (isMultiSelectMode) ...<Widget>[
+                      selectAllCheckbox,
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(child: Text(l10n.packageNameColumn, style: style)),
+                  ],
+                ),
                 Text(l10n.currentVersionColumn, style: style),
                 Text(l10n.latestVersionColumn, style: style),
                 Text(l10n.lastCheckedAtColumn, style: style),
@@ -1091,9 +1297,17 @@ class _PackageListTile extends StatelessWidget {
     );
     final theme = Theme.of(context);
     final extra = _extraLine(context, package);
+    final isMultiSelectMode = controller.isPackageMultiSelectMode;
+    final rowCheckbox = IgnorePointer(
+      child: Checkbox(value: tileState.isSelected, onChanged: (_) {}),
+    );
     final rowContent = compact
         ? Row(
             children: <Widget>[
+              if (isMultiSelectMode) ...<Widget>[
+                rowCheckbox,
+                const SizedBox(width: 4),
+              ],
               _ManagerIcon(
                 managerId: package.managerId,
                 customIconPath: tileState.iconPath,
@@ -1139,6 +1353,10 @@ class _PackageListTile extends StatelessWidget {
             children: <Widget>[
               Row(
                 children: <Widget>[
+                  if (isMultiSelectMode) ...<Widget>[
+                    rowCheckbox,
+                    const SizedBox(width: 6),
+                  ],
                   _ManagerIcon(
                     managerId: package.managerId,
                     customIconPath: tileState.iconPath,
@@ -1189,13 +1407,24 @@ class _PackageListTile extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) {
+        if (isMultiSelectMode) {
+          controller.selectPackage(
+            package,
+            additive: true,
+            range: _isRangeSelectionPressed(),
+          );
+          return;
+        }
         controller.selectPackage(
           package,
           additive: _isAdditiveSelectionPressed(),
           range: _isRangeSelectionPressed(),
         );
       },
-      onDoubleTap: tileState.canViewDetails && !tileState.isLoadingDetails
+      onDoubleTap:
+          !isMultiSelectMode &&
+              tileState.canViewDetails &&
+              !tileState.isLoadingDetails
           ? () => _openPackageDetails(context)
           : null,
       onSecondaryTapUp: (details) => _showContextMenu(

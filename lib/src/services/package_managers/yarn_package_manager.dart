@@ -15,6 +15,7 @@ class YarnAdapter extends PackageManagerAdapter
         VersionedPackageInstallCapability,
         LatestTagInstallCapability,
         PackageActionCapability,
+        PackageMultiActionCapability,
         PackageBatchUpdateCapability,
         LatestVersionLookupCapability,
         BatchLatestVersionLookupCapability,
@@ -161,6 +162,33 @@ class YarnAdapter extends PackageManagerAdapter
         executable: 'yarn',
         arguments: <String>['global', 'remove', package.name],
         command: 'yarn global remove ${psQuote(package.name)}',
+      ),
+    };
+  }
+
+  @override
+  PackageCommand buildMultiCommand(
+    PackageAction action,
+    List<ManagedPackage> packages,
+  ) {
+    final names = packages.map((package) => package.name).toList();
+    final quotedNames = names.map(psQuote).join(' ');
+    return switch (action) {
+      PackageAction.update => buildPackageCommand(
+        managerId: definition.id,
+        label: '更新 ${packages.length} 个 yarn 包',
+        executable: 'yarn',
+        arguments: <String>['global', 'upgrade', ...names],
+        command: 'yarn global upgrade $quotedNames',
+        timeout: const Duration(minutes: 10),
+      ),
+      PackageAction.remove => buildPackageCommand(
+        managerId: definition.id,
+        label: '删除 ${packages.length} 个 yarn 包',
+        executable: 'yarn',
+        arguments: <String>['global', 'remove', ...names],
+        command: 'yarn global remove $quotedNames',
+        timeout: const Duration(minutes: 10),
       ),
     };
   }
