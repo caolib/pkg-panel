@@ -149,6 +149,7 @@ void main() {
   });
 
   test('refresh current selection only reloads selected manager', () async {
+    final checkedAt = DateTime(2026, 6, 5, 12);
     final shell = _RecordingShellExecutor(<Pattern, ShellResult>{
       'npm ls -g --depth=0 --json': const ShellResult(
         exitCode: 0,
@@ -181,12 +182,14 @@ void main() {
         ManagerSnapshot(
           manager: npmAdapter.definition,
           loadState: ManagerLoadState.ready,
-          packages: const <ManagedPackage>[
+          packages: <ManagedPackage>[
             ManagedPackage(
               name: 'eslint',
               managerId: 'npm',
               managerName: 'npm',
               version: '9.0.0',
+              latestVersion: '9.2.0',
+              latestVersionCheckedAt: checkedAt,
             ),
           ],
         ),
@@ -214,6 +217,10 @@ void main() {
       ),
       hasLength(1),
     );
+    final package = controller.selectedManagerSnapshot!.packages.single;
+    expect(package.version, '9.1.0');
+    expect(package.latestVersion, '9.2.0');
+    expect(package.latestVersionCheckedAt, checkedAt);
   });
 
   test('controller batch latest check uses npm outdated once', () async {

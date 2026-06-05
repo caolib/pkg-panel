@@ -111,6 +111,9 @@ class PackageSnapshotStore {
       'managerId': package.managerId,
       'managerName': package.managerName,
       'version': package.version,
+      'latestVersion': package.latestVersion,
+      'latestVersionCheckedAt': package.latestVersionCheckedAt
+          ?.toIso8601String(),
       'identifier': package.identifier,
       'source': package.source,
       'notes': package.notes,
@@ -131,11 +134,17 @@ class PackageSnapshotStore {
 
     final executablesRaw = json['executables'];
     final metadataRaw = json['metadata'];
+    final latestVersionCheckedAtRaw = '${json['latestVersionCheckedAt'] ?? ''}'
+        .trim();
     return ManagedPackage(
       name: name,
       managerId: manager.id,
       managerName: manager.displayName,
       version: version,
+      latestVersion: _nullableString(json['latestVersion']),
+      latestVersionCheckedAt: latestVersionCheckedAtRaw.isEmpty
+          ? null
+          : DateTime.tryParse(latestVersionCheckedAtRaw),
       identifier: _nullableString(json['identifier']),
       source: _nullableString(json['source']),
       notes: _nullableString(json['notes']),

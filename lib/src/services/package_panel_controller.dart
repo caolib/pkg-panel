@@ -2290,13 +2290,39 @@ class PackagePanelController extends ChangeNotifier {
     List<ManagedPackage> packages,
     DateTime checkedAt,
   ) {
+    final previousPackages = <String, ManagedPackage>{
+      for (final package in _snapshotFor(adapter.definition.id).packages)
+        package.key: package,
+    };
+    final packagesWithLatestInfo = packages
+        .map((package) {
+          final latestVersion = package.latestVersion?.trim();
+          if (latestVersion != null && latestVersion.isNotEmpty) {
+            return package;
+          }
+
+          final previousPackage = previousPackages[package.key];
+          final previousLatestVersion = previousPackage?.latestVersion?.trim();
+          if (previousPackage == null ||
+              previousLatestVersion == null ||
+              previousLatestVersion.isEmpty) {
+            return package;
+          }
+
+          return package.copyWith(
+            latestVersion: previousPackage.latestVersion,
+            latestVersionCheckedAt: previousPackage.latestVersionCheckedAt,
+          );
+        })
+        .toList(growable: false);
+
     final capability = _capabilityOf<LatestVersionLookupCapability>(adapter);
     final shouldUseLoadTime =
         adapter.definition.id == 'winget' || capability == null;
     if (!shouldUseLoadTime) {
-      return packages;
+      return packagesWithLatestInfo;
     }
-    return packages
+    return packagesWithLatestInfo
         .map(
           (package) => package.latestVersionCheckedAt == null
               ? package.copyWith(latestVersionCheckedAt: checkedAt)
